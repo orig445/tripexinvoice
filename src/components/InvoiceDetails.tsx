@@ -51,11 +51,11 @@ interface InvoiceDetailsProps {
 }
 
 export function InvoiceDetails({ invoice, onClose }: InvoiceDetailsProps) {
-  const formatCurrency = (amount: number | undefined | null, currency: string = "ILS") => {
+  const formatCurrency = (amount: number | undefined | null, currency?: string | null) => {
     if (amount === undefined || amount === null) return "—";
     return new Intl.NumberFormat("he-IL", {
       style: "currency",
-      currency,
+      currency: currency || "ILS",
     }).format(amount);
   };
 
