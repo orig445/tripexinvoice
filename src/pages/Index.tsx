@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { FileText, Upload } from "lucide-react";
 import { Header } from "@/components/Header";
 import { InvoiceUploader } from "@/components/InvoiceUploader";
-import { InvoiceCard } from "@/components/InvoiceCard";
+import { InvoiceList } from "@/components/InvoiceList";
 import { InvoiceDetails } from "@/components/InvoiceDetails";
 import { DashboardStats } from "@/components/DashboardStats";
 import { supabase } from "@/integrations/supabase/client";
@@ -83,25 +83,12 @@ const Index = () => {
               <div className="flex items-center justify-center py-12">
                 <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
               </div>
-            ) : invoices.length === 0 ? (
-              <div className="text-center py-12">
-                <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-muted flex items-center justify-center">
-                  <FileText className="h-10 w-10 text-muted-foreground" />
-                </div>
-                <h3 className="text-lg font-medium mb-2">אין חשבוניות עדיין</h3>
-                <p className="text-muted-foreground">העלה חשבונית ראשונה כדי להתחיל</p>
-              </div>
             ) : (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {invoices.map((invoice) => (
-                  <InvoiceCard
-                    key={invoice.id}
-                    invoice={invoice}
-                    onView={setSelectedInvoice}
-                    onDelete={handleDeleteInvoice}
-                  />
-                ))}
-              </div>
+              <InvoiceList
+                invoices={invoices}
+                onView={setSelectedInvoice}
+                onDelete={handleDeleteInvoice}
+              />
             )}
           </TabsContent>
         </Tabs>
