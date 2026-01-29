@@ -36,39 +36,29 @@ serve(async (req) => {
       throw new Error("Either imageBase64 or imageUrl must be provided");
     }
 
-    const systemPrompt = `You are an expert invoice analyzer. Analyze the invoice image and extract all relevant information.
+    const systemPrompt = `You are an expert invoice analyzer. Analyze the invoice image and extract ONLY the essential information.
 
-Return a JSON object with the following structure:
+CRITICAL - Currency Detection Rules:
+- If the invoice is in HEBREW or has ₪ symbol → currency is "ILS"
+- If the invoice is in ENGLISH or has $ symbol → currency is "USD"  
+- If the invoice is in GERMAN/FRENCH/SPANISH or has € symbol → currency is "EUR"
+- If the invoice is in BRITISH ENGLISH or has £ symbol → currency is "GBP"
+- Look for explicit currency codes (USD, EUR, ILS, etc.) on the invoice
+- Consider the vendor's country/address for additional context
+
+Return a JSON object with ONLY these 4 fields:
 {
   "invoice_number": "string or null",
-  "invoice_date": "YYYY-MM-DD or null",
-  "due_date": "YYYY-MM-DD or null",
-  "vendor_name": "string or null",
-  "vendor_address": "string or null",
-  "vendor_phone": "string or null",
-  "vendor_email": "string or null",
-  "vendor_id": "string (business/tax ID) or null",
-  "customer_name": "string or null",
-  "customer_address": "string or null",
-  "subtotal": number or null,
-  "tax_amount": number or null,
-  "total_amount": number or null,
-  "currency": "string (e.g., ILS, USD, EUR)",
-  "line_items": [
-    {
-      "description": "string",
-      "quantity": number,
-      "unit_price": number,
-      "total": number
-    }
-  ],
-  "notes": "string or null",
-  "payment_terms": "string or null"
+  "invoice_date": "YYYY-MM-DD or null", 
+  "total_amount": number (the final amount to pay, including tax),
+  "currency": "USD/ILS/EUR/GBP/etc based on detection rules above"
 }
 
-Be thorough and extract all visible information. For Hebrew invoices, translate field names but keep values in their original language.
-If a field is not visible or unclear, use null.
-Return ONLY the JSON object, no additional text.`;
+IMPORTANT:
+- For total_amount: Use the FINAL total amount (after tax), not subtotal
+- For currency: Be smart - detect based on language, symbols, and country
+- If multiple amounts exist, use the largest/final "Total" or "סה"כ" amount
+- Return ONLY the JSON object, no additional text.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
