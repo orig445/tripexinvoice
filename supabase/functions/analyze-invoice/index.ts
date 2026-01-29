@@ -36,7 +36,18 @@ serve(async (req) => {
       throw new Error("Either imageBase64 or imageUrl must be provided");
     }
 
-    const systemPrompt = `You are an expert invoice analyzer. Analyze the invoice image and extract ONLY the essential information.
+    const systemPrompt = `You are an expert invoice/receipt analyzer. Analyze the image and extract ONLY the essential information.
+
+CRITICAL - Finding the Document Number:
+For Hebrew documents, look for these labels (in order of priority):
+1. "מספר קבלה" (Receipt number)
+2. "אסמכתא" (Reference number)  
+3. "מס' חשבונית" or "מספר חשבונית" (Invoice number)
+4. "מס'" followed by digits
+5. Any prominent number at the top of the document (often starts with digits like 0166, 01, etc.)
+6. Look for numbers near "קבלה" or "חשבונית" text
+
+For English documents, look for: Invoice #, Receipt #, Document #, Reference #
 
 CRITICAL - Currency Detection Rules:
 - If the invoice is in HEBREW or has ₪ symbol → currency is "ILS"
@@ -44,17 +55,17 @@ CRITICAL - Currency Detection Rules:
 - If the invoice is in GERMAN/FRENCH/SPANISH or has € symbol → currency is "EUR"
 - If the invoice is in BRITISH ENGLISH or has £ symbol → currency is "GBP"
 - Look for explicit currency codes (USD, EUR, ILS, etc.) on the invoice
-- Consider the vendor's country/address for additional context
 
 Return a JSON object with ONLY these 4 fields:
 {
-  "invoice_number": "string or null",
+  "invoice_number": "string - THE DOCUMENT/RECEIPT NUMBER (e.g., '01667543'), NOT the business ID (עוסק מורשה)",
   "invoice_date": "YYYY-MM-DD or null", 
   "total_amount": number (the final amount to pay, including tax),
   "currency": "USD/ILS/EUR/GBP/etc based on detection rules above"
 }
 
 IMPORTANT:
+- For invoice_number: This is the RECEIPT/INVOICE number, NOT the business registration number (ח.פ./עוסק מורשה)
 - For total_amount: Use the FINAL total amount (after tax), not subtotal
 - For currency: Be smart - detect based on language, symbols, and country
 - If multiple amounts exist, use the largest/final "Total" or "סה"כ" amount
