@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
-import { Upload, FileImage, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Upload, FileImage, Loader2, CheckCircle2, AlertCircle, Camera } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -15,6 +16,7 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "uploading" | "analyzing" | "success" | "error">("idle");
+  const isMobile = useIsMobile();
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -193,24 +195,45 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
               </p>
             </div>
 
-            <label className="cursor-pointer">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleFileSelect}
-                className="hidden"
-                disabled={isProcessing}
-              />
-              <Button variant="default" size="lg" asChild disabled={isProcessing}>
-                <span className="gap-2">
-                  <FileImage className="h-5 w-5" />
-                  בחר תמונה
-                </span>
-              </Button>
-            </label>
+            <div className="flex flex-col sm:flex-row gap-3">
+              {isMobile && (
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    disabled={isProcessing}
+                  />
+                  <Button variant="default" size="lg" asChild disabled={isProcessing}>
+                    <span className="gap-2">
+                      <Camera className="h-5 w-5" />
+                      צלם תמונה
+                    </span>
+                  </Button>
+                </label>
+              )}
+
+              <label className="cursor-pointer">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                  disabled={isProcessing}
+                />
+                <Button variant={isMobile ? "outline" : "default"} size="lg" asChild disabled={isProcessing}>
+                  <span className="gap-2">
+                    <FileImage className="h-5 w-5" />
+                    בחר מגלריה
+                  </span>
+                </Button>
+              </label>
+            </div>
 
             <p className="text-sm text-muted-foreground mt-4">
-              תומך בפורמטים: JPG, PNG, WEBP
+              {isMobile ? "צלם או בחר תמונה מהמכשיר" : "תומך בפורמטים: JPG, PNG, WEBP"}
             </p>
           </>
         )}
