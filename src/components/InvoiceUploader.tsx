@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { Upload, FileImage, Loader2, CheckCircle2, AlertCircle, Camera } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -17,6 +18,7 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "uploading" | "analyzing" | "success" | "error">("idle");
   const isMobile = useIsMobile();
+  const { user } = useAuth();
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -81,12 +83,13 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
         throw new Error(analysisData?.error || "שגיאה בניתוח החשבונית");
       }
 
-      // Save to database
+      // Save to database with user_id
       const invoiceData = {
         ...analysisData.data,
         image_url: publicUrlData.publicUrl,
         raw_ai_response: analysisData.rawResponse,
         status: "processed",
+        user_id: user?.id,
       };
 
       const { data: savedInvoice, error: saveError } = await supabase
