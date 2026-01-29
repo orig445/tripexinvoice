@@ -10,6 +10,7 @@ interface InvoiceCardProps {
     invoice_number?: string;
     invoice_date?: string;
     total_amount?: number;
+    subtotal?: number;
     currency?: string;
     image_url?: string;
     created_at: string;
@@ -19,6 +20,9 @@ interface InvoiceCardProps {
 }
 
 export function InvoiceCard({ invoice, onView, onDelete }: InvoiceCardProps) {
+  // Use total_amount, fallback to subtotal if not available
+  const amount = invoice.total_amount ?? invoice.subtotal;
+
   const formatCurrency = (amount: number | undefined, currency?: string | null) => {
     if (!amount) return "—";
     return new Intl.NumberFormat("he-IL", {
@@ -63,7 +67,7 @@ export function InvoiceCard({ invoice, onView, onDelete }: InvoiceCardProps) {
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">סכום</span>
             <span className="font-semibold text-lg text-primary">
-              {formatCurrency(invoice.total_amount, invoice.currency)}
+              {formatCurrency(amount, invoice.currency)}
             </span>
           </div>
         </div>

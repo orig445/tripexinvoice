@@ -9,6 +9,7 @@ interface Invoice {
   invoice_number?: string;
   invoice_date?: string;
   total_amount?: number;
+  subtotal?: number;
   currency?: string;
   image_url?: string;
   created_at: string;
@@ -20,6 +21,8 @@ interface InvoiceDetailsProps {
 }
 
 export function InvoiceDetails({ invoice, onClose }: InvoiceDetailsProps) {
+  // Use total_amount, fallback to subtotal if not available
+  const amount = invoice.total_amount ?? invoice.subtotal;
   const formatCurrency = (amount: number | undefined | null, currency?: string | null) => {
     if (amount === undefined || amount === null) return "—";
     return new Intl.NumberFormat("he-IL", {
@@ -109,7 +112,7 @@ export function InvoiceDetails({ invoice, onClose }: InvoiceDetailsProps) {
               <div className="flex justify-between items-center">
                 <span className="text-lg font-medium">סכום</span>
                 <span className="text-2xl font-bold text-primary">
-                  {formatCurrency(invoice.total_amount, invoice.currency)}
+                  {formatCurrency(amount, invoice.currency)}
                 </span>
               </div>
             </CardContent>
