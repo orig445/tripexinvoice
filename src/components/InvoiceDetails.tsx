@@ -1,8 +1,14 @@
+import { useState } from "react";
 import { format } from "date-fns";
 import { he } from "date-fns/locale";
-import { X, Calendar, Receipt, FileText } from "lucide-react";
+import { X, Calendar, Receipt, FileText, Pencil, Check, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface Invoice {
   id: string;
@@ -18,11 +24,22 @@ interface Invoice {
 interface InvoiceDetailsProps {
   invoice: Invoice;
   onClose: () => void;
+  onUpdate?: (updatedInvoice: Invoice) => void;
 }
 
-export function InvoiceDetails({ invoice, onClose }: InvoiceDetailsProps) {
+export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editData, setEditData] = useState({
+    invoice_number: invoice.invoice_number || "",
+    invoice_date: invoice.invoice_date || "",
+    total_amount: invoice.total_amount ?? invoice.subtotal ?? 0,
+    currency: invoice.currency || "ILS",
+  });
+
   // Use total_amount, fallback to subtotal if not available
   const amount = invoice.total_amount ?? invoice.subtotal;
+  
   const formatCurrency = (amount: number | undefined | null, currency?: string | null) => {
     if (amount === undefined || amount === null) return "—";
     return new Intl.NumberFormat("he-IL", {
@@ -40,6 +57,50 @@ export function InvoiceDetails({ invoice, onClose }: InvoiceDetailsProps) {
     }
   };
 
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const { error } = await supabase
+        .from("invoices")
+        .update({
+          invoice_number: editData.invoice_number || null,
+          invoice_date: editData.invoice_date || null,
+          total_amount: editData.total_amount || null,
+          currency: editData.currency || "ILS",
+        })
+        .eq("id", invoice.id);
+
+      if (error) throw error;
+
+      const updatedInvoice = {
+        ...invoice,
+        invoice_number: editData.invoice_number || undefined,
+        invoice_date: editData.invoice_date || undefined,
+        total_amount: editData.total_amount || undefined,
+        currency: editData.currency || "ILS",
+      };
+
+      onUpdate?.(updatedInvoice);
+      setIsEditing(false);
+      toast.success("החשבונית עודכנה בהצלחה");
+    } catch (error) {
+      console.error("Error updating invoice:", error);
+      toast.error("שגיאה בעדכון החשבונית");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setEditData({
+      invoice_number: invoice.invoice_number || "",
+      invoice_date: invoice.invoice_date || "",
+      total_amount: invoice.total_amount ?? invoice.subtotal ?? 0,
+      currency: invoice.currency || "ILS",
+    });
+    setIsEditing(false);
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm animate-fade-in">
       <div className="fixed inset-y-0 left-0 w-full max-w-md bg-background shadow-2xl animate-slide-in-right overflow-auto">
@@ -55,9 +116,16 @@ export function InvoiceDetails({ invoice, onClose }: InvoiceDetailsProps) {
               </p>
             </div>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose}>
-            <X className="h-5 w-5" />
-          </Button>
+          <div className="flex items-center gap-2">
+            {!isEditing && (
+              <Button variant="outline" size="icon" onClick={() => setIsEditing(true)}>
+                <Pencil className="h-4 w-4" />
+              </Button>
+            )}
+            <Button variant="ghost" size="icon" onClick={onClose}>
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
         </div>
 
         <div className="p-6 space-y-6">
@@ -91,32 +159,101 @@ export function InvoiceDetails({ invoice, onClose }: InvoiceDetailsProps) {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">מספר חשבונית</span>
-                <span className="font-medium">{invoice.invoice_number || "—"}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">תאריך</span>
-                <span className="font-medium">{formatDate(invoice.invoice_date)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">מטבע</span>
-                <span className="font-medium">{invoice.currency || "ILS"}</span>
-              </div>
+              {isEditing ? (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="invoice_number">מספר חשבונית</Label>
+                    <Input
+                      id="invoice_number"
+                      value={editData.invoice_number}
+                      onChange={(e) => setEditData({ ...editData, invoice_number: e.target.value })}
+                      placeholder="הזן מספר חשבונית"
+                      dir="ltr"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="invoice_date">תאריך</Label>
+                    <Input
+                      id="invoice_date"
+                      type="date"
+                      value={editData.invoice_date}
+                      onChange={(e) => setEditData({ ...editData, invoice_date: e.target.value })}
+                      dir="ltr"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="currency">מטבע</Label>
+                    <Select
+                      value={editData.currency}
+                      onValueChange={(value) => setEditData({ ...editData, currency: value })}
+                    >
+                      <SelectTrigger id="currency">
+                        <SelectValue placeholder="בחר מטבע" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ILS">₪ שקל</SelectItem>
+                        <SelectItem value="USD">$ דולר</SelectItem>
+                        <SelectItem value="EUR">€ אירו</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="total_amount">סכום</Label>
+                    <Input
+                      id="total_amount"
+                      type="number"
+                      step="0.01"
+                      value={editData.total_amount}
+                      onChange={(e) => setEditData({ ...editData, total_amount: parseFloat(e.target.value) || 0 })}
+                      dir="ltr"
+                    />
+                  </div>
+                  <div className="flex gap-2 pt-2">
+                    <Button onClick={handleSave} disabled={isSaving} className="flex-1 gap-2">
+                      {isSaving ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Check className="h-4 w-4" />
+                      )}
+                      שמור
+                    </Button>
+                    <Button variant="outline" onClick={handleCancel} disabled={isSaving} className="flex-1">
+                      ביטול
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">מספר חשבונית</span>
+                    <span className="font-medium">{invoice.invoice_number || "—"}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">תאריך</span>
+                    <span className="font-medium">{formatDate(invoice.invoice_date)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">מטבע</span>
+                    <span className="font-medium">{invoice.currency || "ILS"}</span>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
-          {/* Total */}
-          <Card className="bg-primary/5 border-primary/20">
-            <CardContent className="pt-6">
-              <div className="flex justify-between items-center">
-                <span className="text-lg font-medium">סכום</span>
-                <span className="text-2xl font-bold text-primary">
-                  {formatCurrency(amount, invoice.currency)}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
+          {/* Total - only show when not editing */}
+          {!isEditing && (
+            <Card className="bg-primary/5 border-primary/20">
+              <CardContent className="pt-6">
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-medium">סכום</span>
+                  <span className="text-2xl font-bold text-primary">
+                    {formatCurrency(amount, invoice.currency)}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>
