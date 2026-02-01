@@ -39,6 +39,13 @@ const Index = () => {
     setInvoices((prev) => [invoice, ...prev]);
   };
 
+  const handleInvoiceUpdate = (updatedInvoice: any) => {
+    setInvoices((prev) =>
+      prev.map((inv) => (inv.id === updatedInvoice.id ? updatedInvoice : inv))
+    );
+    setSelectedInvoice(updatedInvoice);
+  };
+
   const handleDeleteInvoice = async (id: string) => {
     try {
       const { error } = await supabase.from("invoices").delete().eq("id", id);
@@ -99,6 +106,7 @@ const Index = () => {
         <InvoiceDetails
           invoice={selectedInvoice}
           onClose={() => setSelectedInvoice(null)}
+          onUpdate={handleInvoiceUpdate}
         />
       )}
     </div>
