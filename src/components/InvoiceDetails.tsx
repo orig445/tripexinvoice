@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { format } from "date-fns";
+import { format, isValid, parse } from "date-fns";
 import { he } from "date-fns/locale";
-import { X, Calendar, Receipt, FileText, Pencil, Check, Loader2 } from "lucide-react";
+import { X, Calendar, Receipt, FileText, Pencil, Check, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,51 @@ interface InvoiceDetailsProps {
   onUpdate?: (updatedInvoice: Invoice) => void;
 }
 
+interface ValidationResult {
+  isValid: boolean;
+  message: string;
+}
+
+// סוכן 1: בודק סכום
+const validateAmount = (amount: number): ValidationResult => {
+  if (isNaN(amount)) {
+    return { isValid: false, message: "הסכום חייב להיות מספר" };
+  }
+  if (amount < 0) {
+    return { isValid: false, message: "הסכום חייב להיות חיובי" };
+  }
+  if (amount > 10000000) {
+    return { isValid: false, message: "הסכום גבוה מדי (מקסימום 10,000,000)" };
+  }
+  return { isValid: true, message: "הסכום תקין ✓" };
+};
+
+// סוכן 2: בודק תאריך
+const validateDate = (dateStr: string): ValidationResult => {
+  if (!dateStr) {
+    return { isValid: false, message: "יש להזין תאריך" };
+  }
+  
+  const parsedDate = parse(dateStr, "yyyy-MM-dd", new Date());
+  
+  if (!isValid(parsedDate)) {
+    return { isValid: false, message: "פורמט תאריך לא תקין" };
+  }
+  
+  const today = new Date();
+  const minDate = new Date("1990-01-01");
+  
+  if (parsedDate > today) {
+    return { isValid: false, message: "התאריך לא יכול להיות בעתיד" };
+  }
+  
+  if (parsedDate < minDate) {
+    return { isValid: false, message: "התאריך מוקדם מדי (מינימום 1990)" };
+  }
+  
+  return { isValid: true, message: "התאריך תקין ✓" };
+};
+
 export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -36,6 +81,11 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     total_amount: invoice.total_amount ?? invoice.subtotal ?? 0,
     currency: invoice.currency || "ILS",
   });
+
+  // תוצאות ולידציה מהסוכנים
+  const amountValidation = validateAmount(editData.total_amount);
+  const dateValidation = validateDate(editData.invoice_date);
+  const isFormValid = amountValidation.isValid && dateValidation.isValid;
 
   // Use total_amount, fallback to subtotal if not available
   const amount = invoice.total_amount ?? invoice.subtotal;
@@ -58,6 +108,17 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
   };
 
   const handleSave = async () => {
+    // בדיקה סופית של שני הסוכנים
+    if (!isFormValid) {
+      if (!amountValidation.isValid) {
+        toast.error(`שגיאת סכום: ${amountValidation.message}`);
+      }
+      if (!dateValidation.isValid) {
+        toast.error(`שגיאת תאריך: ${dateValidation.message}`);
+      }
+      return;
+    }
+
     setIsSaving(true);
     try {
       const { error } = await supabase
@@ -100,6 +161,17 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
     });
     setIsEditing(false);
   };
+
+  const ValidationIndicator = ({ validation }: { validation: ValidationResult }) => (
+    <div className={`flex items-center gap-1 text-xs mt-1 ${validation.isValid ? "text-green-600" : "text-destructive"}`}>
+      {validation.isValid ? (
+        <CheckCircle2 className="h-3 w-3" />
+      ) : (
+        <AlertCircle className="h-3 w-3" />
+      )}
+      <span>{validation.message}</span>
+    </div>
+  );
 
   return (
     <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm animate-fade-in">
@@ -179,7 +251,9 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       value={editData.invoice_date}
                       onChange={(e) => setEditData({ ...editData, invoice_date: e.target.value })}
                       dir="ltr"
+                      className={!dateValidation.isValid ? "border-destructive" : ""}
                     />
+                    <ValidationIndicator validation={dateValidation} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="currency">מטבע</Label>
@@ -203,13 +277,16 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
                       id="total_amount"
                       type="number"
                       step="0.01"
+                      min="0"
                       value={editData.total_amount}
                       onChange={(e) => setEditData({ ...editData, total_amount: parseFloat(e.target.value) || 0 })}
                       dir="ltr"
+                      className={!amountValidation.isValid ? "border-destructive" : ""}
                     />
+                    <ValidationIndicator validation={amountValidation} />
                   </div>
                   <div className="flex gap-2 pt-2">
-                    <Button onClick={handleSave} disabled={isSaving} className="flex-1 gap-2">
+                    <Button onClick={handleSave} disabled={isSaving || !isFormValid} className="flex-1 gap-2">
                       {isSaving ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
