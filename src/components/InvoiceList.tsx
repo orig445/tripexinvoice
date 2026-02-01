@@ -108,30 +108,43 @@ export function InvoiceList({ invoices, onView, onDelete }: InvoiceListProps) {
     return format(date, "MMMM", { locale: he });
   };
 
-  const getYearTotal = (year: string) => {
-    let total = 0;
+  // Group totals by currency for a year
+  const getYearTotalsByCurrency = (year: string) => {
+    const totals: Record<string, number> = {};
     const yearData = groupedInvoices[year];
     Object.values(yearData).forEach((monthInvoices) => {
       monthInvoices.forEach((inv) => {
-        total += inv.total_amount ?? inv.subtotal ?? 0;
+        const currency = inv.currency || "ILS";
+        const amount = inv.total_amount ?? inv.subtotal ?? 0;
+        totals[currency] = (totals[currency] || 0) + amount;
       });
     });
-    return total;
+    return totals;
   };
 
-  const getMonthTotal = (year: string, month: string) => {
-    return groupedInvoices[year][month].reduce(
-      (sum, inv) => sum + (inv.total_amount ?? inv.subtotal ?? 0),
-      0
-    );
+  // Group totals by currency for a month
+  const getMonthTotalsByCurrency = (year: string, month: string) => {
+    const totals: Record<string, number> = {};
+    groupedInvoices[year][month].forEach((inv) => {
+      const currency = inv.currency || "ILS";
+      const amount = inv.total_amount ?? inv.subtotal ?? 0;
+      totals[currency] = (totals[currency] || 0) + amount;
+    });
+    return totals;
   };
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrencyAmount = (amount: number, currency: string) => {
     return new Intl.NumberFormat("he-IL", {
       style: "currency",
-      currency: "ILS",
+      currency: currency,
       maximumFractionDigits: 0,
     }).format(amount);
+  };
+
+  const formatTotalsByCurrency = (totals: Record<string, number>) => {
+    return Object.entries(totals)
+      .map(([currency, amount]) => formatCurrencyAmount(amount, currency))
+      .join(" | ");
   };
 
   if (invoices.length === 0) {
@@ -180,7 +193,7 @@ export function InvoiceList({ invoices, onView, onDelete }: InvoiceListProps) {
                 </Badge>
               </div>
               <span className="text-sm font-medium text-muted-foreground">
-                {formatCurrency(getYearTotal(year))}
+                {formatTotalsByCurrency(getYearTotalsByCurrency(year))}
               </span>
             </Button>
 
@@ -217,7 +230,7 @@ export function InvoiceList({ invoices, onView, onDelete }: InvoiceListProps) {
                           </Badge>
                         </div>
                         <span className="text-sm text-muted-foreground">
-                          {formatCurrency(getMonthTotal(year, month))}
+                          {formatTotalsByCurrency(getMonthTotalsByCurrency(year, month))}
                         </span>
                       </Button>
 
