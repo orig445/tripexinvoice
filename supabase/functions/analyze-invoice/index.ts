@@ -74,7 +74,7 @@ IMPORTANT:
     // Call Oracle Generative AI (OCI) - EU Frankfurt region
     // Using OpenAI-compatible chat completions endpoint with Llama 3.2 90B Vision
     const response = await fetch(
-      "https://inference.generativeai.eu-frankfurt-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions",
+      "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions",
       {
         method: "POST",
         headers: {
