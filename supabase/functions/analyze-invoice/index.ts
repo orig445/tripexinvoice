@@ -82,7 +82,7 @@ IMPORTANT:
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "meta.llama-3.2-90b-vision-instruct",
+          model: "meta.llama-4-maverick-17b-128e-instruct-fp8",
           messages: [
             { role: "system", content: systemPrompt },
             {
