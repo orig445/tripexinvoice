@@ -13,9 +13,9 @@ serve(async (req) => {
   try {
     const { imageBase64, imageUrl } = await req.json();
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    const ORACLE_API_KEY = Deno.env.get("invoice");
+    if (!ORACLE_API_KEY) {
+      throw new Error("Oracle API key (invoice secret) is not configured");
     }
 
     // Build the image content based on what was provided
@@ -71,26 +71,33 @@ IMPORTANT:
 - If multiple amounts exist, use the largest/final "Total" or "סה"כ" amount
 - Return ONLY the JSON object, no additional text.`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Please analyze this invoice and extract all information as JSON:" },
-              imageContent,
-            ],
-          },
-        ],
-      }),
-    });
+    // Call Oracle Generative AI (OCI) - EU Frankfurt region
+    // Using OpenAI-compatible chat completions endpoint with Llama 3.2 90B Vision
+    const response = await fetch(
+      "https://inference.generativeai.eu-frankfurt-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${ORACLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "meta.llama-3.2-90b-vision-instruct",
+          messages: [
+            { role: "system", content: systemPrompt },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "Please analyze this invoice and extract all information as JSON:" },
+                imageContent,
+              ],
+            },
+          ],
+          max_tokens: 1024,
+          temperature: 0.1,
+        }),
+      }
+    );
 
     if (!response.ok) {
       if (response.status === 429) {
@@ -101,20 +108,20 @@ IMPORTANT:
       }
       if (response.status === 402) {
         return new Response(
-          JSON.stringify({ error: "Payment required. Please add credits to your workspace." }),
+          JSON.stringify({ error: "Payment required. Please check your Oracle Cloud account." }),
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      throw new Error(`AI gateway error: ${response.status}`);
+      console.error("Oracle AI error:", response.status, errorText);
+      throw new Error(`Oracle AI error: ${response.status} - ${errorText}`);
     }
 
     const aiResponse = await response.json();
     const content = aiResponse.choices?.[0]?.message?.content;
 
     if (!content) {
-      throw new Error("No response from AI");
+      throw new Error("No response from Oracle AI");
     }
 
     // Parse the JSON from the AI response
