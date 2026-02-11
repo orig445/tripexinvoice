@@ -82,7 +82,7 @@ IMPORTANT:
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "cohere.command-a-vision-07-2025",
+          model: "cohere.command-a-vision",
           messages: [
             { role: "system", content: systemPrompt },
             {
