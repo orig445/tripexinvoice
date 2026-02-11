@@ -72,9 +72,9 @@ IMPORTANT:
 - Return ONLY the JSON object, no additional text.`;
 
     // Call Oracle Generative AI (OCI) - EU Frankfurt region
-    // Using OpenAI-compatible chat completions endpoint with Llama 3.2 90B Vision
+    // Using OpenAI-compatible chat completions endpoint with Cohere Command A Vision
     const response = await fetch(
-      "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions",
+      "https://inference.generativeai.eu-frankfurt-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions",
       {
         method: "POST",
         headers: {
@@ -82,7 +82,7 @@ IMPORTANT:
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "meta.llama-4-maverick-17b-128e-instruct-fp8",
+          model: "cohere.command-a-vision-07-2025",
           messages: [
             { role: "system", content: systemPrompt },
             {
