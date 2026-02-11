@@ -71,10 +71,10 @@ IMPORTANT:
 - If multiple amounts exist, use the largest/final "Total" or "סה"כ" amount
 - Return ONLY the JSON object, no additional text.`;
 
-    // Call Oracle Generative AI (OCI) - EU Frankfurt region
-    // Using OpenAI-compatible chat completions endpoint with Cohere Command A Vision
+    // Call Oracle Generative AI (OCI) - US Chicago region
+    // Using OpenAI-compatible chat completions endpoint with Meta Llama 4 Maverick Vision
     const response = await fetch(
-      "https://inference.generativeai.eu-frankfurt-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions",
+      "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions",
       {
         method: "POST",
         headers: {
@@ -82,7 +82,7 @@ IMPORTANT:
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "cohere.command-a-vision",
+          model: "meta.llama-4-maverick-17b-128e-instruct-fp8",
           messages: [
             { role: "system", content: systemPrompt },
             {
