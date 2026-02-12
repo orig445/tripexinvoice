@@ -27,7 +27,7 @@ export function ChatbotSettings() {
   const handleSave = async () => {
     if (!config) return;
     setIsSaving(true);
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("chatbot_config")
       .update({
         bot_name: config.bot_name,
@@ -38,10 +38,15 @@ export function ChatbotSettings() {
         temperature: config.temperature,
         is_active: config.is_active,
       })
-      .eq("id", config.id);
+      .eq("id", config.id)
+      .select();
 
     if (error) {
-      toast.error("שגיאה בשמירת ההגדרות");
+      console.error("Save config error:", error);
+      toast.error("שגיאה בשמירת ההגדרות: " + error.message);
+    } else if (!data || data.length === 0) {
+      console.error("No rows updated - likely RLS blocking. User may not have admin role.");
+      toast.error("אין הרשאה לעדכן הגדרות. נדרשת הרשאת מנהל.");
     } else {
       toast.success("ההגדרות נשמרו בהצלחה");
     }
