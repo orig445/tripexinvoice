@@ -8,6 +8,7 @@ import { DashboardStats } from "@/components/DashboardStats";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ChatbotWidget } from "@/components/chatbot/ChatbotWidget";
 
 const Index = () => {
   const [invoices, setInvoices] = useState<any[]>([]);
@@ -109,6 +110,8 @@ const Index = () => {
           onUpdate={handleInvoiceUpdate}
         />
       )}
+
+      <ChatbotWidget />
     </div>
   );
 };

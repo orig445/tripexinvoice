@@ -1,4 +1,5 @@
-import { Receipt, LogOut, User, Shield } from "lucide-react";
+import { Receipt, LogOut, User, Shield, Bot } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 
 export function Header() {
   const { user, role, isAdmin, signOut } = useAuth();
+  const navigate = useNavigate();
 
   const getInitials = () => {
     if (!user?.email) return "U";
@@ -63,6 +65,12 @@ export function Header() {
                 <User className="h-4 w-4" />
                 פרופיל
               </DropdownMenuItem>
+              {isAdmin && (
+                <DropdownMenuItem className="gap-2" onClick={() => navigate("/admin/chatbot")}>
+                  <Bot className="h-4 w-4" />
+                  פאנל צ'אטבוט
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={signOut} className="gap-2 text-destructive">
                 <LogOut className="h-4 w-4" />

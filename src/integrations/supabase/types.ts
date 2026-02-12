@@ -14,6 +14,148 @@ export type Database = {
   }
   public: {
     Tables: {
+      chat_messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          intent: string | null
+          metadata: Json | null
+          role: string
+          session_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          intent?: string | null
+          metadata?: Json | null
+          role?: string
+          session_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          intent?: string | null
+          metadata?: Json | null
+          role?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "chat_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_sessions: {
+        Row: {
+          created_at: string
+          id: string
+          source: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          source?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          source?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      chatbot_config: {
+        Row: {
+          avatar_url: string | null
+          bot_name: string
+          created_at: string
+          id: string
+          is_active: boolean
+          max_tokens: number
+          model_name: string
+          system_prompt: string
+          temperature: number
+          updated_at: string
+          welcome_message: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          bot_name?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          max_tokens?: number
+          model_name?: string
+          system_prompt?: string
+          temperature?: number
+          updated_at?: string
+          welcome_message?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          bot_name?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          max_tokens?: number
+          model_name?: string
+          system_prompt?: string
+          temperature?: number
+          updated_at?: string
+          welcome_message?: string
+        }
+        Relationships: []
+      }
+      chatbot_logs: {
+        Row: {
+          created_at: string
+          details: Json | null
+          event_type: string
+          id: string
+          session_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          details?: Json | null
+          event_type: string
+          id?: string
+          session_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          details?: Json | null
+          event_type?: string
+          id?: string
+          session_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chatbot_logs_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "chat_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoices: {
         Row: {
           created_at: string
