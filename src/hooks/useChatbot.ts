@@ -26,17 +26,18 @@ export function useChatbot() {
   const [isLoading, setIsLoading] = useState(false);
   const [config, setConfig] = useState<ChatbotConfig | null>(null);
 
-  // Load config
+  // Load config (refresh on every mount)
+  const loadConfig = async () => {
+    const { data } = await supabase
+      .from("chatbot_config")
+      .select("bot_name, avatar_url, welcome_message, is_active")
+      .eq("is_active", true)
+      .limit(1)
+      .single();
+    if (data) setConfig(data as ChatbotConfig);
+  };
+
   useEffect(() => {
-    const loadConfig = async () => {
-      const { data } = await supabase
-        .from("chatbot_config")
-        .select("bot_name, avatar_url, welcome_message, is_active")
-        .eq("is_active", true)
-        .limit(1)
-        .single();
-      if (data) setConfig(data as ChatbotConfig);
-    };
     loadConfig();
   }, []);
 
