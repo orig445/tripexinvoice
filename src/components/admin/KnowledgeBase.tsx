@@ -65,7 +65,10 @@ export function KnowledgeBase() {
           continue;
         }
 
-        const filePath = `${crypto.randomUUID()}/${file.name}`;
+        // Sanitize filename - remove non-ASCII chars, keep extension
+        const ext = file.name.split(".").pop() || "bin";
+        const safeName = `${crypto.randomUUID()}.${ext}`;
+        const filePath = safeName;
 
         // Upload to storage
         const { error: uploadErr } = await supabase.storage
