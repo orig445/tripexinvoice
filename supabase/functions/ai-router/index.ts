@@ -352,18 +352,30 @@ Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}
     let intent = "general";
     let responseText = rawContent;
 
+    // Helper: decode unicode escapes like \u05e9\u05dc\u05d5\u05dd
+    function decodeUnicodeEscapes(str: string): string {
+      return str.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+    }
+
     try {
       // Clean markdown wrappers
       let cleaned = rawContent.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
       
-      // Find the outermost { ... } using brace counting (handles nested quotes, newlines, etc.)
+      // Find the outermost { ... } using brace counting
       const startIdx = cleaned.indexOf("{");
       if (startIdx !== -1) {
         let depth = 0;
         let endIdx = -1;
+        let inString = false;
+        let escapeNext = false;
         for (let i = startIdx; i < cleaned.length; i++) {
-          if (cleaned[i] === "{") depth++;
-          else if (cleaned[i] === "}") { depth--; if (depth === 0) { endIdx = i; break; } }
+          const ch = cleaned[i];
+          if (escapeNext) { escapeNext = false; continue; }
+          if (ch === "\\") { escapeNext = true; continue; }
+          if (ch === '"') { inString = !inString; continue; }
+          if (inString) continue;
+          if (ch === "{") depth++;
+          else if (ch === "}") { depth--; if (depth === 0) { endIdx = i; break; } }
         }
         if (endIdx !== -1) {
           cleaned = cleaned.substring(startIdx, endIdx + 1);
@@ -372,26 +384,29 @@ Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}
 
       const parsed = JSON.parse(cleaned);
       intent = parsed.intent || "general";
-      responseText = parsed.text || rawContent;
+      // Ensure text is a string, not an object
+      if (typeof parsed.text === "object" && parsed.text !== null) {
+        responseText = JSON.stringify(parsed.text);
+      } else {
+        responseText = String(parsed.text || rawContent);
+      }
+      // Decode any remaining unicode escapes
+      responseText = decodeUnicodeEscapes(responseText);
     } catch {
-      // If JSON parse still fails, try to extract text field manually
+      // If JSON parse fails, try to extract text field manually
       const textMatch = rawContent.match(/"text"\s*:\s*"((?:[^"\\]|\\.)*)"/s);
       const intentMatch = rawContent.match(/"intent"\s*:\s*"([^"]*)"/);
       if (textMatch) {
         responseText = textMatch[1].replace(/\\n/g, "\n").replace(/\\"/g, '"');
+        responseText = decodeUnicodeEscapes(responseText);
         intent = intentMatch?.[1] || "general";
       } else {
-        // Strip any JSON-like wrapper and use plain text
-        responseText = rawContent
+        responseText = decodeUnicodeEscapes(rawContent)
           .replace(/^\s*\{[\s\S]*"text"\s*:\s*"/i, "")
           .replace(/"\s*\}\s*$/, "")
           .replace(/\\n/g, "\n")
           .replace(/\\"/g, '"')
-          .trim();
-        if (!responseText || responseText === rawContent) {
-          // Truly plain text
-          responseText = rawContent;
-        }
+          .trim() || rawContent;
       }
     }
 
