@@ -192,7 +192,7 @@ serve(async (req) => {
       .select("role, content")
       .eq("session_id", sessionId)
       .order("created_at", { ascending: true })
-      .limit(10);
+      .limit(30);
 
     // ── Load chatbot config ──
     const { data: config } = await supabase
@@ -278,14 +278,15 @@ Guide the user through collecting these fields one by one:
 2. תאריך יציאה (departure_date)
 3. תאריך חזרה (return_date)
 4. מספר נוסעים (passengers)
-5. הערות מיוחדות (notes) - optional
-When ALL fields are collected, respond with intent "online_complete" and include a summary asking for confirmation.
+5. הערות מיוחדות (notes) - OPTIONAL: if user says "אין" / "לא" / "בסדר" / gives any short answer, treat notes as empty and MOVE ON to completion.
+IMPORTANT: Once you have fields 1-4, complete the flow! Do NOT keep asking for notes if the user already responded. If the user gives ANY answer to the notes question, finalize immediately with intent "online_complete".
 
-### Important for flows:
-- Ask for ONE field at a time, don't overwhelm the user
+### Important for ALL flows:
+- Ask for ONE field at a time
 - If the user provides multiple fields at once, acknowledge all of them
+- NEVER ask the same question twice. Check conversation history carefully.
+- When all required fields are collected, IMMEDIATELY respond with the _complete intent and a summary
 - Be conversational and friendly, use emojis occasionally
-- Review the conversation history to know which fields were already provided
 
 ## Response Style:
 - Be DETAILED and thorough — explain step by step when needed
