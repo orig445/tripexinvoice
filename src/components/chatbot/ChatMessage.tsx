@@ -1,16 +1,23 @@
-import { Bot, User, Camera, ArrowRight, HelpCircle } from "lucide-react";
+import { Bot, User, Camera, ArrowRight, PlusCircle, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ChatMessage as ChatMessageType } from "@/hooks/useChatbot";
 
 interface ChatMessageProps {
   message: ChatMessageType;
-  onAction?: (action: string, intent: string) => void;
+  onAction?: (action: string, data?: Record<string, any>) => void;
 }
 
 export function ChatMessage({ message, onAction }: ChatMessageProps) {
   const isUser = message.role === "user";
-  const action = message.metadata?.action;
-  const intent = message.intent;
+  const actions = message.metadata?.actions || [];
+  const redirectPage = message.metadata?.redirectPage || "";
+
+  const actionButtons: Record<string, { icon: typeof Camera; label: string }> = {
+    Camera:         { icon: Camera,      label: "פתח סורק" },
+    Redirect:       { icon: ArrowRight,  label: redirectPage === "help" ? "עזרה" : redirectPage === "booking" ? "הזמנה" : "המשך" },
+    AddExpense:     { icon: PlusCircle,  label: "הוסף הוצאה" },
+    DisplayResults: { icon: BarChart3,   label: "הצג תוצאות" },
+  };
 
   return (
     <div className={`flex gap-2.5 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
@@ -36,30 +43,25 @@ export function ChatMessage({ message, onAction }: ChatMessageProps) {
         </div>
 
         {/* Action buttons */}
-        {!isUser && action && action !== "none" && onAction && (
-          <div className="flex gap-1.5">
-            {action === "camera" && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs gap-1"
-                onClick={() => onAction(action, intent || "scan")}
-              >
-                <Camera className="h-3 w-3" />
-                פתח סורק
-              </Button>
-            )}
-            {action === "redirect" && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs gap-1"
-                onClick={() => onAction(action, intent || "general")}
-              >
-                <ArrowRight className="h-3 w-3" />
-                {intent === "expense" ? "נהל הוצאות" : intent === "online" ? "הזמנה" : "המשך"}
-              </Button>
-            )}
+        {!isUser && actions.length > 0 && onAction && (
+          <div className="flex gap-1.5 flex-wrap">
+            {actions.map((action) => {
+              const btn = actionButtons[action];
+              if (!btn) return null;
+              const Icon = btn.icon;
+              return (
+                <Button
+                  key={action}
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1"
+                  onClick={() => onAction(action, { redirectPage })}
+                >
+                  <Icon className="h-3 w-3" />
+                  {btn.label}
+                </Button>
+              );
+            })}
           </div>
         )}
       </div>

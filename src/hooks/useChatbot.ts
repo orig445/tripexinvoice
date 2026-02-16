@@ -8,7 +8,12 @@ export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
   intent?: string;
-  metadata?: Record<string, any>;
+  metadata?: {
+    actions?: string[];
+    redirectPage?: string;
+    data?: Record<string, any>;
+    [key: string]: any;
+  };
   created_at: string;
 }
 
@@ -98,8 +103,8 @@ export function useChatbot() {
       setMessages((prev) => [...prev, tempMsg]);
 
       try {
-        const { data, error } = await supabase.functions.invoke("tripex-chat", {
-          body: { message: text, session_id: sessionId, source: "web" },
+        const { data, error } = await supabase.functions.invoke("ai-router", {
+          body: { text, type: "text", source: "web", sessionToken: sessionId },
         });
 
         if (error) throw error;
@@ -108,26 +113,27 @@ export function useChatbot() {
           setSessionId(data.session_id);
         }
 
-        // The assistant message will come via realtime, but add it if not already there
+        // Build assistant message with new action format
         const assistantMsg: ChatMessage = {
           id: crypto.randomUUID(),
           role: "assistant",
           content: data.text,
-          intent: data.intent,
-          metadata: { action: data.action },
+          metadata: {
+            actions: data.actions || [],
+            redirectPage: data.redirectPage || "",
+            data: data.data || {},
+          },
           created_at: new Date().toISOString(),
         };
         setMessages((prev) => {
-          // Remove temp user msg if realtime already added it
           const filtered = prev.filter((m) => m.id !== tempMsg.id || m.role !== "user");
-          // Only add if not duplicate
           if (!filtered.some((m) => m.content === data.text && m.role === "assistant")) {
             return [...prev, assistantMsg];
           }
           return prev;
         });
 
-        return { intent: data.intent, action: data.action };
+        return { actions: data.actions, redirectPage: data.redirectPage, data: data.data };
       } catch (err: any) {
         console.error("Chat error:", err);
         toast.error("שגיאה בשליחת ההודעה");
