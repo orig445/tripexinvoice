@@ -44,10 +44,16 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
         triggerCamera();
         break;
       case "Redirect":
-        window.location.href = data?.redirectPage ? `/${data.redirectPage}` : "/";
+        if (data?.redirectPage === "help") {
+          sendMessage("אני צריך עזרה");
+        } else if (data?.redirectPage === "booking") {
+          sendMessage("אני רוצה להגיש בקשת נסיעה");
+        } else {
+          window.location.href = data?.redirectPage ? `/${data.redirectPage}` : "/";
+        }
         break;
       case "AddExpense":
-        window.location.href = "/";
+        sendMessage("אני רוצה להוסיף הוצאה");
         break;
       case "DisplayResults":
         break;

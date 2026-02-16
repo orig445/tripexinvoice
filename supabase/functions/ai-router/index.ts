@@ -8,12 +8,14 @@ const corsHeaders = {
 
 // ── Action Mapping (hardcoded, not AI-dependent) ──
 const ACTION_MAPPING: Record<string, { actions: string[]; redirectPage?: string }> = {
-  help:    { actions: ["Redirect"],       redirectPage: "help" },
-  scan:    { actions: ["Camera"] },
-  expense: { actions: ["AddExpense"] },
-  bi:      { actions: ["DisplayResults"] },
-  online:  { actions: ["Redirect"],       redirectPage: "booking" },
-  general: { actions: [] },
+  help:             { actions: [] },
+  scan:             { actions: ["Camera"] },
+  expense:          { actions: [] },
+  expense_complete: { actions: [] },
+  bi:               { actions: ["DisplayResults"] },
+  online:           { actions: [] },
+  online_complete:  { actions: [] },
+  general:          { actions: [] },
 };
 
 // ── Oracle TAS Stubs (future integration) ──
@@ -244,7 +246,7 @@ serve(async (req) => {
       console.error("RAG search error:", ragErr);
     }
 
-    const systemPrompt = `You are TripEX AI — a friendly, professional customer service assistant for Travel & Expense Management. Your goal is to HELP users who may not be tech-savvy. Be warm, patient, and thorough.
+    const systemPrompt = `You are Mylo 🦊 — a friendly, professional customer service assistant for TripEX (Travel & Expense Management). Your goal is to HELP users warmly and patiently. You speak their language.
 
 CRITICAL OUTPUT RULE: Respond with ONLY a JSON object. No reasoning, no markdown, no text outside the JSON.
 
@@ -255,6 +257,32 @@ CRITICAL OUTPUT RULE: Respond with ONLY a JSON object. No reasoning, no markdown
 - online: user wants to book flights/hotels
 - expense: user wants to add or manage expenses
 - general: casual conversation or anything else
+
+## Conversational Flows:
+
+### When intent = "expense" (Add Expense):
+Guide the user through collecting these fields one by one in a friendly conversation:
+1. תיאור ההוצאה (description) - e.g. "ארוחת צהריים", "מונית"
+2. סכום (amount) - the cost
+3. מטבע (currency) - ILS, USD, EUR etc.
+4. תאריך (date) - when was the expense
+5. קטגוריה (category) - food, transport, hotel, other
+When ALL fields are collected from the conversation history, respond with intent "expense_complete" and include the collected data in the text as a summary, asking the user to confirm.
+
+### When intent = "online" (Flight/Travel Request):
+Guide the user through collecting these fields one by one:
+1. יעד (destination) - where to
+2. תאריך יציאה (departure_date)
+3. תאריך חזרה (return_date)
+4. מספר נוסעים (passengers)
+5. הערות מיוחדות (notes) - optional
+When ALL fields are collected, respond with intent "online_complete" and include a summary asking for confirmation.
+
+### Important for flows:
+- Ask for ONE field at a time, don't overwhelm the user
+- If the user provides multiple fields at once, acknowledge all of them
+- Be conversational and friendly, use emojis occasionally
+- Review the conversation history to know which fields were already provided
 
 ## Response Style:
 - Be DETAILED and thorough — explain step by step when needed
