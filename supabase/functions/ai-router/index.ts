@@ -132,11 +132,28 @@ serve(async (req) => {
         if (d.total_amount != null) lines.push(`💰 סכום: ${d.total_amount}${d.currency ? " " + d.currency : ""}`);
         if (d.invoice_date) lines.push(`📅 תאריך: ${d.invoice_date}`);
         if (d.line_items?.length) lines.push(`📋 פריטים: ${d.line_items.length}`);
-        lines.push("\nהנתונים נשמרו במערכת. תוכל לצפות בהם בעמוד החשבוניות.");
+        lines.push("\nהאם הנתונים נכונים? אם משהו לא נכון, אמור לי מה לתקן ואעדכן.");
+
+        const ocrSummary = lines.join("\n");
+
+        // Save user message (image scan) and assistant response to chat history
+        // so the AI has context for follow-up corrections
+        await supabase.from("chat_messages").insert({
+          session_id: sessionId,
+          role: "user",
+          content: "[המשתמש סרק חשבונית/קבלה]",
+        });
+        await supabase.from("chat_messages").insert({
+          session_id: sessionId,
+          role: "assistant",
+          content: ocrSummary,
+          intent: "scan",
+          metadata: { actions: [], scanned_data: ocrData.data },
+        });
 
         return new Response(JSON.stringify({
           actions: [],
-          text: lines.join("\n"),
+          text: ocrSummary,
           redirectPage: "",
           data: ocrData.data,
           session_id: sessionId,
@@ -280,6 +297,14 @@ Guide the user through collecting these fields one by one:
 4. מספר נוסעים (passengers)
 5. הערות מיוחדות (notes) - OPTIONAL: if user says "אין" / "לא" / "בסדר" / gives any short answer, treat notes as empty and MOVE ON to completion.
 IMPORTANT: Once you have fields 1-4, complete the flow! Do NOT keep asking for notes if the user already responded. If the user gives ANY answer to the notes question, finalize immediately with intent "online_complete".
+
+### When user corrects OCR/scanned data:
+If the conversation history shows a previously scanned invoice/receipt and the user says something is wrong (e.g. "הסכום לא נכון, זה 500", "השם של הספק הוא X", "התאריך שגוי"):
+- Acknowledge the correction warmly
+- Show the UPDATED full summary with the corrected field(s) clearly marked
+- Ask if everything is correct now or if they want to change anything else
+- Use intent "scan" for these correction responses
+- Format the updated summary the same way as the original scan result
 
 ### Important for ALL flows:
 - Ask for ONE field at a time
