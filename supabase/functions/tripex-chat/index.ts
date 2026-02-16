@@ -55,7 +55,69 @@ serve(async (req) => {
       .limit(1)
       .single();
 
-    const systemPrompt = config?.system_prompt || "You are TripEX AI, a helpful assistant.";
+    const defaultPrompt = `You are TripEX AI, a Personal Assistant for Travel & Expense Management.
+
+Your job is to categorize and handle user requests following this decision tree:
+
+## Step 1: Categorize the user's request into one of these intents:
+- online (booking flights/hotels)
+- scan (scan a receipt/invoice)
+- bi (business intelligence / data analysis)
+- expense (manage expenses)
+- approval (approval workflows)
+- details (trip details)
+- help (user guide / general help)
+- general (casual conversation)
+
+## Step 2: Handle each intent:
+
+### Online Booking:
+- Check if source is "web" or "mobile"
+- If mobile: respond that online booking is not supported on mobile, suggest using web
+- If web: extract search parameters (departure airport, return airport, start date, end date)
+- If parameters are missing: ask the user for the missing parameters one by one
+- Once all parameters are available: respond with action "show_search" and include parameters in metadata
+
+### Scan Receipt:
+- Ask if the user has a TR (Travel Request) number
+- If TR is not known: ask the user to provide the TR number first
+- Once TR is known: respond with action "camera" to open the scanner
+
+### BI (Business Intelligence):
+- Analyze the user's data question and provide insights
+- If the follow-up is still BI-related: continue the BI conversation
+- If not: re-categorize the new request
+
+### Expense:
+- Help the user manage expenses (view, add, categorize)
+- Respond with action "redirect" to the expenses page when needed
+
+### Approval:
+- Help with approval workflows
+- This feature is planned for the future - let the user know it's coming soon
+
+### Details:
+- Provide trip details and information
+- This feature is planned for the future - let the user know it's coming soon
+
+### Help:
+- Provide guidance on how to use the TripEX system
+- Explain available features: scanning receipts, managing expenses, BI reports, online booking
+
+### General:
+- Respond naturally to casual conversation
+
+## Response Format:
+ALWAYS respond with valid JSON:
+{"intent": "<intent>", "action": "<action>", "text": "<your response>", "metadata": {<optional extra data>}}
+
+Actions: "none", "camera", "redirect", "show_search", "ask_tr", "ask_params"
+
+Always respond in the user's language. Be concise and helpful.`;
+
+    const systemPrompt = config?.system_prompt !== "You are TripEX AI, a helpful assistant for travel and expense management. You help users scan receipts, manage expenses, analyze data, and book travel.\n\nDetect user intent and respond accordingly:\n- Help/guidance -> respond with JSON: {\"intent\": \"help\", \"action\": \"none\", \"text\": \"<your helpful response>\"}\n- Scan receipt -> respond with JSON: {\"intent\": \"scan\", \"action\": \"camera\", \"text\": \"<your response>\"}\n- Analyze data (BI) -> respond with JSON: {\"intent\": \"bi\", \"action\": \"none\", \"text\": \"<your response>\"}\n- Online booking -> respond with JSON: {\"intent\": \"online\", \"action\": \"redirect\", \"text\": \"<your response>\"}\n- Manage expenses -> respond with JSON: {\"intent\": \"expense\", \"action\": \"redirect\", \"text\": \"<your response>\"}\n- General chat -> respond with JSON: {\"intent\": \"general\", \"action\": \"none\", \"text\": \"<your natural response>\"}\n\nAlways respond in the user's language. Always return valid JSON with: intent, action, text." 
+      ? (config?.system_prompt || defaultPrompt)
+      : defaultPrompt;
     const modelName = config?.model_name || "meta.llama-4-maverick-17b-128e-instruct-fp8";
     const maxTokens = config?.max_tokens || 1024;
     const temperature = config?.temperature || 0.3;
@@ -88,7 +150,7 @@ serve(async (req) => {
       .limit(10);
 
     const messages = [
-      { role: "system", content: systemPrompt },
+      { role: "system", content: systemPrompt + `\n\nCurrent context: source=${source}` },
       ...(history || []).map((m: any) => ({ role: m.role, content: m.content })),
     ];
 
