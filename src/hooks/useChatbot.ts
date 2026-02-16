@@ -31,7 +31,7 @@ export function useChatbot() {
   const [isLoading, setIsLoading] = useState(false);
   const [config, setConfig] = useState<ChatbotConfig | null>(null);
 
-  // Load config (refresh on every mount)
+  // Load config
   const loadConfig = async () => {
     const { data } = await supabase
       .from("chatbot_config")
@@ -60,33 +60,8 @@ export function useChatbot() {
     loadMessages();
   }, [sessionId]);
 
-  // Realtime subscription for new messages
-  useEffect(() => {
-    if (!sessionId) return;
-    const channel = supabase
-      .channel(`chat-${sessionId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "chat_messages",
-          filter: `session_id=eq.${sessionId}`,
-        },
-        (payload) => {
-          const newMsg = payload.new as ChatMessage;
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === newMsg.id)) return prev;
-            return [...prev, newMsg];
-          });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [sessionId]);
+  // NO realtime subscription - we handle messages via optimistic updates + API response only
+  // This prevents duplicate messages caused by realtime INSERT events
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -94,8 +69,9 @@ export function useChatbot() {
       setIsLoading(true);
 
       // Optimistic user message
+      const tempId = crypto.randomUUID();
       const tempMsg: ChatMessage = {
-        id: crypto.randomUUID(),
+        id: tempId,
         role: "user",
         content: text,
         created_at: new Date().toISOString(),
@@ -113,7 +89,7 @@ export function useChatbot() {
           setSessionId(data.session_id);
         }
 
-        // Build assistant message with new action format
+        // Add assistant message from API response
         const assistantMsg: ChatMessage = {
           id: crypto.randomUUID(),
           role: "assistant",
@@ -125,19 +101,61 @@ export function useChatbot() {
           },
           created_at: new Date().toISOString(),
         };
-        setMessages((prev) => {
-          const filtered = prev.filter((m) => m.id !== tempMsg.id || m.role !== "user");
-          if (!filtered.some((m) => m.content === data.text && m.role === "assistant")) {
-            return [...prev, assistantMsg];
-          }
-          return prev;
-        });
+        setMessages((prev) => [...prev, assistantMsg]);
 
         return { actions: data.actions, redirectPage: data.redirectPage, data: data.data };
       } catch (err: any) {
         console.error("Chat error:", err);
         toast.error("שגיאה בשליחת ההודעה");
-        // Remove optimistic message on error
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [user, sessionId]
+  );
+
+  const sendImage = useCallback(
+    async (base64: string) => {
+      if (!user) return;
+      setIsLoading(true);
+
+      const tempMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "user",
+        content: "📷 סריקת חשבונית...",
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, tempMsg]);
+
+      try {
+        const { data, error } = await supabase.functions.invoke("ai-router", {
+          body: { text: base64, type: "image", source: "web", sessionToken: sessionId },
+        });
+
+        if (error) throw error;
+
+        if (data.session_id && !sessionId) {
+          setSessionId(data.session_id);
+        }
+
+        const assistantMsg: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: data.text || "החשבונית נסרקה בהצלחה!",
+          metadata: {
+            actions: data.actions || [],
+            redirectPage: data.redirectPage || "",
+            data: data.data || {},
+          },
+          created_at: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, assistantMsg]);
+
+        return { actions: data.actions, data: data.data };
+      } catch (err: any) {
+        console.error("Image scan error:", err);
+        toast.error("שגיאה בסריקת החשבונית");
         setMessages((prev) => prev.filter((m) => m.id !== tempMsg.id));
       } finally {
         setIsLoading(false);
@@ -157,6 +175,7 @@ export function useChatbot() {
     config,
     sessionId,
     sendMessage,
+    sendImage,
     startNewSession,
   };
 }

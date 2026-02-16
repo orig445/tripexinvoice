@@ -1,15 +1,18 @@
 import { useState, useRef, useEffect } from "react";
-import { Send } from "lucide-react";
+import { Send, Camera, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
+  onImageCapture: (base64: string) => void;
   isLoading: boolean;
 }
 
-export function ChatInput({ onSend, isLoading }: ChatInputProps) {
+export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps) {
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -28,8 +31,64 @@ export function ChatInput({ onSend, isLoading }: ChatInputProps) {
     }
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // Extract base64 part after the data URI prefix
+      const base64 = result.split(",")[1];
+      if (base64) onImageCapture(base64);
+    };
+    reader.readAsDataURL(file);
+    // Reset so same file can be re-selected
+    e.target.value = "";
+  };
+
   return (
-    <div className="flex items-end gap-2 p-3 border-t bg-background">
+    <div className="flex items-end gap-1.5 p-3 border-t bg-background">
+      {/* Camera button (mobile capture) */}
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-9 w-9 flex-shrink-0 text-muted-foreground hover:text-primary"
+        onClick={() => cameraRef.current?.click()}
+        disabled={isLoading}
+        title="צלם חשבונית"
+      >
+        <Camera className="h-4 w-4" />
+      </Button>
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
+      {/* Gallery/file button */}
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-9 w-9 flex-shrink-0 text-muted-foreground hover:text-primary"
+        onClick={() => fileRef.current?.click()}
+        disabled={isLoading}
+        title="בחר מגלריה"
+      >
+        <Paperclip className="h-4 w-4" />
+      </Button>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
       <textarea
         ref={inputRef}
         value={value}
