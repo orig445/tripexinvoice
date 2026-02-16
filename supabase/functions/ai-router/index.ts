@@ -236,7 +236,7 @@ serve(async (req) => {
 
     const systemPrompt = `You are TripEX AI, a Personal Assistant for Travel & Expense Management.
 
-Your ONLY job is to detect the user's intent and respond with JSON.
+CRITICAL: You MUST respond with ONLY a single JSON object. No explanation, no reasoning, no markdown, no text before or after the JSON. ONLY the JSON object.
 
 ## Intent Categories:
 - help: user wants guidance or how-to
@@ -246,14 +246,16 @@ Your ONLY job is to detect the user's intent and respond with JSON.
 - expense: user wants to add or manage expenses
 - general: casual conversation or anything else
 
-## Response Rules:
+## Rules:
 1. Detect the intent from the user's message
-2. Provide a helpful, concise response text
-3. If knowledge base context is provided below, USE IT to answer the user's question accurately
+2. Provide a helpful, concise, DIRECT response in the "text" field
+3. If knowledge base context is provided below, USE IT to answer the user's question accurately. Quote the relevant information directly.
 4. Always respond in the user's language
+5. Do NOT include any reasoning, thinking, or explanation outside the JSON
+6. The "text" field should contain ONLY the final answer the user should see
 
-## Response Format (ALWAYS valid JSON):
-{"intent": "<intent>", "text": "<your response>"}
+## Output (ONLY this, nothing else):
+{"intent": "<intent>", "text": "<your direct answer to the user>"}
 
 Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}${knowledgeContext}`;
 
@@ -308,12 +310,34 @@ Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}
     let responseText = rawContent;
 
     try {
-      const cleaned = rawContent.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      const parsed = JSON.parse(cleaned);
+      // Try to extract JSON even if there's surrounding text/reasoning
+      let jsonStr = rawContent;
+      // Remove markdown code blocks
+      jsonStr = jsonStr.replace(/```json\n?/g, "").replace(/```\n?/g, "");
+      // Find the first { ... } block containing "intent" and "text"
+      const jsonMatch = jsonStr.match(/\{[^{}]*"intent"\s*:\s*"[^"]*"[^{}]*"text"\s*:\s*"[^"]*"[^{}]*\}|\{[^{}]*"text"\s*:\s*"[^"]*"[^{}]*"intent"\s*:\s*"[^"]*"[^{}]*\}/s);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[0];
+      } else {
+        jsonStr = jsonStr.trim();
+      }
+      const parsed = JSON.parse(jsonStr);
       intent = parsed.intent || "general";
       responseText = parsed.text || rawContent;
     } catch {
-      // AI returned plain text — treat as general
+      // If JSON parse fails, strip any reasoning prefix and use raw text
+      // Remove common AI reasoning patterns
+      responseText = rawContent
+        .replace(/^(Since|Given|Based on|Let me|I'll|To provide|However|Here's)[\s\S]*?(?=\{)/i, "")
+        .replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      // One more attempt to parse
+      try {
+        const lastAttempt = JSON.parse(responseText);
+        intent = lastAttempt.intent || "general";
+        responseText = lastAttempt.text || rawContent;
+      } catch {
+        // Truly plain text - use as-is
+      }
     }
 
     // ── Map intent to actions ──
