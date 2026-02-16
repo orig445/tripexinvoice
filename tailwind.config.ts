@@ -102,6 +102,10 @@ export default {
           from: { transform: "rotate(0deg)" },
           to: { transform: "rotate(360deg)" },
         },
+        "wiggle": {
+          "0%, 100%": { transform: "rotate(-3deg)" },
+          "50%": { transform: "rotate(3deg)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -110,6 +114,7 @@ export default {
         "slide-in-right": "slide-in-right 0.3s ease-out",
         "scale-in": "scale-in 0.2s ease-out",
         "spin-slow": "spin-slow 3s linear infinite",
+        "wiggle": "wiggle 1s ease-in-out infinite",
       },
     },
   },
