@@ -18,12 +18,20 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, isLoading]);
 
-  const handleAction = (action: string, intent: string) => {
-    if (action === "camera") {
-      // Navigate to upload tab
-      window.location.href = "/";
-    } else if (action === "redirect") {
-      window.location.href = "/";
+  const handleAction = (action: string, data?: Record<string, any>) => {
+    switch (action) {
+      case "Camera":
+        window.location.href = "/";
+        break;
+      case "Redirect":
+        window.location.href = data?.redirectPage ? `/${data.redirectPage}` : "/";
+        break;
+      case "AddExpense":
+        window.location.href = "/";
+        break;
+      case "DisplayResults":
+        // TODO: navigate to BI/reports page
+        break;
     }
   };
 
