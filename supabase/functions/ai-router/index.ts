@@ -196,6 +196,21 @@ serve(async (req) => {
       throw new Error("Oracle API key is not configured");
     }
 
+    // ── RAG: Search knowledge base ──
+    let knowledgeContext = "";
+    try {
+      const { data: chunks } = await supabase.rpc("search_knowledge", {
+        query_text: text,
+        max_results: 5,
+      });
+      if (chunks && chunks.length > 0) {
+        knowledgeContext = "\n\n## Knowledge Base Context:\n" +
+          chunks.map((c: any) => `[${c.file_name}]: ${c.content}`).join("\n\n");
+      }
+    } catch (ragErr) {
+      console.error("RAG search error:", ragErr);
+    }
+
     const systemPrompt = `You are TripEX AI, a Personal Assistant for Travel & Expense Management.
 
 Your ONLY job is to detect the user's intent and respond with JSON.
@@ -211,12 +226,13 @@ Your ONLY job is to detect the user's intent and respond with JSON.
 ## Response Rules:
 1. Detect the intent from the user's message
 2. Provide a helpful, concise response text
-3. Always respond in the user's language
+3. If knowledge base context is provided below, USE IT to answer the user's question accurately
+4. Always respond in the user's language
 
 ## Response Format (ALWAYS valid JSON):
 {"intent": "<intent>", "text": "<your response>"}
 
-Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}`;
+Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}${knowledgeContext}`;
 
     const messages = [
       { role: "system", content: systemPrompt },
