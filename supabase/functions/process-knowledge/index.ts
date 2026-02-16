@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { encode as base64Encode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
+import { unzipSync } from "https://esm.sh/fflate@0.8.2";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -109,56 +111,98 @@ serve(async (req) => {
       let extractedText = "";
       const fileType = doc.file_type.toLowerCase();
 
-      if (fileType.includes("text") || fileType.includes("csv") || fileType.includes("json") || fileType.includes("xml") || fileType.includes("markdown")) {
+      if (fileType.includes("spreadsheet") || fileType.includes("excel") || fileType.includes("sheet")) {
+        // Excel/spreadsheet: XLSX is a ZIP containing XML files
+        const buffer = await fileData.arrayBuffer();
+        const uint8 = new Uint8Array(buffer);
+        
+        try {
+          // Unzip the XLSX file
+          const unzipped = unzipSync(uint8);
+          const decoder = new TextDecoder("utf-8");
+          const allTexts: string[] = [];
+          
+          // Extract shared strings (contains all cell text values)
+          const sharedStringsFile = unzipped["xl/sharedStrings.xml"];
+          if (sharedStringsFile) {
+            const xml = decoder.decode(sharedStringsFile);
+            const matches = xml.match(/<t[^>]*>([^<]+)<\/t>/g);
+            if (matches) {
+              const texts = matches.map(m => m.replace(/<t[^>]*>/g, "").replace(/<\/t>/g, "").trim()).filter(Boolean);
+              allTexts.push("--- Shared Strings ---");
+              allTexts.push(texts.join("\n"));
+            }
+          }
+          
+          // Extract text from each sheet
+          for (const [name, data] of Object.entries(unzipped)) {
+            if (name.startsWith("xl/worksheets/sheet") && name.endsWith(".xml")) {
+              const xml = decoder.decode(data as Uint8Array);
+              // Extract inline string values <is><t>text</t></is>
+              const inlineMatches = xml.match(/<is>\s*<t[^>]*>([^<]+)<\/t>\s*<\/is>/g);
+              if (inlineMatches) {
+                const texts = inlineMatches.map(m => {
+                  const tMatch = m.match(/<t[^>]*>([^<]+)<\/t>/);
+                  return tMatch ? tMatch[1].trim() : "";
+                }).filter(Boolean);
+                if (texts.length > 0) {
+                  allTexts.push(`\n--- ${name} (inline) ---`);
+                  allTexts.push(texts.join("\n"));
+                }
+              }
+            }
+          }
+          
+          extractedText = allTexts.join("\n");
+        } catch (zipErr) {
+          console.error("ZIP extraction failed:", zipErr);
+        }
+        
+        // If XML extraction didn't work well, fallback to AI
+        if (!extractedText || extractedText.length < 50) {
+          const base64 = base64Encode(uint8);
+          const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+          if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+
+          const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${LOVABLE_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "google/gemini-2.5-flash",
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    { type: "text", text: "Extract ALL text and data from this spreadsheet. Output every sheet, every row, every cell as plain text. Do NOT summarize." },
+                    { type: "image_url", image_url: { url: `data:${doc.file_type};base64,${base64}` } },
+                  ],
+                },
+              ],
+              max_tokens: 8192,
+              temperature: 0,
+            }),
+          });
+
+          if (resp.ok) {
+            const aiData = await resp.json();
+            const aiText = aiData.choices?.[0]?.message?.content || "";
+            if (aiText.length > extractedText.length) {
+              extractedText = aiText;
+            }
+          }
+        }
+        
+        console.log("Excel extracted text length:", extractedText.length, "preview:", extractedText.substring(0, 300));
+        
+        if (!extractedText || extractedText.length < 20) {
+          throw new Error("Could not extract text from spreadsheet. Try uploading as CSV instead.");
+        }
+      } else if (fileType.includes("text") || fileType.includes("csv") || fileType.includes("json") || fileType.includes("xml") || fileType.includes("markdown")) {
         // Plain text files
         extractedText = await fileData.text();
-      } else if (fileType.includes("spreadsheet") || fileType.includes("excel") || fileType.includes("sheet")) {
-        // Excel/spreadsheet: use Lovable AI (Gemini) to extract content via vision
-        const buffer = await fileData.arrayBuffer();
-        const base64 = base64Encode(new Uint8Array(buffer));
-        
-        const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-        if (!LOVABLE_API_KEY) {
-          throw new Error("LOVABLE_API_KEY not configured");
-        }
-
-        const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
-            messages: [
-              {
-                role: "system",
-                content: "Extract ALL text content from this spreadsheet file. Return every cell value, every sheet name, every header, every data row. Preserve the structure as much as possible using plain text. No summaries - just the full raw text content of all sheets.",
-              },
-              {
-                role: "user",
-                content: [
-                  { type: "text", text: "Extract all text and data from this spreadsheet file:" },
-                  {
-                    type: "image_url",
-                    image_url: { url: `data:${doc.file_type};base64,${base64}` },
-                  },
-                ],
-              },
-            ],
-            max_tokens: 4096,
-            temperature: 0,
-          }),
-        });
-
-        if (!resp.ok) {
-          const errText = await resp.text();
-          console.error("Lovable AI error for spreadsheet:", resp.status, errText);
-          throw new Error(`AI error processing spreadsheet: ${resp.status}`);
-        }
-
-        const spreadsheetData = await resp.json();
-        extractedText = spreadsheetData.choices?.[0]?.message?.content || `Spreadsheet: ${doc.file_name}`;
       } else if (fileType.includes("pdf") || fileType.includes("word") || fileType.includes("document")) {
         // For PDF/Word, use Lovable AI (Gemini) which handles documents better
         const buffer = await fileData.arrayBuffer();
