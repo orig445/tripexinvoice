@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { MessageCircle, X } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import { ChatWindow } from "./ChatWindow";
 import { useAuth } from "@/hooks/useAuth";
+import myloWaving from "@/assets/mylo-waving.jpeg";
 
 export function ChatbotWidget() {
   const [isOpen, setIsOpen] = useState(false);
@@ -16,10 +17,10 @@ export function ChatbotWidget() {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="w-14 h-14 rounded-full bg-gradient-to-br from-primary to-triplex-teal-light text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center hover:scale-105 active:scale-95"
+          className="w-16 h-16 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center hover:scale-110 active:scale-95 overflow-hidden border-2 border-primary/30 bg-background"
           aria-label="פתח צ'אט"
         >
-          <MessageCircle className="h-6 w-6" />
+          <img src={myloWaving} alt="Mylo" className="w-full h-full object-cover" />
         </button>
       )}
     </div>
