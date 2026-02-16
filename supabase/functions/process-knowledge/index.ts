@@ -156,50 +156,49 @@ serve(async (req) => {
           }
         }
       } else if (fileType.includes("pdf") || fileType.includes("word") || fileType.includes("document")) {
-        // For PDF/Word, use Oracle AI vision
-        const ORACLE_API_KEY = Deno.env.get("oracleapikey_2");
-        if (!ORACLE_API_KEY) {
-          throw new Error("Oracle API key not configured");
-        }
-
+        // For PDF/Word, use Lovable AI (Gemini) which handles documents better
         const buffer = await fileData.arrayBuffer();
         const base64 = base64Encode(new Uint8Array(buffer));
 
-        const response = await fetch(
-          "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions",
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${ORACLE_API_KEY}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "meta.llama-4-maverick-17b-128e-instruct-fp8",
-              messages: [
-                {
-                  role: "system",
-                  content: "Extract ALL text content from this document. Return ONLY the raw text, preserving paragraphs. No summaries, no analysis - just the full text content.",
-                },
-                {
-                  role: "user",
-                  content: [
-                    { type: "text", text: "Extract all text from this document:" },
-                    {
-                      type: "image_url",
-                      image_url: { url: `data:${doc.file_type};base64,${base64}` },
-                    },
-                  ],
-                },
-              ],
-              max_tokens: 4096,
-              temperature: 0,
-            }),
-          }
-        );
+        // Try Lovable AI first (Gemini supports PDF natively)
+        const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+        if (!LOVABLE_API_KEY) {
+          throw new Error("LOVABLE_API_KEY not configured");
+        }
+
+        const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            messages: [
+              {
+                role: "system",
+                content: "Extract ALL text content from this document. Return ONLY the raw text, preserving paragraphs and structure. No summaries, no analysis - just the full text content.",
+              },
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: "Extract all text from this document:" },
+                  {
+                    type: "image_url",
+                    image_url: { url: `data:${doc.file_type};base64,${base64}` },
+                  },
+                ],
+              },
+            ],
+            max_tokens: 4096,
+            temperature: 0,
+          }),
+        });
 
         if (!response.ok) {
           const errText = await response.text();
-          throw new Error(`Oracle AI error: ${response.status} - ${errText}`);
+          console.error("Lovable AI error for PDF:", response.status, errText);
+          throw new Error(`AI error processing document: ${response.status}`);
         }
 
         const aiData = await response.json();
