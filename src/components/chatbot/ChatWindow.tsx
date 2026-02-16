@@ -68,7 +68,7 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-primary to-triplex-teal-light text-primary-foreground">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-full overflow-hidden border-2 border-primary-foreground/30">
+          <div className="w-9 h-9 rounded-full overflow-hidden border-2 border-primary-foreground/30 hover:scale-110 transition-transform duration-200">
             <img src={myloWaving} alt="Mylo" className="w-full h-full object-cover" />
           </div>
           <div>
@@ -101,11 +101,15 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
         {/* Welcome message with Mylo */}
         {messages.length === 0 && (
           <div className="flex flex-col items-center py-4 gap-3">
-            <img
-              src={myloWaving}
-              alt="Mylo waving"
-              className="w-24 h-24 rounded-full border-2 border-primary/20 object-cover animate-in zoom-in duration-500"
-            />
+            <div className="relative">
+              <img
+                src={myloWaving}
+                alt="Mylo waving"
+                className="w-24 h-24 rounded-full border-2 border-primary/20 object-cover animate-in zoom-in duration-500 hover:scale-110 transition-transform duration-300"
+              />
+              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-triplex-success rounded-full border-2 border-background animate-pulse" />
+              <div className="absolute -top-2 -left-2 text-xl animate-bounce">👋</div>
+            </div>
             <div className="bg-muted rounded-2xl px-4 py-3 text-sm text-center max-w-[85%]">
               {welcomeMsg}
             </div>
@@ -119,8 +123,8 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
         {/* Loading state with thinking Mylo */}
         {isLoading && (
           <div className="flex gap-2.5">
-            <div className="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border border-primary/20 animate-pulse">
-              <img src={myloThinking} alt="Mylo thinking" className="w-full h-full object-cover" />
+            <div className="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border border-primary/20">
+              <img src={myloThinking} alt="Mylo thinking" className="w-full h-full object-cover animate-[wiggle_1s_ease-in-out_infinite]" />
             </div>
             <div className="bg-muted rounded-2xl rounded-tl-sm px-4 py-3">
               <div className="flex gap-1">

@@ -48,7 +48,7 @@ export function ChatMessage({ message, onAction }: ChatMessageProps) {
           <User className="h-3.5 w-3.5" />
         </div>
       ) : (
-        <div className="w-8 h-8 rounded-full flex-shrink-0 mt-0.5 overflow-hidden border border-primary/20">
+        <div className="w-8 h-8 rounded-full flex-shrink-0 mt-0.5 overflow-hidden border border-primary/20 animate-in zoom-in duration-300 hover:scale-110 transition-transform">
           <img src={myloAvatar} alt="Mylo" className="w-full h-full object-cover" />
         </div>
       )}
