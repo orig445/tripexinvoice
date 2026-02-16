@@ -71,6 +71,9 @@ serve(async (req) => {
       text = "",
       type = "text",
       sessionToken = "",
+      userDate = "",
+      userTime = "",
+      userTimezone = "",
     } = await req.json();
 
     // ── Session handling ──
@@ -295,6 +298,7 @@ When ALL fields are collected, respond with intent "online_complete" and include
 ## Output format (ONLY this JSON, nothing else):
 {"intent": "<intent>", "text": "<your detailed, friendly answer>"}
 
+Current date & time: ${userDate || "unknown"} ${userTime || ""} (${userTimezone || "unknown timezone"})
 Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}${knowledgeContext}`;
 
     const messages = [
