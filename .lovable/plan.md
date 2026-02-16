@@ -1,165 +1,113 @@
 
 
-# TripEX AI Chatbot - תוכנית מלאה
+# AI Router - ארכיטקטורה חדשה
 
-## סקירה כללית
+## סיכום
 
-בניית מערכת צ'אטבוט AI מלאה ל-TripEX הכוללת:
-- פאנל שליטה למנהל (הגדרות הבוט, פרומפטים, לוגים)
-- ממשק צ'אטבוט צף (Web + Mobile) עם אווטאר
-- Backend חכם עם זיהוי כוונות דרך Oracle AI
-- שמירת היסטוריית שיחות
+שינוי הארכיטקטורה כך שה-Edge Function החדשה `ai-router` תהיה נקודת הכניסה המרכזית לכל אינטראקציה עם ה-AI. ה-OCR (analyze-invoice) יישאר כמודול נפרד שנקרא מתוך ה-router כשצריך.
 
----
+## מה ישתנה
 
-## שלב 1: מסד נתונים
+### 1. Edge Function חדשה: `ai-router`
 
-### טבלאות חדשות:
+תחליף את `tripex-chat` כנקודת הכניסה המרכזית.
 
-**`chatbot_config`** - הגדרות הבוט (שורה אחת למנהל)
-- `id`, `bot_name` (ברירת מחדל: "TripEX AI"), `avatar_url`, `welcome_message`, `system_prompt`, `model_name`, `max_tokens`, `temperature`, `is_active`, `created_at`, `updated_at`
-
-**`chat_sessions`** - סשנים של שיחות
-- `id`, `user_id`, `source` (web/mobile), `status` (active/closed), `created_at`, `updated_at`
-
-**`chat_messages`** - הודעות בשיחה
-- `id`, `session_id` (FK to chat_sessions), `role` (user/assistant/system), `content`, `intent` (help/scan/bi/online/expense/general), `metadata` (JSON - actions, redirects), `created_at`
-
-**`chatbot_logs`** - לוגים למנהל
-- `id`, `session_id`, `user_id`, `event_type` (intent_detected/error/action), `details` (JSON), `created_at`
-
-### RLS:
-- משתמשים רואים רק את הסשנים וההודעות שלהם
-- מנהלים רואים הכל (config, logs)
-- Realtime מופעל על `chat_messages`
-
----
-
-## שלב 2: Edge Function - `tripex-chat`
-
-פונקציה חדשה `supabase/functions/tripex-chat/index.ts` שמטפלת בכל הלוגיקה:
-
-1. **קבלת הודעה** מהמשתמש עם `session_id` ו-`message`
-2. **טעינת system prompt** מטבלת `chatbot_config`
-3. **שליחה ל-Oracle AI** (Chicago region, `meta.llama-4-maverick`) עם:
-   - System prompt לזיהוי כוונות
-   - היסטוריית השיחה האחרונה (10 הודעות אחרונות)
-4. **פירוש התשובה**: זיהוי אם התשובה היא פקודה (help/scan/bi/online/expense) או שיחה חופשית
-5. **שמירת ההודעה והתשובה** ב-DB
-6. **החזרת JSON** עם:
-   - `text` - תשובת הבוט
-   - `action` - פעולה (redirect/scan/camera/none)
-   - `intent` - הכוונה שזוהתה
-
-### System Prompt (ברירת מחדל):
-
+**Input חדש (POST):**
 ```text
-You are TripEX AI, a Personal Assistant for Travel & Expense Management.
-Detect user intent and respond accordingly:
-
-- Help/guidance -> respond: {"intent": "help", "action": "none"}
-- Scan receipt -> respond: {"intent": "scan", "action": "camera"}
-- Analyze data (BI) -> respond: {"intent": "bi", "action": "none"}
-- Online booking -> respond: {"intent": "online", "action": "redirect"}
-- Manage expenses -> respond: {"intent": "expense", "action": "redirect"}
-- General chat -> respond naturally with {"intent": "general", "action": "none"}
-
-Always respond in the user's language. Return JSON with: intent, action, text
+{
+  "source": "mobile | web | bi | tas",
+  "scope": "current module",
+  "trid": "",
+  "text": "",
+  "type": "text | image | audio",
+  "sessionToken": ""
+}
 ```
 
----
+**Output אחיד:**
+```text
+{
+  "actions": [],
+  "text": "",
+  "redirectPage": "",
+  "data": {},
+  "session_id": ""
+}
+```
 
-## שלב 3: ממשק צ'אטבוט צף
+**Action Mapping:**
+- help -> actions: ["Redirect"], redirectPage: "help"
+- scan -> actions: ["Camera"], text: "Scan your receipt"
+- expense -> actions: ["AddExpense"]
+- bi -> actions: ["DisplayResults"]
+- online -> actions: ["Redirect"], redirectPage: "booking"
 
-### קומפוננטות חדשות:
+**OCR Flow:** כשה-type הוא "image", ה-router יקרא ל-`analyze-invoice` פנימית (HTTP call), ויחזיר את התוצאה עם actions: ["AddExpense"] + data מהפענוח.
 
-**`ChatbotWidget`** - הכפתור הצף + חלון הצ'אט
-- כפתור עגול עם אווטאר בפינה הימנית התחתונה
-- אנימציית bounce קלה כשנפתח
-- לחיצה פותחת חלון צ'אט
-- Responsive - עובד גם במובייל
+**Session Handling:** ימשיך להשתמש בטבלאות `chat_sessions` ו-`chat_messages` הקיימות. sessionToken יתמפה ל-session_id.
 
-**`ChatWindow`** - חלון השיחה
-- Header עם שם הבוט ואווטאר
-- אזור הודעות עם scroll
-- הודעת פתיחה אוטומטית (welcome message)
-- Input field + כפתור שליחה
-- אינדיקטור "מקליד..."
-- כפתורי פעולה מהירה (סרוק קבלה, הוסף הוצאה, עזרה)
+**Logging:** כל בקשה תתועד ב-`chatbot_logs` עם: request, detected intent, actions returned, errors.
 
-**`ChatMessage`** - הודעה בודדת
-- עיצוב שונה לuser vs assistant
-- תמיכה ב-Markdown (react-markdown לא נדרש, נשתמש בעיצוב פשוט)
-- כפתורי פעולה מוטמעים (אם הבוט מחזיר action)
+**Default Response:** "Hello, I'm TripEX AI. How can I assist you today?"
 
-### תזרים:
-1. משתמש לוחץ על האווטאר -> נפתח חלון צ'אט
-2. הודעת ברוכים הבאים מוצגת
-3. משתמש כותב -> שליחה ל-Edge Function
-4. תשובה מוצגת + פעולה אם יש (פתיחת סורק, הפניה לדף)
+### 2. מבנה לאינטגרציות עתידיות (Oracle TAS)
 
----
+הכנת פונקציות stub בתוך ה-router:
+- `fetchTASData(userId)` - שליפת נתוני נסיעות
+- `fetchTRDetails(trId)` - פרטי TR
+- `validateApproval(trId)` - בדיקת אישורים
+- `submitExpense(data)` - הגשת הוצאה
 
-## שלב 4: פאנל שליטה למנהל
+כל אלה יחזירו placeholder בשלב זה עם הערה `// TODO: Connect to Oracle TAS API`.
 
-### דף חדש: `/admin/chatbot`
+### 3. עדכון Frontend
 
-נגיש רק למנהלים (role === "admin"). כולל טאבים:
+- `useChatbot.ts` - עדכון ה-hook לקרוא ל-`ai-router` במקום `tripex-chat`, ולעבוד עם הפורמט החדש (actions array, redirectPage, data).
+- `ChatWindow.tsx` - עדכון `handleAction` לתמוך ב-actions החדשים (Camera, Redirect, AddExpense, DisplayResults).
+- `ChatMessage.tsx` - עדכון כפתורי הפעולה להתאים ל-action mapping החדש.
 
-**טאב הגדרות:**
-- שם הבוט
-- העלאת אווטאר
-- הודעת פתיחה
-- System Prompt (textarea גדול)
-- הגדרות מודל (temperature, max_tokens)
-- מתג הפעלה/כיבוי
+### 4. config.toml
 
-**טאב לוגים:**
-- טבלת לוגים עם פילטרים (תאריך, משתמש, כוונה)
-- סטטיסטיקות: כמות שיחות, כוונות נפוצות
+הוספת ה-function החדשה:
+```text
+[functions.ai-router]
+verify_jwt = false
+```
 
-**טאב שיחות:**
-- רשימת סשנים אחרונים
-- צפייה בשיחה מלאה
+### 5. Edge Function ישנה
 
----
-
-## שלב 5: ניווט ונתיבים
-
-- הוספת Route `/admin/chatbot` ב-App.tsx (מוגן למנהלים)
-- הוספת לינק בHeader למנהלים ("פאנל צ'אטבוט")
-- הצ'אטבוט הצף מופיע בכל הדפים (מוזרק ב-Index)
+`tripex-chat` תישאר זמינה לתאימות לאחור אבל לא תהיה בשימוש מה-frontend.
 
 ---
 
 ## פרטים טכניים
 
-### קבצים חדשים:
+### מבנה ai-router/index.ts
+
 ```text
-src/pages/AdminChatbot.tsx          - דף פאנל השליטה
-src/components/chatbot/ChatbotWidget.tsx  - כפתור צף + wrapper
-src/components/chatbot/ChatWindow.tsx     - חלון הצ'אט
-src/components/chatbot/ChatMessage.tsx    - הודעה בודדת
-src/components/chatbot/ChatInput.tsx      - שדה קלט
-src/components/chatbot/QuickActions.tsx   - כפתורי פעולה מהירה
-src/components/admin/ChatbotSettings.tsx  - טאב הגדרות
-src/components/admin/ChatbotLogs.tsx      - טאב לוגים
-src/components/admin/ChatbotSessions.tsx  - טאב שיחות
-src/hooks/useChatbot.ts                  - Hook לניהול הצ'אט
-supabase/functions/tripex-chat/index.ts  - Edge Function
+1. Parse input (source, scope, trid, text, type, sessionToken)
+2. Authenticate user via Authorization header
+3. If type === "image":
+     -> Call analyze-invoice internally
+     -> Return { actions: ["AddExpense"], data: extractedFields }
+4. Else:
+     -> Send text + history to Oracle AI with intent detection prompt
+     -> Parse AI response (intent + text)
+     -> Map intent to action using ACTION_MAPPING
+     -> Return { actions, text, redirectPage, data }
+5. Log everything to chatbot_logs
 ```
 
-### קבצים שישתנו:
+### ACTION_MAPPING (hardcoded, not AI-dependent)
+
 ```text
-src/App.tsx          - הוספת Route לפאנל
-src/pages/Index.tsx  - הוספת ChatbotWidget
-src/components/Header.tsx - לינק לפאנל למנהלים
-supabase/config.toml - הוספת tripex-chat function
+help     -> { actions: ["Redirect"],       redirectPage: "help" }
+scan     -> { actions: ["Camera"],         text: "Scan your receipt" }
+expense  -> { actions: ["AddExpense"] }
+bi       -> { actions: ["DisplayResults"] }
+online   -> { actions: ["Redirect"],       redirectPage: "booking" }
+general  -> { actions: [] }
 ```
 
-### Secret קיים בשימוש:
-- `oracleapikey_2` - אותו מפתח Oracle AI שכבר מוגדר (Chicago region)
-
-### אין צורך בחבילות חדשות
-- הכל נבנה עם Shadcn/UI, Lucide icons, ו-Tailwind הקיימים
+ה-AI מזהה את ה-intent, וה-router ממפה אותו לפעולות - הפרדה ברורה בין זיהוי לביצוע.
 
