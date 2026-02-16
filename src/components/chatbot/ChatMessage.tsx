@@ -1,10 +1,30 @@
-import { Bot, User, Camera, ArrowRight, PlusCircle, BarChart3 } from "lucide-react";
+import { User, Camera, ArrowRight, PlusCircle, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ChatMessage as ChatMessageType } from "@/hooks/useChatbot";
+import myloWaving from "@/assets/mylo-waving.jpeg";
+import myloReading from "@/assets/mylo-reading.jpeg";
+import myloDetective from "@/assets/mylo-detective.jpeg";
+import myloThinking from "@/assets/mylo-thinking.jpeg";
 
 interface ChatMessageProps {
   message: ChatMessageType;
   onAction?: (action: string, data?: Record<string, any>) => void;
+}
+
+// Pick Mylo avatar based on intent
+function getMyloAvatar(intent?: string): string {
+  switch (intent) {
+    case "help":
+      return myloReading;
+    case "scan":
+    case "bi":
+      return myloDetective;
+    case "expense":
+    case "online":
+      return myloThinking;
+    default:
+      return myloWaving;
+  }
 }
 
 export function ChatMessage({ message, onAction }: ChatMessageProps) {
@@ -13,23 +33,25 @@ export function ChatMessage({ message, onAction }: ChatMessageProps) {
   const redirectPage = message.metadata?.redirectPage || "";
 
   const actionButtons: Record<string, { icon: typeof Camera; label: string }> = {
-    Camera:         { icon: Camera,      label: "פתח סורק" },
+    Camera:         { icon: Camera,      label: "📷 סרוק חשבונית" },
     Redirect:       { icon: ArrowRight,  label: redirectPage === "help" ? "עזרה" : redirectPage === "booking" ? "הזמנה" : "המשך" },
     AddExpense:     { icon: PlusCircle,  label: "הוסף הוצאה" },
     DisplayResults: { icon: BarChart3,   label: "הצג תוצאות" },
   };
 
+  const myloAvatar = getMyloAvatar(message.intent);
+
   return (
     <div className={`flex gap-2.5 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
-      <div
-        className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
-          isUser
-            ? "bg-primary/10 text-primary"
-            : "bg-gradient-to-br from-primary to-triplex-teal-light text-primary-foreground"
-        }`}
-      >
-        {isUser ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
-      </div>
+      {isUser ? (
+        <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 bg-primary/10 text-primary">
+          <User className="h-3.5 w-3.5" />
+        </div>
+      ) : (
+        <div className="w-8 h-8 rounded-full flex-shrink-0 mt-0.5 overflow-hidden border border-primary/20">
+          <img src={myloAvatar} alt="Mylo" className="w-full h-full object-cover" />
+        </div>
+      )}
 
       <div className={`max-w-[80%] space-y-1.5`}>
         <div

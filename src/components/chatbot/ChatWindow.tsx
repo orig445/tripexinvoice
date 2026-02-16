@@ -1,10 +1,13 @@
 import { useEffect, useRef } from "react";
-import { X, RotateCcw, Bot } from "lucide-react";
+import { X, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import { QuickActions } from "./QuickActions";
 import { useChatbot } from "@/hooks/useChatbot";
+import myloWaving from "@/assets/mylo-waving.jpeg";
+import myloThinking from "@/assets/mylo-thinking.jpeg";
+import myloSleeping from "@/assets/mylo-sleeping.jpeg";
 
 interface ChatWindowProps {
   onClose: () => void;
@@ -51,16 +54,16 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
     }
   };
 
-  const botName = config?.bot_name || "TripEX AI";
-  const welcomeMsg = config?.welcome_message || "שלום! איך אוכל לעזור?";
+  const botName = config?.bot_name || "Mylo AI";
+  const welcomeMsg = config?.welcome_message || "שלום! אני מיילו 🦊 איך אוכל לעזור לך היום?";
 
   return (
     <div className="flex flex-col w-[360px] h-[500px] sm:w-[380px] sm:h-[520px] bg-background rounded-2xl shadow-xl border overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-primary to-triplex-teal-light text-primary-foreground">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-full bg-primary-foreground/20 flex items-center justify-center">
-            <Bot className="h-4 w-4" />
+          <div className="w-9 h-9 rounded-full overflow-hidden border-2 border-primary-foreground/30">
+            <img src={myloWaving} alt="Mylo" className="w-full h-full object-cover" />
           </div>
           <div>
             <h3 className="text-sm font-semibold">{botName}</h3>
@@ -89,13 +92,15 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3" dir="rtl">
-        {/* Welcome message */}
+        {/* Welcome message with Mylo */}
         {messages.length === 0 && (
-          <div className="flex gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary to-triplex-teal-light text-primary-foreground flex items-center justify-center flex-shrink-0 mt-0.5">
-              <Bot className="h-3.5 w-3.5" />
-            </div>
-            <div className="bg-muted rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm max-w-[80%]">
+          <div className="flex flex-col items-center py-4 gap-3">
+            <img
+              src={myloWaving}
+              alt="Mylo waving"
+              className="w-24 h-24 rounded-full border-2 border-primary/20 object-cover animate-in zoom-in duration-500"
+            />
+            <div className="bg-muted rounded-2xl px-4 py-3 text-sm text-center max-w-[85%]">
               {welcomeMsg}
             </div>
           </div>
@@ -105,10 +110,11 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
           <ChatMessage key={msg.id} message={msg} onAction={handleAction} />
         ))}
 
+        {/* Loading state with thinking Mylo */}
         {isLoading && (
           <div className="flex gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary to-triplex-teal-light text-primary-foreground flex items-center justify-center flex-shrink-0">
-              <Bot className="h-3.5 w-3.5" />
+            <div className="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border border-primary/20 animate-pulse">
+              <img src={myloThinking} alt="Mylo thinking" className="w-full h-full object-cover" />
             </div>
             <div className="bg-muted rounded-2xl rounded-tl-sm px-4 py-3">
               <div className="flex gap-1">
@@ -126,7 +132,6 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
 
       {/* Input */}
       <ChatInput onSend={sendMessage} onImageCapture={sendImage} isLoading={isLoading} />
-      {/* Hidden camera input triggered by Camera action button */}
       <input
         ref={cameraInputRef}
         type="file"
