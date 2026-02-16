@@ -79,8 +79,13 @@ export function useChatbot() {
       setMessages((prev) => [...prev, tempMsg]);
 
       try {
+        const now = new Date();
+        const userLocalDate = now.toLocaleDateString("he-IL", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+        const userLocalTime = now.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
         const { data, error } = await supabase.functions.invoke("ai-router", {
-          body: { text, type: "text", source: "web", sessionToken: sessionId },
+          body: { text, type: "text", source: "web", sessionToken: sessionId, userDate: userLocalDate, userTime: userLocalTime, userTimezone: timezone },
         });
 
         if (error) throw error;
