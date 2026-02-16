@@ -348,33 +348,45 @@ Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}
     let responseText = rawContent;
 
     try {
-      // Try to extract JSON even if there's surrounding text/reasoning
-      let jsonStr = rawContent;
-      // Remove markdown code blocks
-      jsonStr = jsonStr.replace(/```json\n?/g, "").replace(/```\n?/g, "");
-      // Find the first { ... } block containing "intent" and "text"
-      const jsonMatch = jsonStr.match(/\{[^{}]*"intent"\s*:\s*"[^"]*"[^{}]*"text"\s*:\s*"[^"]*"[^{}]*\}|\{[^{}]*"text"\s*:\s*"[^"]*"[^{}]*"intent"\s*:\s*"[^"]*"[^{}]*\}/s);
-      if (jsonMatch) {
-        jsonStr = jsonMatch[0];
-      } else {
-        jsonStr = jsonStr.trim();
+      // Clean markdown wrappers
+      let cleaned = rawContent.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      
+      // Find the outermost { ... } using brace counting (handles nested quotes, newlines, etc.)
+      const startIdx = cleaned.indexOf("{");
+      if (startIdx !== -1) {
+        let depth = 0;
+        let endIdx = -1;
+        for (let i = startIdx; i < cleaned.length; i++) {
+          if (cleaned[i] === "{") depth++;
+          else if (cleaned[i] === "}") { depth--; if (depth === 0) { endIdx = i; break; } }
+        }
+        if (endIdx !== -1) {
+          cleaned = cleaned.substring(startIdx, endIdx + 1);
+        }
       }
-      const parsed = JSON.parse(jsonStr);
+
+      const parsed = JSON.parse(cleaned);
       intent = parsed.intent || "general";
       responseText = parsed.text || rawContent;
     } catch {
-      // If JSON parse fails, strip any reasoning prefix and use raw text
-      // Remove common AI reasoning patterns
-      responseText = rawContent
-        .replace(/^(Since|Given|Based on|Let me|I'll|To provide|However|Here's)[\s\S]*?(?=\{)/i, "")
-        .replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      // One more attempt to parse
-      try {
-        const lastAttempt = JSON.parse(responseText);
-        intent = lastAttempt.intent || "general";
-        responseText = lastAttempt.text || rawContent;
-      } catch {
-        // Truly plain text - use as-is
+      // If JSON parse still fails, try to extract text field manually
+      const textMatch = rawContent.match(/"text"\s*:\s*"((?:[^"\\]|\\.)*)"/s);
+      const intentMatch = rawContent.match(/"intent"\s*:\s*"([^"]*)"/);
+      if (textMatch) {
+        responseText = textMatch[1].replace(/\\n/g, "\n").replace(/\\"/g, '"');
+        intent = intentMatch?.[1] || "general";
+      } else {
+        // Strip any JSON-like wrapper and use plain text
+        responseText = rawContent
+          .replace(/^\s*\{[\s\S]*"text"\s*:\s*"/i, "")
+          .replace(/"\s*\}\s*$/, "")
+          .replace(/\\n/g, "\n")
+          .replace(/\\"/g, '"')
+          .trim();
+        if (!responseText || responseText === rawContent) {
+          // Truly plain text
+          responseText = rawContent;
+        }
       }
     }
 
