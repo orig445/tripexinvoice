@@ -199,13 +199,36 @@ serve(async (req) => {
     // ── RAG: Search knowledge base ──
     let knowledgeContext = "";
     try {
+      // Search with full query
       const { data: chunks } = await supabase.rpc("search_knowledge", {
         query_text: text,
         max_results: 5,
       });
-      if (chunks && chunks.length > 0) {
-        knowledgeContext = "\n\n## Knowledge Base Context:\n" +
-          chunks.map((c: any) => `[${c.file_name}]: ${c.content}`).join("\n\n");
+
+      // Also search with individual words for better Hebrew matching
+      const words = text.split(/\s+/).filter((w: string) => w.length > 2);
+      let allChunks = chunks || [];
+      
+      for (const word of words.slice(0, 3)) {
+        const { data: wordChunks } = await supabase.rpc("search_knowledge", {
+          query_text: word,
+          max_results: 3,
+        });
+        if (wordChunks) {
+          for (const wc of wordChunks) {
+            if (!allChunks.some((c: any) => c.chunk_id === wc.chunk_id)) {
+              allChunks.push(wc);
+            }
+          }
+        }
+      }
+
+      // Limit to top 5
+      allChunks = allChunks.slice(0, 5);
+
+      if (allChunks.length > 0) {
+        knowledgeContext = "\n\n## Knowledge Base Context (use this to answer the user):\n" +
+          allChunks.map((c: any) => `[${c.file_name}]: ${c.content}`).join("\n\n");
       }
     } catch (ragErr) {
       console.error("RAG search error:", ragErr);

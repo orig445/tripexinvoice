@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Upload, Trash2, FileText, Image, FileSpreadsheet, Loader2, Brain } from "lucide-react";
+import { Upload, Trash2, FileText, Image, FileSpreadsheet, Loader2, Brain, RefreshCw } from "lucide-react";
 
 interface KnowledgeDocument {
   id: string;
@@ -139,6 +139,19 @@ export function KnowledgeBase() {
     loadDocuments();
   };
 
+  const handleReprocess = async (doc: KnowledgeDocument) => {
+    toast.info(`מעבד מחדש ${doc.file_name}...`);
+    const { error } = await supabase.functions.invoke("process-knowledge", {
+      body: { document_id: doc.id },
+    });
+    if (error) {
+      toast.error("שגיאה בעיבוד מחדש");
+    } else {
+      toast.success("העיבוד הושלם");
+      loadDocuments();
+    }
+  };
+
   const getFileIcon = (fileType: string) => {
     if (fileType.includes("image")) return <Image className="h-4 w-4" />;
     if (fileType.includes("spreadsheet") || fileType.includes("excel") || fileType.includes("csv"))
@@ -226,8 +239,17 @@ export function KnowledgeBase() {
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-1.5 flex-shrink-0">
                   {getStatusBadge(doc.status)}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="עבד מחדש"
+                    onClick={() => handleReprocess(doc)}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"
