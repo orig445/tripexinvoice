@@ -11,7 +11,7 @@ interface ChatWindowProps {
 }
 
 export function ChatWindow({ onClose }: ChatWindowProps) {
-  const { messages, isLoading, config, sendMessage, startNewSession } = useChatbot();
+  const { messages, isLoading, config, sendMessage, sendImage, startNewSession } = useChatbot();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -109,7 +109,7 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
       {messages.length === 0 && <QuickActions onAction={(text) => sendMessage(text)} />}
 
       {/* Input */}
-      <ChatInput onSend={sendMessage} isLoading={isLoading} />
+      <ChatInput onSend={sendMessage} onImageCapture={sendImage} isLoading={isLoading} />
     </div>
   );
 }
