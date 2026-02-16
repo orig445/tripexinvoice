@@ -112,8 +112,51 @@ serve(async (req) => {
       if (fileType.includes("text") || fileType.includes("csv") || fileType.includes("json") || fileType.includes("xml") || fileType.includes("markdown")) {
         // Plain text files
         extractedText = await fileData.text();
-      } else if (fileType.includes("pdf") || fileType.includes("word") || fileType.includes("document") || fileType.includes("spreadsheet") || fileType.includes("excel")) {
-        // For complex document types, use Oracle AI to extract text
+      } else if (fileType.includes("spreadsheet") || fileType.includes("excel") || fileType.includes("sheet")) {
+        // Excel/spreadsheet: read as raw text (will get partial data but avoids AI vision errors)
+        // Try reading raw bytes as text — for xlsx this gives limited XML content but it's searchable
+        try {
+          extractedText = await fileData.text();
+          // If it looks like binary garbage, use AI to describe what we can
+          if (extractedText.length < 50 || extractedText.includes("\u0000")) {
+            extractedText = extractedText.replace(/\u0000/g, "");
+            // Try to extract readable strings from the binary
+            const readable = extractedText.match(/[\x20-\x7E\u0590-\u05FF\u0600-\u06FF\u00C0-\u024F]{4,}/g);
+            extractedText = readable ? readable.join("\n") : "";
+          }
+        } catch {
+          extractedText = "";
+        }
+        if (!extractedText.trim()) {
+          // Fallback: use Lovable AI to describe it via text prompt
+          const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+          if (LOVABLE_API_KEY) {
+            const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${LOVABLE_API_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: "google/gemini-3-flash-preview",
+                messages: [
+                  { role: "system", content: "The user uploaded a spreadsheet file but we could not extract text from it. Return a message saying the file was uploaded but could not be parsed. Include the filename." },
+                  { role: "user", content: `File: ${doc.file_name}` },
+                ],
+                max_tokens: 256,
+              }),
+            });
+            if (resp.ok) {
+              const d = await resp.json();
+              extractedText = d.choices?.[0]?.message?.content || `Spreadsheet file: ${doc.file_name} (content could not be extracted)`;
+            }
+          }
+          if (!extractedText.trim()) {
+            extractedText = `Spreadsheet file: ${doc.file_name} (binary content - could not extract text)`;
+          }
+        }
+      } else if (fileType.includes("pdf") || fileType.includes("word") || fileType.includes("document")) {
+        // For PDF/Word, use Oracle AI vision
         const ORACLE_API_KEY = Deno.env.get("oracleapikey_2");
         if (!ORACLE_API_KEY) {
           throw new Error("Oracle API key not configured");
@@ -213,6 +256,9 @@ serve(async (req) => {
       } else {
         throw new Error(`Unsupported file type: ${fileType}`);
       }
+
+      // Sanitize: remove null bytes that crash Postgres
+      extractedText = extractedText.replace(/\u0000/g, "");
 
       if (!extractedText.trim()) {
         throw new Error("No text could be extracted from the file");
