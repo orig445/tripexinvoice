@@ -13,15 +13,32 @@ interface ChatWindowProps {
 export function ChatWindow({ onClose }: ChatWindowProps) {
   const { messages, isLoading, config, sendMessage, sendImage, startNewSession } = useChatbot();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, isLoading]);
 
+  const triggerCamera = () => {
+    cameraInputRef.current?.click();
+  };
+
+  const handleCameraFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(",")[1];
+      if (base64) sendImage(base64);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
   const handleAction = (action: string, data?: Record<string, any>) => {
     switch (action) {
       case "Camera":
-        window.location.href = "/";
+        triggerCamera();
         break;
       case "Redirect":
         window.location.href = data?.redirectPage ? `/${data.redirectPage}` : "/";
@@ -30,7 +47,6 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
         window.location.href = "/";
         break;
       case "DisplayResults":
-        // TODO: navigate to BI/reports page
         break;
     }
   };
@@ -110,6 +126,15 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
 
       {/* Input */}
       <ChatInput onSend={sendMessage} onImageCapture={sendImage} isLoading={isLoading} />
+      {/* Hidden camera input triggered by Camera action button */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleCameraFile}
+      />
     </div>
   );
 }

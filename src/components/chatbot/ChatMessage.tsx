@@ -39,7 +39,12 @@ export function ChatMessage({ message, onAction }: ChatMessageProps) {
               : "bg-muted text-foreground rounded-tl-sm"
           }`}
         >
-          {message.content}
+          {message.content.split("\n").map((line, i) => (
+            <span key={i}>
+              {line}
+              {i < message.content.split("\n").length - 1 && <br />}
+            </span>
+          ))}
         </div>
 
         {/* Action buttons */}

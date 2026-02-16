@@ -7,9 +7,9 @@ const corsHeaders = {
 };
 
 // ── Action Mapping (hardcoded, not AI-dependent) ──
-const ACTION_MAPPING: Record<string, { actions: string[]; redirectPage?: string; text?: string }> = {
+const ACTION_MAPPING: Record<string, { actions: string[]; redirectPage?: string }> = {
   help:    { actions: ["Redirect"],       redirectPage: "help" },
-  scan:    { actions: ["Camera"],         text: "Scan your receipt" },
+  scan:    { actions: ["Camera"] },
   expense: { actions: ["AddExpense"] },
   bi:      { actions: ["DisplayResults"] },
   online:  { actions: ["Redirect"],       redirectPage: "booking" },
@@ -119,9 +119,19 @@ serve(async (req) => {
           });
         }
 
+        // Build a summary of the scanned data
+        const d = ocrData.data || {};
+        const lines: string[] = ["✅ החשבונית נסרקה בהצלחה! הנה הפרטים שזוהו:"];
+        if (d.vendor_name) lines.push(`🏪 ספק: ${d.vendor_name}`);
+        if (d.invoice_number) lines.push(`🔢 מספר חשבונית: ${d.invoice_number}`);
+        if (d.total_amount != null) lines.push(`💰 סכום: ${d.total_amount}${d.currency ? " " + d.currency : ""}`);
+        if (d.invoice_date) lines.push(`📅 תאריך: ${d.invoice_date}`);
+        if (d.line_items?.length) lines.push(`📋 פריטים: ${d.line_items.length}`);
+        lines.push("\nהנתונים נשמרו במערכת. תוכל לצפות בהם בעמוד החשבוניות.");
+
         return new Response(JSON.stringify({
-          actions: ["AddExpense"],
-          text: "Receipt scanned successfully",
+          actions: [],
+          text: lines.join("\n"),
           redirectPage: "",
           data: ocrData.data,
           session_id: sessionId,
@@ -342,7 +352,7 @@ Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}
 
     // ── Map intent to actions ──
     const mapping = ACTION_MAPPING[intent] || ACTION_MAPPING.general;
-    const finalText = mapping.text || responseText;
+    const finalText = responseText;
 
     // Save assistant message
     await supabase.from("chat_messages").insert({
