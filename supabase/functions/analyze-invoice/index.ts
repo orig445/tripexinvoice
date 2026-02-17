@@ -18,6 +18,30 @@ serve(async (req) => {
       throw new Error("Oracle API key (invoice secret) is not configured");
     }
 
+    // Fetch past corrections to inject as learning context
+    let correctionsContext = "";
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const res = await fetch(`${supabaseUrl}/rest/v1/invoice_corrections?order=created_at.desc&limit=50`, {
+        headers: {
+          "apikey": supabaseKey,
+          "Authorization": `Bearer ${supabaseKey}`,
+        },
+      });
+      if (res.ok) {
+        const corrections = await res.json();
+        if (corrections.length > 0) {
+          const lines = corrections.map((c: any) =>
+            `- Field "${c.field_name}": AI extracted "${c.original_value}" but correct value was "${c.corrected_value}"${c.context ? ` (context: ${c.context})` : ""}`
+          ).join("\n");
+          correctionsContext = `\n\nLEARNING FROM PAST MISTAKES — Apply these corrections patterns:\n${lines}\n`;
+        }
+      }
+    } catch (e) {
+      console.error("Failed to fetch corrections:", e);
+    }
+
     // Build the image content based on what was provided
     let imageContent;
     if (imageBase64) {
@@ -95,7 +119,7 @@ Return a JSON object with ONLY these fields:
   "currency": "USD/ILS/EUR/GBP/PHP/etc based on detection rules above"
 }
 
-Return ONLY the JSON object, no additional text.`;
+Return ONLY the JSON object, no additional text.${correctionsContext}`;
 
     // Call Oracle Generative AI (OCI) - US Chicago region
     // Using OpenAI-compatible chat completions endpoint with Meta Llama 4 Maverick Vision
