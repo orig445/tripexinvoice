@@ -159,32 +159,15 @@ Return ONLY the JSON object, no additional text.`;
       throw new Error("Failed to parse invoice data from AI response");
     }
 
-    // Post-processing: validate and fix amounts
+    // Post-processing: only swap if tax > subtotal (clearly reversed)
     const total = parsedData.total_amount;
     const sub = parsedData.subtotal;
     const tax = parsedData.tax_amount;
 
-    if (total != null && sub != null && tax != null) {
-      // If tax > subtotal, they are swapped — fix it
-      if (tax > sub) {
-        console.log(`Swapping tax (${tax}) and subtotal (${sub}) — tax was larger`);
-        parsedData.subtotal = tax;
-        parsedData.tax_amount = sub;
-      }
-      // After potential swap, check math: subtotal + tax ≈ total
-      const correctedSub = parsedData.subtotal;
-      const correctedTax = parsedData.tax_amount;
-      const sum = correctedSub + correctedTax;
-      const diff = Math.abs(sum - total);
-      const tolerance = total * 0.05;
-      if (diff > tolerance) {
-        console.log(`Math mismatch: ${correctedSub} + ${correctedTax} = ${sum}, but total = ${total}. Recalculating tax.`);
-        parsedData.tax_amount = Math.round((total - correctedSub) * 100) / 100;
-      }
-    } else if (total != null && sub != null && tax == null) {
-      parsedData.tax_amount = Math.round((total - sub) * 100) / 100;
-    } else if (total != null && tax != null && sub == null) {
-      parsedData.subtotal = Math.round((total - tax) * 100) / 100;
+    if (total != null && sub != null && tax != null && tax > sub) {
+      console.log(`Swapping tax (${tax}) and subtotal (${sub}) — tax was larger`);
+      parsedData.subtotal = tax;
+      parsedData.tax_amount = sub;
     }
 
     return new Response(
