@@ -78,17 +78,35 @@ serve(async (req) => {
 
     // ── IP-based Geolocation ──
     let userLocation = "";
+    let ipTimezone = "";
+    let ipLocalTime = "";
     try {
       const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
         || req.headers.get("cf-connecting-ip")
         || req.headers.get("x-real-ip")
         || "";
       if (clientIp && clientIp !== "127.0.0.1" && clientIp !== "::1") {
-        const geoRes = await fetch(`http://ip-api.com/json/${clientIp}?fields=status,country,city,regionName,lat,lon&lang=he`);
+        const geoRes = await fetch(`http://ip-api.com/json/${clientIp}?fields=status,country,city,regionName,timezone,lat,lon&lang=he`);
         if (geoRes.ok) {
           const geo = await geoRes.json();
           if (geo.status === "success") {
             userLocation = `${geo.city || ""}, ${geo.regionName || ""}, ${geo.country || ""}`.replace(/, ,/g, ",").replace(/^, |, $/g, "");
+            ipTimezone = geo.timezone || "";
+            // Calculate local time at the user's IP location
+            if (ipTimezone) {
+              try {
+                const now = new Date();
+                ipLocalTime = now.toLocaleString("he-IL", {
+                  timeZone: ipTimezone,
+                  weekday: "long",
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+              } catch {}
+            }
           }
         }
       }
@@ -362,9 +380,11 @@ If the conversation history shows a pending expense summary or scanned invoice s
 ## Output format (ONLY this JSON, nothing else):
 {"intent": "<intent>", "text": "<your detailed, friendly answer>"}
 
-Current date & time: ${userDate || "unknown"} ${userTime || ""} (${userTimezone || "unknown timezone"})
-User's browser timezone: ${userTimezone || "unknown"} (THIS IS THE AUTHORITATIVE SOURCE for the user's location and time — trust this over IP geolocation)
-IP-based geolocation hint: ${userLocation || "unknown"} (NOTE: This may be inaccurate due to VPN, proxy, or CDN. Use ONLY as a supplementary hint, NOT as the primary location. If it conflicts with the browser timezone, IGNORE the IP location and use the timezone instead.)
+User's ACTUAL location (from IP): ${userLocation || "unknown"}
+User's ACTUAL local time at their location: ${ipLocalTime || `${userDate || "unknown"} ${userTime || ""}`}
+User's ACTUAL timezone: ${ipTimezone || userTimezone || "unknown"}
+Browser-reported time (may differ if user traveled): ${userDate || "unknown"} ${userTime || ""} (${userTimezone || "unknown"})
+IMPORTANT: When the user asks "what time is it" or "where am I", use the IP-based location and time above — this reflects where they PHYSICALLY are right now.
 Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}${knowledgeContext}`;
 
     const messages = [
