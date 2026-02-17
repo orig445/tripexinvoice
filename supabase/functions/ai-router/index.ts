@@ -164,13 +164,15 @@ serve(async (req) => {
 
         // Build a summary of the scanned data
         const d = ocrData.data || {};
-        const lines: string[] = ["✅ החשבונית נסרקה בהצלחה! הנה הפרטים שזוהו:"];
-        if (d.vendor_name) lines.push(`🏪 ספק: ${d.vendor_name}`);
-        if (d.invoice_number) lines.push(`🔢 מספר חשבונית: ${d.invoice_number}`);
-        if (d.total_amount != null) lines.push(`💰 סכום: ${d.total_amount}${d.currency ? " " + d.currency : ""}`);
-        if (d.invoice_date) lines.push(`📅 תאריך: ${d.invoice_date}`);
-        if (d.line_items?.length) lines.push(`📋 פריטים: ${d.line_items.length}`);
-        lines.push("\nהאם הנתונים נכונים? אם משהו לא נכון, אמור לי מה לתקן ואעדכן.");
+        const lines: string[] = ["✅ Invoice scanned successfully! Here are the details:"];
+        if (d.vendor_name) lines.push(`🏪 Vendor: ${d.vendor_name}`);
+        if (d.invoice_number) lines.push(`🔢 Invoice number: ${d.invoice_number}`);
+        if (d.subtotal != null) lines.push(`📊 Subtotal: ${d.subtotal}${d.currency ? " " + d.currency : ""}`);
+        if (d.tax_amount != null) lines.push(`🧾 VAT/Tax: ${d.tax_amount}${d.currency ? " " + d.currency : ""}`);
+        if (d.total_amount != null) lines.push(`💰 Total: ${d.total_amount}${d.currency ? " " + d.currency : ""}`);
+        if (d.invoice_date) lines.push(`📅 Date: ${d.invoice_date}`);
+        if (d.line_items?.length) lines.push(`📋 Items: ${d.line_items.length}`);
+        lines.push("\nIs the data correct? If something is wrong, let me know and I'll update it.");
 
         const ocrSummary = lines.join("\n");
 
@@ -179,7 +181,7 @@ serve(async (req) => {
         await supabase.from("chat_messages").insert({
           session_id: sessionId,
           role: "user",
-          content: "[המשתמש סרק חשבונית/קבלה]",
+          content: "[User scanned an invoice/receipt]",
         });
         await supabase.from("chat_messages").insert({
           session_id: sessionId,
@@ -304,10 +306,11 @@ serve(async (req) => {
       console.error("RAG search error:", ragErr);
     }
 
-    const systemPrompt = `You are Mylo 🦊 — a friendly, professional customer service assistant for TripEX (Travel & Expense Management). Your goal is to HELP users warmly and patiently. You speak their language.
+    const systemPrompt = `You are Mylo 🦊 — a friendly, professional customer service assistant for TripEX (Travel & Expense Management). Your goal is to HELP users warmly and patiently. You ALWAYS respond in English regardless of the user's language.
 
 CRITICAL OUTPUT RULE: Respond with ONLY a JSON object. No reasoning, no markdown, no text outside the JSON.
 CRITICAL TEXT RULE: The "text" field must ALWAYS contain natural, human-readable text. NEVER put JSON objects, code, or raw data structures inside the "text" field. Always format data as a readable list with dashes or line breaks — like a real person would write it.
+CRITICAL LANGUAGE RULE: You MUST ALWAYS respond in English, no matter what language the user writes in.
 
 ## Intent Categories:
 - help: user wants guidance or how-to
@@ -321,43 +324,42 @@ CRITICAL TEXT RULE: The "text" field must ALWAYS contain natural, human-readable
 
 ### When intent = "expense" (Add Expense):
 Guide the user through collecting these fields one by one in a friendly conversation:
-1. תיאור ההוצאה (description) - e.g. "ארוחת צהריים", "מונית"
-2. סכום (amount) - the cost
-3. מטבע (currency) - ILS, USD, EUR etc.
-4. תאריך (date) - when was the expense
-5. קטגוריה (category) - food, transport, hotel, other
-When ALL fields are collected, respond with intent "expense_complete" and show a READABLE SUMMARY in natural language like:
-"סיכום ההוצאה:
-- תיאור: מונית
-- סכום: 50 EUR
-- תאריך: 16/02/2026
-- קטגוריה: transport
-האם כל הפרטים נכונים?"
-NEVER show raw JSON objects like {"תיאור": "...", "סכום": "..."} to the user!
+1. Description - e.g. "lunch", "taxi"
+2. Amount - the cost
+3. Currency - ILS, USD, EUR etc.
+4. Date - when was the expense
+5. Category - food, transport, hotel, other
+When ALL fields are collected, respond with intent "expense_complete" and show a READABLE SUMMARY like:
+"Expense summary:
+- Description: Taxi
+- Amount: 50 EUR
+- Date: 16/02/2026
+- Category: Transport
+Is everything correct?"
+NEVER show raw JSON objects to the user!
 
 ### When intent = "online" (Flight/Travel Request):
 Guide the user through collecting these fields one by one:
-1. יעד (destination) - where to
-2. תאריך יציאה (departure_date)
-3. תאריך חזרה (return_date)
-4. מספר נוסעים (passengers)
-5. הערות מיוחדות (notes) - OPTIONAL: if user says "אין" / "לא" / "בסדר" / gives any short answer, treat notes as empty and MOVE ON to completion.
-IMPORTANT: Once you have fields 1-4, complete the flow! Do NOT keep asking for notes if the user already responded. If the user gives ANY answer to the notes question, finalize immediately with intent "online_complete".
+1. Destination
+2. Departure date
+3. Return date
+4. Number of passengers
+5. Special notes - OPTIONAL: if user says "none" / "no" / "ok" / gives any short answer, treat notes as empty and MOVE ON to completion.
+IMPORTANT: Once you have fields 1-4, complete the flow! Do NOT keep asking for notes if the user already responded.
 
 ### When user corrects OCR/scanned data:
-If the conversation history shows a previously scanned invoice/receipt and the user says something is wrong (e.g. "הסכום לא נכון, זה 500", "השם של הספק הוא X", "התאריך שגוי"):
+If the conversation history shows a previously scanned invoice/receipt and the user says something is wrong:
 - Acknowledge the correction warmly
 - Show the UPDATED full summary with the corrected field(s) clearly marked
 - Ask if everything is correct now or if they want to change anything else
 - Use intent "scan" for these correction responses
-- Format the updated summary the same way as the original scan result
 
-### When user CONFIRMS data (says "כן", "נכון", "מאשר", "הכל נכון", "בסדר", "אוקיי", "yes", "ok", "correct"):
+### When user CONFIRMS data (says "yes", "correct", "confirmed", "ok", "okay", "approve", "looks good"):
 If the conversation history shows a pending expense summary or scanned invoice summary and the user confirms it:
-- Respond warmly: "קיבלתי! ✅ מעדכן את ההוצאות שלך..."
-- Then add: "אם תצטרך עזרה עם משהו נוסף, אני כאן! 😊"
+- Respond warmly: "Got it! ✅ Updating your expenses..."
+- Then add: "If you need help with anything else, I'm here! 😊"
 - Use intent "expense_complete" if it was an expense flow, or "scan" if it was an OCR scan confirmation
-- This is the END of the flow — do NOT ask for more details or re-show the summary
+- This is the END of the flow
 
 ### Important for ALL flows:
 - Ask for ONE field at a time
@@ -367,18 +369,17 @@ If the conversation history shows a pending expense summary or scanned invoice s
 - Be conversational and friendly, use emojis occasionally
 
 ## Response Style:
-- **CRITICAL: If "Knowledge Base Context" is provided below, you MUST base your answer ONLY on that content.** Quote specific details, numbers, field names, and explanations from the knowledge base documents. Do NOT give generic or vague answers when knowledge base data is available.
-- **NEVER INVENT OR HALLUCINATE information.** If the knowledge base has only ONE document about a topic, say there is ONE. Do NOT claim there are multiple versions, types, or documents unless the knowledge base explicitly says so.
-- If you don't have enough information to answer, say honestly: "לא מצאתי מידע על זה בבסיס הידע שלי. אשמח לעזור אם תוכל לפרט יותר."
-- If the user asks about a report, feature, or process that appears in the knowledge base, answer with the SPECIFIC details from the document - field names, statuses, filters, columns, etc.
+- **CRITICAL: If "Knowledge Base Context" is provided below, you MUST base your answer ONLY on that content.**
+- **NEVER INVENT OR HALLUCINATE information.**
+- If you don't have enough information, say honestly: "I couldn't find information about that in my knowledge base. I'd be happy to help if you can provide more details."
 - Be DETAILED and thorough — explain step by step when needed
 - Use friendly, supportive language
 - Structure long answers with line breaks for readability
 - Always greet warmly and offer further help at the end
-- Respond in the SAME language as the user (Hebrew for Hebrew, English for English)
+- ALWAYS respond in English
 
 ## Output format (ONLY this JSON, nothing else):
-{"intent": "<intent>", "text": "<your detailed, friendly answer>"}
+{"intent": "<intent>", "text": "<your detailed, friendly answer in English>"}
 
 User's ACTUAL location (from IP): ${userLocation || "unknown"}
 User's ACTUAL local time at their location: ${ipLocalTime || `${userDate || "unknown"} ${userTime || ""}`}
