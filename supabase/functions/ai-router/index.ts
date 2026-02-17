@@ -500,6 +500,65 @@ Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}
     const mapping = ACTION_MAPPING[intent] || ACTION_MAPPING.general;
     const finalText = responseText;
 
+    // ── Save corrections for AI learning (when user corrects OCR data) ──
+    try {
+      // Check if this is a scan correction by looking for scanned_data in recent history
+      if (intent === "scan") {
+        const { data: recentMsgs } = await supabase
+          .from("chat_messages")
+          .select("metadata, content")
+          .eq("session_id", sessionId)
+          .eq("role", "assistant")
+          .order("created_at", { ascending: false })
+          .limit(5);
+
+        // Find the original scanned data
+        const scanMsg = recentMsgs?.find((m: any) => m.metadata?.scanned_data);
+        if (scanMsg?.metadata?.scanned_data) {
+          const original = scanMsg.metadata.scanned_data;
+          // Parse the corrected values from the AI's response text
+          const corrections: Array<{ user_id: string; field_name: string; original_value: string; corrected_value: string; context?: string }> = [];
+          const ctx = original.vendor_name || original.invoice_number || undefined;
+
+          // Extract corrected amounts from the response
+          const totalMatch = finalText.match(/(?:Total|סה"כ)[:\s]*([0-9,.]+)/i);
+          if (totalMatch && original.total_amount != null && parseFloat(totalMatch[1].replace(",", "")) !== original.total_amount) {
+            corrections.push({ user_id: user.id, field_name: "total_amount", original_value: String(original.total_amount), corrected_value: totalMatch[1].replace(",", ""), context: ctx });
+          }
+          const subtotalMatch = finalText.match(/(?:Subtotal|לפני מע"מ)[:\s]*([0-9,.]+)/i);
+          if (subtotalMatch && original.subtotal != null && parseFloat(subtotalMatch[1].replace(",", "")) !== original.subtotal) {
+            corrections.push({ user_id: user.id, field_name: "subtotal", original_value: String(original.subtotal), corrected_value: subtotalMatch[1].replace(",", ""), context: ctx });
+          }
+          const taxMatch = finalText.match(/(?:VAT|Tax|מע"מ)[:\s]*([0-9,.]+)/i);
+          if (taxMatch && original.tax_amount != null && parseFloat(taxMatch[1].replace(",", "")) !== original.tax_amount) {
+            corrections.push({ user_id: user.id, field_name: "tax_amount", original_value: String(original.tax_amount), corrected_value: taxMatch[1].replace(",", ""), context: ctx });
+          }
+          const invoiceNumMatch = finalText.match(/(?:Invoice number|מספר)[:\s]*([^\n,]+)/i);
+          if (invoiceNumMatch && original.invoice_number && invoiceNumMatch[1].trim() !== original.invoice_number) {
+            corrections.push({ user_id: user.id, field_name: "invoice_number", original_value: original.invoice_number, corrected_value: invoiceNumMatch[1].trim(), context: ctx });
+          }
+
+          if (corrections.length > 0) {
+            // Use service role to insert corrections
+            const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+            const res = await fetch(`${supabaseUrl}/rest/v1/invoice_corrections`, {
+              method: "POST",
+              headers: {
+                "apikey": serviceKey,
+                "Authorization": `Bearer ${serviceKey}`,
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal",
+              },
+              body: JSON.stringify(corrections),
+            });
+            console.log(`Saved ${corrections.length} chatbot correction(s), status: ${res.status}`);
+          }
+        }
+      }
+    } catch (corrErr) {
+      console.error("Failed to save chatbot corrections:", corrErr);
+    }
+
     // Save assistant message
     await supabase.from("chat_messages").insert({
       session_id: sessionId,
