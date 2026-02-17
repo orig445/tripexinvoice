@@ -30,6 +30,34 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
     setIsDragging(false);
   }, []);
 
+  const compressToJpeg = (file: File, maxWidth = 1600, quality = 0.8): Promise<{ base64: string; blob: Blob }> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const scale = Math.min(1, maxWidth / img.width);
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("Canvas not supported"));
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const base64 = canvas.toDataURL("image/jpeg", quality);
+        canvas.toBlob(
+          (blob) => {
+            if (blob) resolve({ base64, blob });
+            else reject(new Error("Failed to compress"));
+          },
+          "image/jpeg",
+          quality
+        );
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Failed to load image")); };
+      img.src = url;
+    });
+  };
+
   const processFile = async (file: File) => {
     if (!file.type.startsWith("image/")) {
       toast.error("Please upload an image file only");
@@ -40,21 +68,15 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
     setStatus("uploading");
 
     try {
-      const previewUrl = URL.createObjectURL(file);
+      // Convert to JPEG (handles HEIC and other formats Oracle doesn't support)
+      const { base64, blob } = await compressToJpeg(file);
+      const previewUrl = URL.createObjectURL(blob);
       setPreviewUrl(previewUrl);
 
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-      });
-      reader.readAsDataURL(file);
-      const base64 = await base64Promise;
-
-      const fileName = `${Date.now()}-${file.name}`;
+      const fileName = `${Date.now()}-image.jpg`;
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from("invoices")
-        .upload(fileName, file);
+        .upload(fileName, blob, { contentType: "image/jpeg" });
 
       if (uploadError) {
         console.error("Upload error:", uploadError);
