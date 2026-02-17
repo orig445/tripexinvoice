@@ -44,24 +44,35 @@ For Hebrew documents, look for: "מספר קבלה", "אסמכתא", "מס' חש
 Do NOT confuse the document number with a business registration number (e.g. ח.פ. / עוסק מורשה).
 
 CRITICAL - Amount Extraction Rules:
-1. "total_amount" = the FINAL total the customer must pay (after tax). Look for: Total, Grand Total, Amount Due, Amount Payable, סה"כ לתשלום, סה"כ כולל מע"מ.
+1. "total_amount" = the FINAL total the customer must pay. Look for these labels IN THIS PRIORITY ORDER:
+   - "AMOUNT DUE" (highest priority - this is ALWAYS the total)
+   - "Total Amount" / "Total"
+   - "Grand Total"
+   - "Amount Payable"
+   - "סה"כ לתשלום" / "סה"כ כולל מע"מ"
 2. "subtotal" = the amount BEFORE tax. Look for: Subtotal, Net Amount, סה"כ לפני מע"מ.
 3. "tax_amount" = the VAT / tax amount. Look for: VAT, Tax, מע"מ, GST.
+
+IMPORTANT - Fields to IGNORE (do NOT use these as total_amount):
+- "Cash" / "Cash Received" / "Cash Tendered" - this is the payment given by the customer, NOT the total
+- "Change" / "Change Due" - this is change returned to the customer
+- Any field showing payment method or tendered amount
+
 - If only one amount exists, treat it as total_amount.
-- If "Amount Payable" and "Total" both exist, use "Amount Payable" as total_amount.
+- If "Amount Due" and "Total" both exist, use "Amount Due" as total_amount.
 
 CRITICAL - Currency Detection Rules (in order of priority):
 1. Look for EXPLICIT currency codes printed on the invoice (PHP, USD, ILS, EUR, GBP, THB, JPY, etc.) — use that code exactly.
 2. Look for currency SYMBOLS: ₪=ILS, $=USD, €=EUR, £=GBP, ₱=PHP, ¥=JPY/CNY, ฿=THB, ₩=KRW, etc.
 3. ONLY as a last resort, infer from language: Hebrew→ILS, English→USD, etc.
-- NEVER default to ILS just because the text is in Hebrew. The invoice might be from another country!
+- NEVER default to ILS just because the text is in Hebrew.
 - Always read what is ACTUALLY printed on the document.
 
 Return a JSON object with ONLY these fields:
 {
   "invoice_number": "string - the document/receipt number, NOT the business ID",
   "invoice_date": "YYYY-MM-DD or null",
-  "total_amount": number or null (final amount to pay, including tax),
+  "total_amount": number or null (AMOUNT DUE / Total - the final amount to pay),
   "subtotal": number or null (amount before tax),
   "tax_amount": number or null (VAT/tax amount),
   "currency": "USD/ILS/EUR/GBP/PHP/etc based on detection rules above"
