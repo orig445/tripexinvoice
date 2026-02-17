@@ -37,18 +37,15 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
-      // Extract base64 part after the data URI prefix
       const base64 = result.split(",")[1];
       if (base64) onImageCapture(base64);
     };
     reader.readAsDataURL(file);
-    // Reset so same file can be re-selected
     e.target.value = "";
   };
 
   return (
     <div className="flex items-end gap-1.5 p-3 border-t bg-background">
-      {/* Camera button (mobile capture) */}
       <Button
         type="button"
         variant="ghost"
@@ -56,7 +53,7 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
         className="h-9 w-9 flex-shrink-0 text-muted-foreground hover:text-primary"
         onClick={() => cameraRef.current?.click()}
         disabled={isLoading}
-        title="צלם חשבונית"
+        title="Capture invoice"
       >
         <Camera className="h-4 w-4" />
       </Button>
@@ -69,7 +66,6 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
         onChange={handleFileChange}
       />
 
-      {/* Gallery/file button */}
       <Button
         type="button"
         variant="ghost"
@@ -77,7 +73,7 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
         className="h-9 w-9 flex-shrink-0 text-muted-foreground hover:text-primary"
         onClick={() => fileRef.current?.click()}
         disabled={isLoading}
-        title="בחר מגלריה"
+        title="Choose from gallery"
       >
         <Paperclip className="h-4 w-4" />
       </Button>
@@ -94,7 +90,7 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="כתוב הודעה..."
+        placeholder="Type a message..."
         rows={1}
         className="flex-1 resize-none rounded-xl border bg-muted/50 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary min-h-[36px] max-h-[100px]"
         disabled={isLoading}

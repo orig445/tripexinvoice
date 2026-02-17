@@ -32,7 +32,7 @@ export function Header() {
             <h1 className="text-xl font-bold tracking-tight">
               <span className="text-gradient-primary">Tripex</span>
             </h1>
-            <p className="text-xs text-muted-foreground -mt-0.5">ניהול חשבוניות חכם</p>
+            <p className="text-xs text-muted-foreground -mt-0.5">Smart Invoice Management</p>
           </div>
         </div>
 
@@ -48,7 +48,7 @@ export function Header() {
                 {isAdmin && (
                   <Badge variant="secondary" className="gap-1 hidden sm:flex">
                     <Shield className="h-3 w-3" />
-                    מנהל
+                    Admin
                   </Badge>
                 )}
               </Button>
@@ -57,24 +57,24 @@ export function Header() {
               <div className="px-2 py-1.5">
                 <p className="text-sm font-medium">{user.email}</p>
                 <p className="text-xs text-muted-foreground">
-                  {role === "admin" ? "מנהל מערכת" : "משתמש"}
+                  {role === "admin" ? "Administrator" : "User"}
                 </p>
               </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="gap-2">
                 <User className="h-4 w-4" />
-                פרופיל
+                Profile
               </DropdownMenuItem>
               {isAdmin && (
                 <DropdownMenuItem className="gap-2" onClick={() => navigate("/admin/chatbot")}>
                   <Bot className="h-4 w-4" />
-                  פאנל צ'אטבוט
+                  Chatbot Panel
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={signOut} className="gap-2 text-destructive">
                 <LogOut className="h-4 w-4" />
-                התנתקות
+                Sign Out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

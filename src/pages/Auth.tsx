@@ -14,11 +14,9 @@ const Auth = () => {
   const { signIn, signUp } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
 
-  // Login form state
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
 
-  // Signup form state
   const [signupEmail, setSignupEmail] = useState("");
   const [signupPassword, setSignupPassword] = useState("");
   const [signupName, setSignupName] = useState("");
@@ -30,9 +28,9 @@ const Auth = () => {
     const { error } = await signIn(loginEmail, loginPassword);
 
     if (error) {
-      toast.error("שגיאה בהתחברות: " + error.message);
+      toast.error("Login error: " + error.message);
     } else {
-      toast.success("התחברת בהצלחה!");
+      toast.success("Logged in successfully!");
       navigate("/");
     }
 
@@ -44,7 +42,7 @@ const Auth = () => {
     setIsLoading(true);
 
     if (signupPassword.length < 6) {
-      toast.error("הסיסמה חייבת להכיל לפחות 6 תווים");
+      toast.error("Password must be at least 6 characters");
       setIsLoading(false);
       return;
     }
@@ -52,9 +50,9 @@ const Auth = () => {
     const { error } = await signUp(signupEmail, signupPassword, signupName);
 
     if (error) {
-      toast.error("שגיאה בהרשמה: " + error.message);
+      toast.error("Signup error: " + error.message);
     } else {
-      toast.success("נרשמת בהצלחה! מתחבר...");
+      toast.success("Signed up successfully!");
       navigate("/");
     }
 
@@ -62,7 +60,7 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-hero flex items-center justify-center p-4" dir="rtl">
+    <div className="min-h-screen bg-gradient-hero flex items-center justify-center p-4" dir="ltr">
       <Card className="w-full max-w-md shadow-xl">
         <CardHeader className="text-center pb-2">
           <div className="flex justify-center mb-4">
@@ -70,8 +68,8 @@ const Auth = () => {
               <FileText className="h-10 w-10 text-primary" />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold">Tripax Invoice</CardTitle>
-          <CardDescription>מערכת ניהול חשבוניות חכמה</CardDescription>
+          <CardTitle className="text-2xl font-bold">Tripex Invoice</CardTitle>
+          <CardDescription>Smart Invoice Management System</CardDescription>
         </CardHeader>
 
         <CardContent>
@@ -79,18 +77,18 @@ const Auth = () => {
             <TabsList className="grid w-full grid-cols-2 mb-6">
               <TabsTrigger value="login" className="gap-2">
                 <LogIn className="h-4 w-4" />
-                התחברות
+                Login
               </TabsTrigger>
               <TabsTrigger value="signup" className="gap-2">
                 <UserPlus className="h-4 w-4" />
-                הרשמה
+                Sign Up
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value="login">
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="login-email">אימייל</Label>
+                  <Label htmlFor="login-email">Email</Label>
                   <Input
                     id="login-email"
                     type="email"
@@ -98,11 +96,10 @@ const Auth = () => {
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
                     required
-                    dir="ltr"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="login-password">סיסמה</Label>
+                  <Label htmlFor="login-password">Password</Label>
                   <Input
                     id="login-password"
                     type="password"
@@ -110,19 +107,18 @@ const Auth = () => {
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
                     required
-                    dir="ltr"
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? (
                     <>
-                      <Loader2 className="h-4 w-4 animate-spin ml-2" />
-                      מתחבר...
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Logging in...
                     </>
                   ) : (
                     <>
-                      <LogIn className="h-4 w-4 ml-2" />
-                      התחבר
+                      <LogIn className="h-4 w-4 mr-2" />
+                      Login
                     </>
                   )}
                 </Button>
@@ -132,17 +128,17 @@ const Auth = () => {
             <TabsContent value="signup">
               <form onSubmit={handleSignup} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="signup-name">שם מלא</Label>
+                  <Label htmlFor="signup-name">Full Name</Label>
                   <Input
                     id="signup-name"
                     type="text"
-                    placeholder="ישראל ישראלי"
+                    placeholder="John Doe"
                     value={signupName}
                     onChange={(e) => setSignupName(e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="signup-email">אימייל</Label>
+                  <Label htmlFor="signup-email">Email</Label>
                   <Input
                     id="signup-email"
                     type="email"
@@ -150,32 +146,30 @@ const Auth = () => {
                     value={signupEmail}
                     onChange={(e) => setSignupEmail(e.target.value)}
                     required
-                    dir="ltr"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="signup-password">סיסמה</Label>
+                  <Label htmlFor="signup-password">Password</Label>
                   <Input
                     id="signup-password"
                     type="password"
-                    placeholder="לפחות 6 תווים"
+                    placeholder="At least 6 characters"
                     value={signupPassword}
                     onChange={(e) => setSignupPassword(e.target.value)}
                     required
                     minLength={6}
-                    dir="ltr"
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? (
                     <>
-                      <Loader2 className="h-4 w-4 animate-spin ml-2" />
-                      נרשם...
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Signing up...
                     </>
                   ) : (
                     <>
-                      <UserPlus className="h-4 w-4 ml-2" />
-                      הרשמה
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Sign Up
                     </>
                   )}
                 </Button>

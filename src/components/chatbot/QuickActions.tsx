@@ -7,10 +7,10 @@ interface QuickActionsProps {
 
 export function QuickActions({ onAction }: QuickActionsProps) {
   const actions = [
-    { icon: Camera, label: "סרוק קבלה", text: "סרוק לי קבלה" },
-    { icon: Receipt, label: "הוסף הוצאה", text: "תוסיף הוצאה" },
-    { icon: Plane, label: "בקשת נסיעה", text: "פתח לי בקשת נסיעה" },
-    { icon: HelpCircle, label: "עזרה", text: "אני צריך עזרה" },
+    { icon: Camera, label: "Scan Receipt", text: "Scan a receipt for me" },
+    { icon: Receipt, label: "Add Expense", text: "Add an expense" },
+    { icon: Plane, label: "Travel Request", text: "Open a travel request" },
+    { icon: HelpCircle, label: "Help", text: "I need help" },
   ];
 
   return (

@@ -45,15 +45,15 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
         break;
       case "Redirect":
         if (data?.redirectPage === "help") {
-          sendMessage("אני צריך עזרה");
+          sendMessage("I need help");
         } else if (data?.redirectPage === "booking") {
-          sendMessage("אני רוצה להגיש בקשת נסיעה");
+          sendMessage("I want to submit a travel request");
         } else {
           window.location.href = data?.redirectPage ? `/${data.redirectPage}` : "/";
         }
         break;
       case "AddExpense":
-        sendMessage("אני רוצה להוסיף הוצאה");
+        sendMessage("I want to add an expense");
         break;
       case "DisplayResults":
         break;
@@ -61,7 +61,7 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
   };
 
   const botName = config?.bot_name || "Mylo AI";
-  const welcomeMsg = config?.welcome_message || "שלום! אני מיילו 🦊 איך אוכל לעזור לך היום?";
+  const welcomeMsg = config?.welcome_message || "Hello! I'm Mylo 🦊 How can I help you today?";
 
   return (
     <div className="flex flex-col w-[360px] h-[500px] sm:w-[380px] sm:h-[520px] bg-background rounded-2xl shadow-xl border overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
@@ -73,7 +73,7 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
           </div>
           <div>
             <h3 className="text-sm font-semibold">{botName}</h3>
-            <p className="text-[10px] opacity-80">מחובר</p>
+            <p className="text-[10px] opacity-80">Online</p>
           </div>
         </div>
         <div className="flex gap-1">
@@ -97,8 +97,7 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
       </div>
 
       {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3" dir="rtl">
-        {/* Welcome message with Mylo */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
         {messages.length === 0 && (
           <div className="flex flex-col items-center py-4 gap-3">
             <div className="relative">
@@ -120,7 +119,6 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
           <ChatMessage key={msg.id} message={msg} onAction={handleAction} />
         ))}
 
-        {/* Loading state with thinking Mylo */}
         {isLoading && (
           <div className="flex gap-2.5">
             <div className="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border border-primary/20">
@@ -137,10 +135,8 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
         )}
       </div>
 
-      {/* Quick actions when no messages */}
       {messages.length === 0 && <QuickActions onAction={(text) => sendMessage(text)} />}
 
-      {/* Input */}
       <ChatInput onSend={sendMessage} onImageCapture={sendImage} isLoading={isLoading} />
       <input
         ref={cameraInputRef}

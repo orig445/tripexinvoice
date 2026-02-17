@@ -1,7 +1,6 @@
 import { useState, useMemo } from "react";
 import { format, parseISO } from "date-fns";
-import { he } from "date-fns/locale";
-import { ChevronDown, ChevronLeft, Folder, FolderOpen, FileText } from "lucide-react";
+import { ChevronDown, ChevronRight, Folder, FolderOpen, FileText } from "lucide-react";
 import { InvoiceCard } from "./InvoiceCard";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -34,12 +33,10 @@ export function InvoiceList({ invoices, onView, onDelete }: InvoiceListProps) {
   const [expandedYears, setExpandedYears] = useState<Set<string>>(new Set());
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
 
-  // Group invoices by year and month based on invoice_date
   const groupedInvoices = useMemo(() => {
     const groups: GroupedInvoices = {};
     
     invoices.forEach((invoice) => {
-      // Use invoice_date if available, otherwise fall back to created_at
       const dateStr = invoice.invoice_date || invoice.created_at;
       let date: Date;
       
@@ -64,12 +61,10 @@ export function InvoiceList({ invoices, onView, onDelete }: InvoiceListProps) {
     return groups;
   }, [invoices]);
 
-  // Get sorted years (descending - newest first)
   const sortedYears = useMemo(() => {
     return Object.keys(groupedInvoices).sort((a, b) => parseInt(b) - parseInt(a));
   }, [groupedInvoices]);
 
-  // Auto-expand current year and month on mount
   useMemo(() => {
     if (sortedYears.length > 0 && expandedYears.size === 0) {
       const currentYear = sortedYears[0];
@@ -105,16 +100,15 @@ export function InvoiceList({ invoices, onView, onDelete }: InvoiceListProps) {
 
   const getMonthName = (month: string) => {
     const date = new Date(2024, parseInt(month) - 1, 1);
-    return format(date, "MMMM", { locale: he });
+    return format(date, "MMMM");
   };
 
-  // Group totals by currency for a year
   const getYearTotalsByCurrency = (year: string) => {
     const totals: Record<string, number> = {};
     const yearData = groupedInvoices[year];
     Object.values(yearData).forEach((monthInvoices) => {
       monthInvoices.forEach((inv) => {
-        const currency = inv.currency || "ILS";
+        const currency = inv.currency || "USD";
         const amount = inv.total_amount ?? inv.subtotal ?? 0;
         totals[currency] = (totals[currency] || 0) + amount;
       });
@@ -122,11 +116,10 @@ export function InvoiceList({ invoices, onView, onDelete }: InvoiceListProps) {
     return totals;
   };
 
-  // Group totals by currency for a month
   const getMonthTotalsByCurrency = (year: string, month: string) => {
     const totals: Record<string, number> = {};
     groupedInvoices[year][month].forEach((inv) => {
-      const currency = inv.currency || "ILS";
+      const currency = inv.currency || "USD";
       const amount = inv.total_amount ?? inv.subtotal ?? 0;
       totals[currency] = (totals[currency] || 0) + amount;
     });
@@ -134,7 +127,7 @@ export function InvoiceList({ invoices, onView, onDelete }: InvoiceListProps) {
   };
 
   const formatCurrencyAmount = (amount: number, currency: string) => {
-    return new Intl.NumberFormat("he-IL", {
+    return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: currency,
       maximumFractionDigits: 0,
@@ -153,8 +146,8 @@ export function InvoiceList({ invoices, onView, onDelete }: InvoiceListProps) {
         <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-muted flex items-center justify-center">
           <FileText className="h-10 w-10 text-muted-foreground" />
         </div>
-        <h3 className="text-lg font-medium mb-2">אין חשבוניות עדיין</h3>
-        <p className="text-muted-foreground">העלה חשבונית ראשונה כדי להתחיל</p>
+        <h3 className="text-lg font-medium mb-2">No invoices yet</h3>
+        <p className="text-muted-foreground">Upload your first invoice to get started</p>
       </div>
     );
   }
@@ -170,7 +163,6 @@ export function InvoiceList({ invoices, onView, onDelete }: InvoiceListProps) {
 
         return (
           <div key={year} className="border rounded-xl overflow-hidden bg-card">
-            {/* Year Header */}
             <Button
               variant="ghost"
               className="w-full justify-between px-4 py-4 h-auto hover:bg-accent/50"
@@ -180,7 +172,7 @@ export function InvoiceList({ invoices, onView, onDelete }: InvoiceListProps) {
                 {isYearExpanded ? (
                   <ChevronDown className="h-5 w-5 text-muted-foreground" />
                 ) : (
-                  <ChevronLeft className="h-5 w-5 text-muted-foreground" />
+                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
                 )}
                 {isYearExpanded ? (
                   <FolderOpen className="h-5 w-5 text-primary" />
@@ -188,8 +180,8 @@ export function InvoiceList({ invoices, onView, onDelete }: InvoiceListProps) {
                   <Folder className="h-5 w-5 text-primary" />
                 )}
                 <span className="text-lg font-semibold">{year}</span>
-                <Badge variant="secondary" className="mr-2">
-                  {yearInvoiceCount} חשבוניות
+                <Badge variant="secondary" className="ml-2">
+                  {yearInvoiceCount} invoices
                 </Badge>
               </div>
               <span className="text-sm font-medium text-muted-foreground">
@@ -197,7 +189,6 @@ export function InvoiceList({ invoices, onView, onDelete }: InvoiceListProps) {
               </span>
             </Button>
 
-            {/* Months */}
             {isYearExpanded && (
               <div className="border-t">
                 {sortedMonths.map((month) => {
@@ -207,7 +198,6 @@ export function InvoiceList({ invoices, onView, onDelete }: InvoiceListProps) {
 
                   return (
                     <div key={month} className="border-b last:border-b-0">
-                      {/* Month Header */}
                       <Button
                         variant="ghost"
                         className="w-full justify-between px-6 py-3 h-auto hover:bg-accent/30"
@@ -217,7 +207,7 @@ export function InvoiceList({ invoices, onView, onDelete }: InvoiceListProps) {
                           {isMonthExpanded ? (
                             <ChevronDown className="h-4 w-4 text-muted-foreground" />
                           ) : (
-                            <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
                           )}
                           {isMonthExpanded ? (
                             <FolderOpen className="h-4 w-4 text-triplex-amber" />
@@ -225,7 +215,7 @@ export function InvoiceList({ invoices, onView, onDelete }: InvoiceListProps) {
                             <Folder className="h-4 w-4 text-triplex-amber" />
                           )}
                           <span className="font-medium">{getMonthName(month)}</span>
-                          <Badge variant="outline" className="mr-2">
+                          <Badge variant="outline" className="ml-2">
                             {monthInvoices.length}
                           </Badge>
                         </div>
@@ -234,7 +224,6 @@ export function InvoiceList({ invoices, onView, onDelete }: InvoiceListProps) {
                         </span>
                       </Button>
 
-                      {/* Invoices Grid */}
                       {isMonthExpanded && (
                         <div className="p-4 bg-muted/30">
                           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
