@@ -62,6 +62,19 @@ serve(async (req) => {
 
     const systemPrompt = `You are an expert invoice/receipt analyzer. Analyze the image and extract the following information.
 
+CRITICAL - Date Extraction Rules (HIGHEST PRIORITY):
+- Look CAREFULLY for the date PRINTED on the document. Common labels: "Date", "Invoice Date", "תאריך", "Date Issued", "Transaction Date".
+- The date is usually near the top of the receipt, next to the invoice number or time.
+- Read the EXACT digits printed. Do NOT guess or estimate the date.
+- If you see "06/27/2025" → that is MM/DD/YYYY → output "2025-06-27"
+- If you see "27/06/2025" → that is DD/MM/YYYY → output "2025-06-27"
+- If you see "2025-06-27" → output as-is
+- If you see "27 Jun 2025" or "June 27, 2025" → output "2025-06-27"
+- For Hebrew months: ינואר=01, פברואר=02, מרץ=03, אפריל=04, מאי=05, יוני=06, יולי=07, אוגוסט=08, ספטמבר=09, אוקטובר=10, נובמבר=11, דצמבר=12
+- NEVER invent a date. If no date is visible, return null.
+- NEVER use today's date or any default date.
+- Double-check: read the digits on the image one more time before answering.
+
 CRITICAL - Finding the Document Number:
 Look for labels such as: Invoice #, Receipt #, Document #, Reference #, or any prominent number at the top of the document.
 For Hebrew documents, look for: "מספר קבלה", "אסמכתא", "מס' חשבונית", "מספר חשבונית", or "מס'" followed by digits.
