@@ -43,15 +43,30 @@ Look for labels such as: Invoice #, Receipt #, Document #, Reference #, or any p
 For Hebrew documents, look for: "מספר קבלה", "אסמכתא", "מס' חשבונית", "מספר חשבונית", or "מס'" followed by digits.
 Do NOT confuse the document number with a business registration number (e.g. ח.פ. / עוסק מורשה).
 
-CRITICAL - Amount Extraction Rules:
-1. "total_amount" = the FINAL total the customer must pay. Look for these labels IN THIS PRIORITY ORDER:
-   - "AMOUNT DUE" (highest priority - this is ALWAYS the total)
-   - "Total Amount" / "Total"
-   - "Grand Total"
-   - "Amount Payable"
-   - "סה"כ לתשלום" / "סה"כ כולל מע"מ"
-2. "subtotal" = the amount BEFORE tax. Look for: Subtotal, Net Amount, סה"כ לפני מע"מ.
-3. "tax_amount" = the VAT / tax amount. Look for: VAT, Tax, מע"מ, GST.
+CRITICAL - Amount Extraction Rules (FOLLOW THESE STEPS IN ORDER):
+
+STEP 1: Find the TOTAL (the LARGEST monetary amount on the document).
+  Look for these labels IN THIS PRIORITY ORDER:
+  - "AMOUNT DUE" (highest priority - this is ALWAYS the total)
+  - "Total Amount" / "Total"
+  - "Grand Total"
+  - "Amount Payable"
+  - "סה"כ לתשלום" / "סה"כ כולל מע"מ"
+  The total is almost always the BIGGEST number on the invoice.
+
+STEP 2: Find the TAX/VAT (the SMALLEST of the three amounts).
+  Look for: VAT, Tax, מע"מ, GST.
+  The tax/VAT is ALWAYS SMALLER than the subtotal. It is typically 5%-25% of the subtotal.
+  
+STEP 3: Find the SUBTOTAL (the amount BEFORE tax).
+  Look for: Subtotal, Net Amount, סה"כ לפני מע"מ.
+  The subtotal is LARGER than tax but SMALLER than total.
+
+ABSOLUTE RULES - DO NOT VIOLATE:
+- tax_amount is ALWAYS SMALLER than subtotal. If you think tax > subtotal, you have them SWAPPED.
+- subtotal + tax_amount = total_amount (approximately)
+- Do NOT put the subtotal value in the tax_amount field
+- Do NOT put the tax/VAT value in the subtotal field
 
 IMPORTANT - Fields to IGNORE (do NOT use these as total_amount):
 - "Cash" / "Cash Received" / "Cash Tendered" - this is the payment given by the customer, NOT the total
@@ -72,9 +87,9 @@ Return a JSON object with ONLY these fields:
 {
   "invoice_number": "string - the document/receipt number, NOT the business ID",
   "invoice_date": "YYYY-MM-DD or null",
-  "total_amount": number or null (AMOUNT DUE / Total - the final amount to pay),
-  "subtotal": number or null (amount before tax),
-  "tax_amount": number or null (VAT/tax amount),
+  "total_amount": number or null (the LARGEST amount - final amount to pay),
+  "subtotal": number or null (BEFORE tax - must be LARGER than tax_amount),
+  "tax_amount": number or null (VAT/tax - must be SMALLER than subtotal),
   "currency": "USD/ILS/EUR/GBP/PHP/etc based on detection rules above"
 }
 
@@ -142,6 +157,34 @@ Return ONLY the JSON object, no additional text.`;
     } catch (parseError) {
       console.error("Failed to parse AI response:", content);
       throw new Error("Failed to parse invoice data from AI response");
+    }
+
+    // Post-processing: validate and fix amounts
+    const total = parsedData.total_amount;
+    const sub = parsedData.subtotal;
+    const tax = parsedData.tax_amount;
+
+    if (total != null && sub != null && tax != null) {
+      // If tax > subtotal, they are swapped — fix it
+      if (tax > sub) {
+        console.log(`Swapping tax (${tax}) and subtotal (${sub}) — tax was larger`);
+        parsedData.subtotal = tax;
+        parsedData.tax_amount = sub;
+      }
+      // After potential swap, check math: subtotal + tax ≈ total
+      const correctedSub = parsedData.subtotal;
+      const correctedTax = parsedData.tax_amount;
+      const sum = correctedSub + correctedTax;
+      const diff = Math.abs(sum - total);
+      const tolerance = total * 0.05;
+      if (diff > tolerance) {
+        console.log(`Math mismatch: ${correctedSub} + ${correctedTax} = ${sum}, but total = ${total}. Recalculating tax.`);
+        parsedData.tax_amount = Math.round((total - correctedSub) * 100) / 100;
+      }
+    } else if (total != null && sub != null && tax == null) {
+      parsedData.tax_amount = Math.round((total - sub) * 100) / 100;
+    } else if (total != null && tax != null && sub == null) {
+      parsedData.subtotal = Math.round((total - tax) * 100) / 100;
     }
 
     return new Response(
