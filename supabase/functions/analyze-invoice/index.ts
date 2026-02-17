@@ -49,12 +49,12 @@ For Hebrew documents, look for these labels (in order of priority):
 
 For English documents, look for: Invoice #, Receipt #, Document #, Reference #
 
-CRITICAL - Currency Detection Rules:
-- If the invoice is in HEBREW or has ₪ symbol → currency is "ILS"
-- If the invoice is in ENGLISH or has $ symbol → currency is "USD"  
-- If the invoice is in GERMAN/FRENCH/SPANISH or has € symbol → currency is "EUR"
-- If the invoice is in BRITISH ENGLISH or has £ symbol → currency is "GBP"
-- Look for explicit currency codes (USD, EUR, ILS, etc.) on the invoice
+CRITICAL - Currency Detection Rules (in order of priority):
+1. Look for EXPLICIT currency codes printed on the invoice (PHP, USD, ILS, EUR, GBP, THB, JPY, etc.) — use that code exactly
+2. Look for currency SYMBOLS on the invoice: ₪=ILS, $=USD, €=EUR, £=GBP, ₱=PHP, ¥=JPY/CNY, ฿=THB, ₩=KRW, etc.
+3. ONLY as a last resort, infer from language: Hebrew→ILS, English→USD, etc.
+- NEVER default to ILS just because the text is in Hebrew. The invoice might be from another country!
+- Always read what is ACTUALLY printed on the document
 
 Return a JSON object with ONLY these 4 fields:
 {
