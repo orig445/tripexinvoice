@@ -86,19 +86,10 @@ STEP 1: Find the TOTAL — the amount the customer was CHARGED.
 
 STEP 2: Find the TAX/VAT.
   Look for: VAT, Tax, מע"מ, GST.
-  The tax/VAT is ALWAYS SMALLER than the subtotal. It is typically 5%-25% of the subtotal.
-  
-STEP 3: Find the SUBTOTAL (the amount BEFORE tax).
-  Look for: Subtotal, Net Amount, סה"כ לפני מע"מ.
-  The subtotal is LARGER than tax but SMALLER than total.
+  The tax/VAT is ALWAYS SMALLER than the total.
 
 ABSOLUTE RULES - DO NOT VIOLATE:
-- tax_amount is ALWAYS SMALLER than subtotal. If you think tax > subtotal, you have them SWAPPED.
-- subtotal + tax_amount = total_amount (approximately)
-- Do NOT put the subtotal value in the tax_amount field
-- Do NOT put the tax/VAT value in the subtotal field
 - Cash/Change amounts are NEVER the total_amount
-
 - If only one labeled amount exists (excluding Cash/Change), treat it as total_amount.
 - If "Amount Due" and "Total" both exist, use "Amount Due" as total_amount.
 
@@ -106,17 +97,32 @@ CRITICAL - Currency Detection Rules (in order of priority):
 1. Look for EXPLICIT currency codes printed on the invoice (PHP, USD, ILS, EUR, GBP, THB, JPY, etc.) — use that code exactly.
 2. Look for currency SYMBOLS: ₪=ILS, $=USD, €=EUR, £=GBP, ₱=PHP, ¥=JPY/CNY, ฿=THB, ₩=KRW, etc.
 3. ONLY as a last resort, infer from language: Hebrew→ILS, English→USD, etc.
-- NEVER default to ILS just because the text is in Hebrew.
-- Always read what is ACTUALLY printed on the document.
+
+CRITICAL - Category Classification:
+Based on the vendor name, type of business, or items on the receipt, classify into ONE of these categories:
+- "food" — restaurants, cafes, fast food, bakeries, grocery stores, supermarkets
+- "transport" — taxis, uber, gas stations, parking, public transit, airlines
+- "hotel" — hotels, hostels, Airbnb, lodging
+- "office" — office supplies, printing, stationery
+- "telecom" — phone, internet, mobile plans
+- "entertainment" — movies, events, attractions
+- "health" — pharmacy, medical, doctor
+- "shopping" — clothing, electronics, general retail
+- "other" — anything that doesn't fit above
+
+CRITICAL - Item Count:
+Count the number of line items / products on the receipt. If unclear, use 1.
 
 Return a JSON object with ONLY these fields:
 {
   "invoice_number": "string - the document/receipt number, NOT the business ID",
   "invoice_date": "YYYY-MM-DD or null",
-  "total_amount": number or null (AMOUNT DUE / Total — what the customer owes, NOT what they paid in cash),
-  "subtotal": number or null (BEFORE tax - must be LARGER than tax_amount),
-  "tax_amount": number or null (VAT/tax - must be SMALLER than subtotal),
-  "currency": "USD/ILS/EUR/GBP/PHP/etc based on detection rules above"
+  "total_amount": number or null (AMOUNT DUE / Total — what the customer owes),
+  "tax_amount": number or null (VAT/tax amount),
+  "currency": "USD/ILS/EUR/GBP/PHP/etc",
+  "category": "food/transport/hotel/office/telecom/entertainment/health/shopping/other",
+  "item_count": number (how many line items/products),
+  "vendor_name": "string or null"
 }
 
 Return ONLY the JSON object, no additional text.${correctionsContext}`;
@@ -185,16 +191,9 @@ Return ONLY the JSON object, no additional text.${correctionsContext}`;
       throw new Error("Failed to parse invoice data from AI response");
     }
 
-    // Post-processing: only swap if tax > subtotal (clearly reversed)
-    const total = parsedData.total_amount;
-    const sub = parsedData.subtotal;
-    const tax = parsedData.tax_amount;
-
-    if (total != null && sub != null && tax != null && tax > sub) {
-      console.log(`Swapping tax (${tax}) and subtotal (${sub}) — tax was larger`);
-      parsedData.subtotal = tax;
-      parsedData.tax_amount = sub;
-    }
+    // Post-processing: ensure category exists
+    if (!parsedData.category) parsedData.category = "other";
+    if (!parsedData.item_count) parsedData.item_count = 1;
 
     return new Response(
       JSON.stringify({ 
