@@ -36,40 +36,38 @@ serve(async (req) => {
       throw new Error("Either imageBase64 or imageUrl must be provided");
     }
 
-    const systemPrompt = `You are an expert invoice/receipt analyzer. Analyze the image and extract ONLY the essential information.
+    const systemPrompt = `You are an expert invoice/receipt analyzer. Analyze the image and extract the following information.
 
 CRITICAL - Finding the Document Number:
-For Hebrew documents, look for these labels (in order of priority):
-1. "מספר קבלה" (Receipt number)
-2. "אסמכתא" (Reference number)  
-3. "מס' חשבונית" or "מספר חשבונית" (Invoice number)
-4. "מס'" followed by digits
-5. Any prominent number at the top of the document (often starts with digits like 0166, 01, etc.)
-6. Look for numbers near "קבלה" or "חשבונית" text
+Look for labels such as: Invoice #, Receipt #, Document #, Reference #, or any prominent number at the top of the document.
+For Hebrew documents, look for: "מספר קבלה", "אסמכתא", "מס' חשבונית", "מספר חשבונית", or "מס'" followed by digits.
+Do NOT confuse the document number with a business registration number (e.g. ח.פ. / עוסק מורשה).
 
-For English documents, look for: Invoice #, Receipt #, Document #, Reference #
+CRITICAL - Amount Extraction Rules:
+1. "total_amount" = the FINAL total the customer must pay (after tax). Look for: Total, Grand Total, Amount Due, Amount Payable, סה"כ לתשלום, סה"כ כולל מע"מ.
+2. "subtotal" = the amount BEFORE tax. Look for: Subtotal, Net Amount, סה"כ לפני מע"מ.
+3. "tax_amount" = the VAT / tax amount. Look for: VAT, Tax, מע"מ, GST.
+- If only one amount exists, treat it as total_amount.
+- If "Amount Payable" and "Total" both exist, use "Amount Payable" as total_amount.
 
 CRITICAL - Currency Detection Rules (in order of priority):
-1. Look for EXPLICIT currency codes printed on the invoice (PHP, USD, ILS, EUR, GBP, THB, JPY, etc.) — use that code exactly
-2. Look for currency SYMBOLS on the invoice: ₪=ILS, $=USD, €=EUR, £=GBP, ₱=PHP, ¥=JPY/CNY, ฿=THB, ₩=KRW, etc.
+1. Look for EXPLICIT currency codes printed on the invoice (PHP, USD, ILS, EUR, GBP, THB, JPY, etc.) — use that code exactly.
+2. Look for currency SYMBOLS: ₪=ILS, $=USD, €=EUR, £=GBP, ₱=PHP, ¥=JPY/CNY, ฿=THB, ₩=KRW, etc.
 3. ONLY as a last resort, infer from language: Hebrew→ILS, English→USD, etc.
 - NEVER default to ILS just because the text is in Hebrew. The invoice might be from another country!
-- Always read what is ACTUALLY printed on the document
+- Always read what is ACTUALLY printed on the document.
 
-Return a JSON object with ONLY these 4 fields:
+Return a JSON object with ONLY these fields:
 {
-  "invoice_number": "string - THE DOCUMENT/RECEIPT NUMBER (e.g., '01667543'), NOT the business ID (עוסק מורשה)",
-  "invoice_date": "YYYY-MM-DD or null", 
-  "total_amount": number (the final amount to pay, including tax),
-  "currency": "USD/ILS/EUR/GBP/etc based on detection rules above"
+  "invoice_number": "string - the document/receipt number, NOT the business ID",
+  "invoice_date": "YYYY-MM-DD or null",
+  "total_amount": number or null (final amount to pay, including tax),
+  "subtotal": number or null (amount before tax),
+  "tax_amount": number or null (VAT/tax amount),
+  "currency": "USD/ILS/EUR/GBP/PHP/etc based on detection rules above"
 }
 
-IMPORTANT:
-- For invoice_number: This is the RECEIPT/INVOICE number, NOT the business registration number (ח.פ./עוסק מורשה)
-- For total_amount: Use the FINAL total amount (after tax), not subtotal
-- For currency: Be smart - detect based on language, symbols, and country
-- If multiple amounts exist, use the largest/final "Total" or "סה"כ" amount
-- Return ONLY the JSON object, no additional text.`;
+Return ONLY the JSON object, no additional text.`;
 
     // Call Oracle Generative AI (OCI) - US Chicago region
     // Using OpenAI-compatible chat completions endpoint with Meta Llama 4 Maverick Vision
