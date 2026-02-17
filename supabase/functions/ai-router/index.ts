@@ -508,43 +508,65 @@ Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}
     // ── Save corrections for AI learning (when user corrects OCR data) ──
     try {
       // Check if this is a scan correction by looking for scanned_data in recent history
-      if (intent === "scan") {
+      if (intent === "scan" || intent === "expense_complete") {
         const { data: recentMsgs } = await supabase
           .from("chat_messages")
-          .select("metadata, content")
+          .select("metadata, content, role")
           .eq("session_id", sessionId)
-          .eq("role", "assistant")
           .order("created_at", { ascending: false })
-          .limit(5);
+          .limit(10);
 
         // Find the original scanned data
         const scanMsg = recentMsgs?.find((m: any) => m.metadata?.scanned_data);
         if (scanMsg?.metadata?.scanned_data) {
           const original = scanMsg.metadata.scanned_data;
-          // Parse the corrected values from the AI's response text
           const corrections: Array<{ user_id: string; field_name: string; original_value: string; corrected_value: string; context?: string }> = [];
           const ctx = original.vendor_name || original.invoice_number || undefined;
 
-          // Extract corrected amounts from the response
-          const totalMatch = finalText.match(/(?:Total|סה"כ)[:\s]*([0-9,.]+)/i);
+          // Find the latest correction summary (assistant message with UPDATED or corrected values)
+          // Look at ALL recent assistant messages for corrected values
+          const allAssistantText = (recentMsgs || [])
+            .filter((m: any) => m.role === "assistant")
+            .map((m: any) => m.content)
+            .join("\n");
+
+          // Also include user messages to catch direct corrections like "the date is 27/06/2025"
+          const allUserText = (recentMsgs || [])
+            .filter((m: any) => m.role === "user")
+            .map((m: any) => m.content)
+            .join("\n");
+
+          const allText = allAssistantText + "\n" + allUserText;
+
+          // Extract values using multiple patterns
+          const totalMatch = allText.match(/(?:Total)[:\s]*([0-9,.]+)/i);
           if (totalMatch && original.total_amount != null && parseFloat(totalMatch[1].replace(",", "")) !== original.total_amount) {
             corrections.push({ user_id: user.id, field_name: "total_amount", original_value: String(original.total_amount), corrected_value: totalMatch[1].replace(",", ""), context: ctx });
           }
-          const subtotalMatch = finalText.match(/(?:Subtotal|לפני מע"מ)[:\s]*([0-9,.]+)/i);
-          if (subtotalMatch && original.subtotal != null && parseFloat(subtotalMatch[1].replace(",", "")) !== original.subtotal) {
-            corrections.push({ user_id: user.id, field_name: "subtotal", original_value: String(original.subtotal), corrected_value: subtotalMatch[1].replace(",", ""), context: ctx });
-          }
-          const taxMatch = finalText.match(/(?:VAT|Tax|מע"מ)[:\s]*([0-9,.]+)/i);
+
+          const taxMatch = allText.match(/(?:VAT|Tax|מע"מ)[:\s]*([0-9,.]+)/i);
           if (taxMatch && original.tax_amount != null && parseFloat(taxMatch[1].replace(",", "")) !== original.tax_amount) {
             corrections.push({ user_id: user.id, field_name: "tax_amount", original_value: String(original.tax_amount), corrected_value: taxMatch[1].replace(",", ""), context: ctx });
           }
-          const invoiceNumMatch = finalText.match(/(?:Invoice number|מספר)[:\s]*([^\n,]+)/i);
+
+          const invoiceNumMatch = allText.match(/(?:Invoice number)[:\s]*([^\n,]+)/i);
           if (invoiceNumMatch && original.invoice_number && invoiceNumMatch[1].trim() !== original.invoice_number) {
             corrections.push({ user_id: user.id, field_name: "invoice_number", original_value: original.invoice_number, corrected_value: invoiceNumMatch[1].trim(), context: ctx });
           }
 
+          // Date: match patterns like DD/MM/YYYY or YYYY-MM-DD
+          const dateMatch = allText.match(/(?:Date)[:\s]*([0-9]{1,4}[\/\-][0-9]{1,2}[\/\-][0-9]{2,4})/i);
+          if (dateMatch && original.invoice_date && dateMatch[1].trim() !== original.invoice_date) {
+            corrections.push({ user_id: user.id, field_name: "invoice_date", original_value: original.invoice_date, corrected_value: dateMatch[1].trim(), context: ctx });
+          }
+
+          // Category
+          const categoryMatch = allText.match(/(?:Category)[:\s]*(?:[\p{Emoji}\s]*)(\w+)/iu);
+          if (categoryMatch && original.category && categoryMatch[1].trim().toLowerCase() !== original.category) {
+            corrections.push({ user_id: user.id, field_name: "category", original_value: original.category, corrected_value: categoryMatch[1].trim().toLowerCase(), context: ctx });
+          }
+
           if (corrections.length > 0) {
-            // Use service role to insert corrections
             const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
             const res = await fetch(`${supabaseUrl}/rest/v1/invoice_corrections`, {
               method: "POST",
