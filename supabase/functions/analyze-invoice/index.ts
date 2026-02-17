@@ -45,16 +45,22 @@ Do NOT confuse the document number with a business registration number (e.g. ח.
 
 CRITICAL - Amount Extraction Rules (FOLLOW THESE STEPS IN ORDER):
 
-STEP 1: Find the TOTAL (the LARGEST monetary amount on the document).
+STEP 0: FIRST, identify and COMPLETELY IGNORE these fields:
+  - "Cash" / "Cash Received" / "Cash Tendered" / "Paid" / "Payment" — this is money the customer GAVE, not the charge
+  - "Change" / "Change Due" / "Change Given" — this is money returned to the customer
+  - These amounts are NEVER the total. Pretend they don't exist.
+
+STEP 1: Find the TOTAL — the amount the customer was CHARGED.
   Look for these labels IN THIS PRIORITY ORDER:
   - "AMOUNT DUE" (highest priority - this is ALWAYS the total)
   - "Total Amount" / "Total"
   - "Grand Total"
   - "Amount Payable"
   - "סה"כ לתשלום" / "סה"כ כולל מע"מ"
-  The total is almost always the BIGGEST number on the invoice.
+  IMPORTANT: The total is the amount the customer OWES, NOT the amount of cash they handed over.
+  If "Amount Due" says 150 and "Cash" says 200, the total is 150.
 
-STEP 2: Find the TAX/VAT (the SMALLEST of the three amounts).
+STEP 2: Find the TAX/VAT.
   Look for: VAT, Tax, מע"מ, GST.
   The tax/VAT is ALWAYS SMALLER than the subtotal. It is typically 5%-25% of the subtotal.
   
@@ -67,13 +73,9 @@ ABSOLUTE RULES - DO NOT VIOLATE:
 - subtotal + tax_amount = total_amount (approximately)
 - Do NOT put the subtotal value in the tax_amount field
 - Do NOT put the tax/VAT value in the subtotal field
+- Cash/Change amounts are NEVER the total_amount
 
-IMPORTANT - Fields to IGNORE (do NOT use these as total_amount):
-- "Cash" / "Cash Received" / "Cash Tendered" - this is the payment given by the customer, NOT the total
-- "Change" / "Change Due" - this is change returned to the customer
-- Any field showing payment method or tendered amount
-
-- If only one amount exists, treat it as total_amount.
+- If only one labeled amount exists (excluding Cash/Change), treat it as total_amount.
 - If "Amount Due" and "Total" both exist, use "Amount Due" as total_amount.
 
 CRITICAL - Currency Detection Rules (in order of priority):
@@ -87,7 +89,7 @@ Return a JSON object with ONLY these fields:
 {
   "invoice_number": "string - the document/receipt number, NOT the business ID",
   "invoice_date": "YYYY-MM-DD or null",
-  "total_amount": number or null (the LARGEST amount - final amount to pay),
+  "total_amount": number or null (AMOUNT DUE / Total — what the customer owes, NOT what they paid in cash),
   "subtotal": number or null (BEFORE tax - must be LARGER than tax_amount),
   "tax_amount": number or null (VAT/tax - must be SMALLER than subtotal),
   "currency": "USD/ILS/EUR/GBP/PHP/etc based on detection rules above"
