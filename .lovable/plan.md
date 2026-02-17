@@ -1,113 +1,48 @@
 
+# Sharpen Invoice Scanner (Keep Oracle)
 
-# AI Router - ארכיטקטורה חדשה
+## What We'll Do
+Keep the same Oracle Llama 4 Maverick model but make two improvements:
 
-## סיכום
+1. **Sharpen the prompt** - Make the extraction instructions much more explicit with step-by-step logic so the model doesn't confuse VAT with subtotal
+2. **Add math validation** - After the AI returns results, automatically verify and fix the numbers using simple arithmetic
 
-שינוי הארכיטקטורה כך שה-Edge Function החדשה `ai-router` תהיה נקודת הכניסה המרכזית לכל אינטראקציה עם ה-AI. ה-OCR (analyze-invoice) יישאר כמודול נפרד שנקרא מתוך ה-router כשצריך.
+## Changes
 
-## מה ישתנה
+### File: `supabase/functions/analyze-invoice/index.ts`
 
-### 1. Edge Function חדשה: `ai-router`
+### 1. Improved Prompt
+- Add a clear step-by-step process the model must follow:
+  - Step 1: Find the LARGEST amount on the document - that is likely the total
+  - Step 2: Find the SMALLEST tax-related amount - that is VAT/tax
+  - Step 3: The remaining middle amount is the subtotal
+- Add explicit rule: **VAT/tax is ALWAYS smaller than subtotal**
+- Add explicit rule: **subtotal + tax = total** (approximately)
+- Add negative examples: "Do NOT put the subtotal value in tax_amount" and "Do NOT put the tax value in subtotal"
 
-תחליף את `tripex-chat` כנקודת הכניסה המרכזית.
+### 2. Post-Processing Math Validation
+After parsing the AI response, add validation logic:
 
-**Input חדש (POST):**
 ```text
-{
-  "source": "mobile | web | bi | tas",
-  "scope": "current module",
-  "trid": "",
-  "text": "",
-  "type": "text | image | audio",
-  "sessionToken": ""
-}
+IF total, subtotal, and tax all exist:
+    IF tax > subtotal --> they are swapped, fix it
+    IF subtotal + tax != total (within 5% tolerance):
+        Recalculate tax = total - subtotal
+IF only total and one other value exist:
+    Calculate the missing value
+IF only total exists:
+    Leave subtotal and tax as null
 ```
 
-**Output אחיד:**
-```text
-{
-  "actions": [],
-  "text": "",
-  "redirectPage": "",
-  "data": {},
-  "session_id": ""
-}
-```
-
-**Action Mapping:**
-- help -> actions: ["Redirect"], redirectPage: "help"
-- scan -> actions: ["Camera"], text: "Scan your receipt"
-- expense -> actions: ["AddExpense"]
-- bi -> actions: ["DisplayResults"]
-- online -> actions: ["Redirect"], redirectPage: "booking"
-
-**OCR Flow:** כשה-type הוא "image", ה-router יקרא ל-`analyze-invoice` פנימית (HTTP call), ויחזיר את התוצאה עם actions: ["AddExpense"] + data מהפענוח.
-
-**Session Handling:** ימשיך להשתמש בטבלאות `chat_sessions` ו-`chat_messages` הקיימות. sessionToken יתמפה ל-session_id.
-
-**Logging:** כל בקשה תתועד ב-`chatbot_logs` עם: request, detected intent, actions returned, errors.
-
-**Default Response:** "Hello, I'm TripEX AI. How can I assist you today?"
-
-### 2. מבנה לאינטגרציות עתידיות (Oracle TAS)
-
-הכנת פונקציות stub בתוך ה-router:
-- `fetchTASData(userId)` - שליפת נתוני נסיעות
-- `fetchTRDetails(trId)` - פרטי TR
-- `validateApproval(trId)` - בדיקת אישורים
-- `submitExpense(data)` - הגשת הוצאה
-
-כל אלה יחזירו placeholder בשלב זה עם הערה `// TODO: Connect to Oracle TAS API`.
-
-### 3. עדכון Frontend
-
-- `useChatbot.ts` - עדכון ה-hook לקרוא ל-`ai-router` במקום `tripex-chat`, ולעבוד עם הפורמט החדש (actions array, redirectPage, data).
-- `ChatWindow.tsx` - עדכון `handleAction` לתמוך ב-actions החדשים (Camera, Redirect, AddExpense, DisplayResults).
-- `ChatMessage.tsx` - עדכון כפתורי הפעולה להתאים ל-action mapping החדש.
-
-### 4. config.toml
-
-הוספת ה-function החדשה:
-```text
-[functions.ai-router]
-verify_jwt = false
-```
-
-### 5. Edge Function ישנה
-
-`tripex-chat` תישאר זמינה לתאימות לאחור אבל לא תהיה בשימוש מה-frontend.
+This catches the most common error (VAT and subtotal being swapped) and auto-corrects it without needing to re-call the model.
 
 ---
 
-## פרטים טכניים
+## Technical Details
 
-### מבנה ai-router/index.ts
+Single file change: `supabase/functions/analyze-invoice/index.ts`
 
-```text
-1. Parse input (source, scope, trid, text, type, sessionToken)
-2. Authenticate user via Authorization header
-3. If type === "image":
-     -> Call analyze-invoice internally
-     -> Return { actions: ["AddExpense"], data: extractedFields }
-4. Else:
-     -> Send text + history to Oracle AI with intent detection prompt
-     -> Parse AI response (intent + text)
-     -> Map intent to action using ACTION_MAPPING
-     -> Return { actions, text, redirectPage, data }
-5. Log everything to chatbot_logs
-```
-
-### ACTION_MAPPING (hardcoded, not AI-dependent)
-
-```text
-help     -> { actions: ["Redirect"],       redirectPage: "help" }
-scan     -> { actions: ["Camera"],         text: "Scan your receipt" }
-expense  -> { actions: ["AddExpense"] }
-bi       -> { actions: ["DisplayResults"] }
-online   -> { actions: ["Redirect"],       redirectPage: "booking" }
-general  -> { actions: [] }
-```
-
-ה-AI מזהה את ה-intent, וה-router ממפה אותו לפעולות - הפרדה ברורה בין זיהוי לביצוע.
-
+- Enhanced `systemPrompt` with stricter extraction rules and negative examples
+- New `validateAndFixAmounts()` function that runs after JSON parsing
+- No new dependencies or API keys needed
+- Edge function will be redeployed automatically
