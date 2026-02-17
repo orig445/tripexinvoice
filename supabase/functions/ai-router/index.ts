@@ -164,14 +164,19 @@ serve(async (req) => {
 
         // Build a summary of the scanned data
         const d = ocrData.data || {};
+        const categoryMap: Record<string, string> = {
+          food: "🍽️ Food", transport: "🚕 Transport", hotel: "🏨 Hotel",
+          office: "🏢 Office", telecom: "📱 Telecom", entertainment: "🎭 Entertainment",
+          health: "💊 Health", shopping: "🛍️ Shopping", other: "📦 Other",
+        };
         const lines: string[] = ["✅ Invoice scanned successfully! Here are the details:"];
         if (d.vendor_name) lines.push(`🏪 Vendor: ${d.vendor_name}`);
+        if (d.category) lines.push(`📂 Category: ${categoryMap[d.category] || d.category}`);
         if (d.invoice_number) lines.push(`🔢 Invoice number: ${d.invoice_number}`);
-        if (d.subtotal != null) lines.push(`📊 Subtotal: ${d.subtotal}${d.currency ? " " + d.currency : ""}`);
-        if (d.tax_amount != null) lines.push(`🧾 VAT/Tax: ${d.tax_amount}${d.currency ? " " + d.currency : ""}`);
         if (d.total_amount != null) lines.push(`💰 Total: ${d.total_amount}${d.currency ? " " + d.currency : ""}`);
+        if (d.tax_amount != null) lines.push(`🧾 VAT/Tax: ${d.tax_amount}${d.currency ? " " + d.currency : ""}`);
         if (d.invoice_date) lines.push(`📅 Date: ${d.invoice_date}`);
-        if (d.line_items?.length) lines.push(`📋 Items: ${d.line_items.length}`);
+        if (d.item_count) lines.push(`📋 Items: ${d.item_count}`);
         lines.push("\nIs the data correct? If something is wrong, let me know and I'll update it.");
 
         const ocrSummary = lines.join("\n");
