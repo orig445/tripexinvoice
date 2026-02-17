@@ -363,7 +363,8 @@ If the conversation history shows a pending expense summary or scanned invoice s
 {"intent": "<intent>", "text": "<your detailed, friendly answer>"}
 
 Current date & time: ${userDate || "unknown"} ${userTime || ""} (${userTimezone || "unknown timezone"})
-User's current location (based on IP): ${userLocation || "unknown"}
+User's browser timezone: ${userTimezone || "unknown"} (THIS IS THE AUTHORITATIVE SOURCE for the user's location and time — trust this over IP geolocation)
+IP-based geolocation hint: ${userLocation || "unknown"} (NOTE: This may be inaccurate due to VPN, proxy, or CDN. Use ONLY as a supplementary hint, NOT as the primary location. If it conflicts with the browser timezone, IGNORE the IP location and use the timezone instead.)
 Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}${knowledgeContext}`;
 
     const messages = [
