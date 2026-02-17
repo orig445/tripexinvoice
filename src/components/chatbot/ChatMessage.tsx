@@ -11,7 +11,6 @@ interface ChatMessageProps {
   onAction?: (action: string, data?: Record<string, any>) => void;
 }
 
-// Pick Mylo avatar based on intent
 function getMyloAvatar(intent?: string): string {
   switch (intent) {
     case "help":
@@ -33,10 +32,10 @@ export function ChatMessage({ message, onAction }: ChatMessageProps) {
   const redirectPage = message.metadata?.redirectPage || "";
 
   const actionButtons: Record<string, { icon: typeof Camera; label: string }> = {
-    Camera:         { icon: Camera,      label: "📷 סרוק חשבונית" },
-    Redirect:       { icon: ArrowRight,  label: redirectPage === "help" ? "עזרה" : redirectPage === "booking" ? "הזמנה" : "המשך" },
-    AddExpense:     { icon: PlusCircle,  label: "הוסף הוצאה" },
-    DisplayResults: { icon: BarChart3,   label: "הצג תוצאות" },
+    Camera:         { icon: Camera,      label: "📷 Scan Invoice" },
+    Redirect:       { icon: ArrowRight,  label: redirectPage === "help" ? "Help" : redirectPage === "booking" ? "Booking" : "Continue" },
+    AddExpense:     { icon: PlusCircle,  label: "Add Expense" },
+    DisplayResults: { icon: BarChart3,   label: "Show Results" },
   };
 
   const myloAvatar = getMyloAvatar(message.intent);
@@ -69,7 +68,6 @@ export function ChatMessage({ message, onAction }: ChatMessageProps) {
           ))}
         </div>
 
-        {/* Action buttons */}
         {!isUser && actions.length > 0 && onAction && (
           <div className="flex gap-1.5 flex-wrap">
             {actions.map((action) => {

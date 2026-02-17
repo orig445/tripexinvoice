@@ -1,5 +1,4 @@
 import { format } from "date-fns";
-import { he } from "date-fns/locale";
 import { FileText, Calendar, Eye, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,21 +19,20 @@ interface InvoiceCardProps {
 }
 
 export function InvoiceCard({ invoice, onView, onDelete }: InvoiceCardProps) {
-  // Use total_amount, fallback to subtotal if not available
   const amount = invoice.total_amount ?? invoice.subtotal;
 
   const formatCurrency = (amount: number | undefined, currency?: string | null) => {
     if (!amount) return "—";
-    return new Intl.NumberFormat("he-IL", {
+    return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: currency || "ILS",
+      currency: currency || "USD",
     }).format(amount);
   };
 
   const formatDate = (dateStr: string | undefined) => {
     if (!dateStr) return "—";
     try {
-      return format(new Date(dateStr), "dd/MM/yyyy", { locale: he });
+      return format(new Date(dateStr), "dd/MM/yyyy");
     } catch {
       return dateStr;
     }
@@ -49,7 +47,7 @@ export function InvoiceCard({ invoice, onView, onDelete }: InvoiceCardProps) {
           </div>
           <div className="min-w-0 flex-1">
             <h3 className="font-semibold text-foreground truncate">
-              {invoice.invoice_number || "ללא מספר"}
+              {invoice.invoice_number || "No number"}
             </h3>
           </div>
         </div>
@@ -60,12 +58,12 @@ export function InvoiceCard({ invoice, onView, onDelete }: InvoiceCardProps) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Calendar className="h-4 w-4" />
-              <span>תאריך</span>
+              <span>Date</span>
             </div>
             <span className="font-medium">{formatDate(invoice.invoice_date)}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">סכום</span>
+            <span className="text-sm text-muted-foreground">Amount</span>
             <span className="font-semibold text-lg text-primary">
               {formatCurrency(amount, invoice.currency)}
             </span>
@@ -80,7 +78,7 @@ export function InvoiceCard({ invoice, onView, onDelete }: InvoiceCardProps) {
             onClick={() => onView(invoice)}
           >
             <Eye className="h-4 w-4" />
-            צפייה
+            View
           </Button>
           <Button
             variant="ghost"

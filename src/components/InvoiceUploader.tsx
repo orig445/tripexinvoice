@@ -32,7 +32,7 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
 
   const processFile = async (file: File) => {
     if (!file.type.startsWith("image/")) {
-      toast.error("נא להעלות קובץ תמונה בלבד");
+      toast.error("Please upload an image file only");
       return;
     }
 
@@ -40,11 +40,9 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
     setStatus("uploading");
 
     try {
-      // Create preview
       const previewUrl = URL.createObjectURL(file);
       setPreviewUrl(previewUrl);
 
-      // Convert to base64
       const reader = new FileReader();
       const base64Promise = new Promise<string>((resolve, reject) => {
         reader.onload = () => resolve(reader.result as string);
@@ -53,7 +51,6 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
       reader.readAsDataURL(file);
       const base64 = await base64Promise;
 
-      // Upload to storage
       const fileName = `${Date.now()}-${file.name}`;
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from("invoices")
@@ -61,17 +58,15 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
 
       if (uploadError) {
         console.error("Upload error:", uploadError);
-        throw new Error("שגיאה בהעלאת הקובץ");
+        throw new Error("Error uploading file");
       }
 
-      // Get public URL
       const { data: publicUrlData } = supabase.storage
         .from("invoices")
         .getPublicUrl(fileName);
 
       setStatus("analyzing");
 
-      // Call AI to analyze
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke(
         "analyze-invoice",
         {
@@ -80,10 +75,9 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
       );
 
       if (analysisError || !analysisData?.success) {
-        throw new Error(analysisData?.error || "שגיאה בניתוח החשבונית");
+        throw new Error(analysisData?.error || "Error analyzing invoice");
       }
 
-      // Save to database with user_id
       const invoiceData = {
         ...analysisData.data,
         image_url: publicUrlData.publicUrl,
@@ -100,14 +94,13 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
 
       if (saveError) {
         console.error("Save error:", saveError);
-        throw new Error("שגיאה בשמירת החשבונית");
+        throw new Error("Error saving invoice");
       }
 
       setStatus("success");
-      toast.success("החשבונית נותחה בהצלחה!");
+      toast.success("Invoice analyzed successfully!");
       onInvoiceProcessed(savedInvoice);
 
-      // Reset after delay
       setTimeout(() => {
         setStatus("idle");
         setPreviewUrl(null);
@@ -115,7 +108,7 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
     } catch (error) {
       console.error("Error processing invoice:", error);
       setStatus("error");
-      toast.error(error instanceof Error ? error.message : "שגיאה בעיבוד החשבונית");
+      toast.error(error instanceof Error ? error.message : "Error processing invoice");
       setTimeout(() => setStatus("idle"), 3000);
     } finally {
       setIsProcessing(false);
@@ -159,25 +152,25 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
               {status === "uploading" && (
                 <>
                   <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                  <span className="text-muted-foreground">מעלה קובץ...</span>
+                  <span className="text-muted-foreground">Uploading file...</span>
                 </>
               )}
               {status === "analyzing" && (
                 <>
                   <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                  <span className="text-muted-foreground">מנתח חשבונית באמצעות AI...</span>
+                  <span className="text-muted-foreground">Analyzing invoice with AI...</span>
                 </>
               )}
               {status === "success" && (
                 <>
                   <CheckCircle2 className="h-5 w-5 text-triplex-success" />
-                  <span className="text-triplex-success font-medium">הניתוח הושלם!</span>
+                  <span className="text-triplex-success font-medium">Analysis complete!</span>
                 </>
               )}
               {status === "error" && (
                 <>
                   <AlertCircle className="h-5 w-5 text-destructive" />
-                  <span className="text-destructive">שגיאה בעיבוד</span>
+                  <span className="text-destructive">Processing error</span>
                 </>
               )}
             </div>
@@ -192,9 +185,9 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
                   <Upload className="h-10 w-10 text-primary" />
                 )}
               </div>
-              <h3 className="text-xl font-semibold mb-2">העלאת חשבונית</h3>
+              <h3 className="text-xl font-semibold mb-2">Upload Invoice</h3>
               <p className="text-muted-foreground mb-4">
-                גרור קובץ לכאן או לחץ לבחירת קובץ
+                Drag a file here or click to select a file
               </p>
             </div>
 
@@ -212,7 +205,7 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
                   <Button variant="default" size="lg" asChild disabled={isProcessing}>
                     <span className="gap-2">
                       <Camera className="h-5 w-5" />
-                      צלם תמונה
+                      Take Photo
                     </span>
                   </Button>
                 </label>
@@ -229,14 +222,14 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
                 <Button variant={isMobile ? "outline" : "default"} size="lg" asChild disabled={isProcessing}>
                   <span className="gap-2">
                     <FileImage className="h-5 w-5" />
-                    בחר מגלריה
+                    Choose from Gallery
                   </span>
                 </Button>
               </label>
             </div>
 
             <p className="text-sm text-muted-foreground mt-4">
-              {isMobile ? "צלם או בחר תמונה מהמכשיר" : "תומך בפורמטים: JPG, PNG, WEBP"}
+              {isMobile ? "Take or select a photo from your device" : "Supports: JPG, PNG, WEBP"}
             </p>
           </>
         )}

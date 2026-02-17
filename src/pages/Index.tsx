@@ -26,7 +26,7 @@ const Index = () => {
       setInvoices(data || []);
     } catch (error) {
       console.error("Error fetching invoices:", error);
-      toast.error("שגיאה בטעינת החשבוניות");
+      toast.error("Error loading invoices");
     } finally {
       setIsLoading(false);
     }
@@ -52,15 +52,15 @@ const Index = () => {
       const { error } = await supabase.from("invoices").delete().eq("id", id);
       if (error) throw error;
       setInvoices((prev) => prev.filter((inv) => inv.id !== id));
-      toast.success("החשבונית נמחקה");
+      toast.success("Invoice deleted");
     } catch (error) {
       console.error("Error deleting invoice:", error);
-      toast.error("שגיאה במחיקת החשבונית");
+      toast.error("Error deleting invoice");
     }
   };
 
   return (
-    <div className="min-h-screen bg-background" dir="rtl">
+    <div className="min-h-screen bg-background" dir="ltr">
       <Header />
 
       <main className="container py-6 md:py-10 space-y-8">
@@ -72,11 +72,11 @@ const Index = () => {
           <TabsList className="grid w-full max-w-md grid-cols-2 mx-auto">
             <TabsTrigger value="upload" className="gap-2">
               <Upload className="h-4 w-4" />
-              העלאה חדשה
+              New Upload
             </TabsTrigger>
             <TabsTrigger value="list" className="gap-2">
               <FileText className="h-4 w-4" />
-              רשימת חשבוניות
+              Invoices
             </TabsTrigger>
           </TabsList>
 

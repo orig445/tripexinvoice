@@ -31,7 +31,6 @@ export function useChatbot() {
   const [isLoading, setIsLoading] = useState(false);
   const [config, setConfig] = useState<ChatbotConfig | null>(null);
 
-  // Load config
   const loadConfig = async () => {
     const { data } = await supabase
       .from("chatbot_config")
@@ -46,7 +45,6 @@ export function useChatbot() {
     loadConfig();
   }, []);
 
-  // Load existing session messages
   useEffect(() => {
     if (!sessionId) return;
     const loadMessages = async () => {
@@ -60,15 +58,11 @@ export function useChatbot() {
     loadMessages();
   }, [sessionId]);
 
-  // NO realtime subscription - we handle messages via optimistic updates + API response only
-  // This prevents duplicate messages caused by realtime INSERT events
-
   const sendMessage = useCallback(
     async (text: string) => {
       if (!user || !text.trim()) return;
       setIsLoading(true);
 
-      // Optimistic user message
       const tempId = crypto.randomUUID();
       const tempMsg: ChatMessage = {
         id: tempId,
@@ -80,8 +74,8 @@ export function useChatbot() {
 
       try {
         const now = new Date();
-        const userLocalDate = now.toLocaleDateString("he-IL", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-        const userLocalTime = now.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
+        const userLocalDate = now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+        const userLocalTime = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
         const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
         const { data, error } = await supabase.functions.invoke("ai-router", {
@@ -94,7 +88,6 @@ export function useChatbot() {
           setSessionId(data.session_id);
         }
 
-        // Add assistant message from API response
         const assistantMsg: ChatMessage = {
           id: crypto.randomUUID(),
           role: "assistant",
@@ -111,7 +104,7 @@ export function useChatbot() {
         return { actions: data.actions, redirectPage: data.redirectPage, data: data.data };
       } catch (err: any) {
         console.error("Chat error:", err);
-        toast.error("שגיאה בשליחת ההודעה");
+        toast.error("Error sending message");
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
       } finally {
         setIsLoading(false);
@@ -128,7 +121,7 @@ export function useChatbot() {
       const tempMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: "user",
-        content: "📷 סריקת חשבונית...",
+        content: "📷 Scanning invoice...",
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, tempMsg]);
@@ -147,7 +140,7 @@ export function useChatbot() {
         const assistantMsg: ChatMessage = {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: data.text || "החשבונית נסרקה בהצלחה!",
+          content: data.text || "Invoice scanned successfully!",
           metadata: {
             actions: data.actions || [],
             redirectPage: data.redirectPage || "",
@@ -160,7 +153,7 @@ export function useChatbot() {
         return { actions: data.actions, data: data.data };
       } catch (err: any) {
         console.error("Image scan error:", err);
-        toast.error("שגיאה בסריקת החשבונית");
+        toast.error("Error scanning invoice");
         setMessages((prev) => prev.filter((m) => m.id !== tempMsg.id));
       } finally {
         setIsLoading(false);

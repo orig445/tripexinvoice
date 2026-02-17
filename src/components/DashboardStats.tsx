@@ -18,17 +18,17 @@ export function DashboardStats({ invoices }: DashboardStatsProps) {
 
   const stats = [
     {
-      label: "סה\"כ חשבוניות",
+      label: "Total Invoices",
       value: invoices.length.toString(),
       icon: FileText,
       color: "text-primary",
       bgColor: "bg-primary/10",
     },
     {
-      label: "סכום כולל",
-      value: new Intl.NumberFormat("he-IL", {
+      label: "Total Amount",
+      value: new Intl.NumberFormat("en-US", {
         style: "currency",
-        currency: "ILS",
+        currency: "USD",
         maximumFractionDigits: 0,
       }).format(totalAmount),
       icon: TrendingUp,
@@ -36,14 +36,14 @@ export function DashboardStats({ invoices }: DashboardStatsProps) {
       bgColor: "bg-triplex-success/10",
     },
     {
-      label: "ספקים שונים",
+      label: "Vendors",
       value: uniqueVendors.toString(),
       icon: Building2,
       color: "text-triplex-info",
       bgColor: "bg-triplex-info/10",
     },
     {
-      label: "החודש",
+      label: "This Month",
       value: thisMonthInvoices.length.toString(),
       icon: Calendar,
       color: "text-triplex-amber",
