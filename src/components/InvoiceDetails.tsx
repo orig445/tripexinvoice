@@ -127,6 +127,31 @@ export function InvoiceDetails({ invoice, onClose, onUpdate }: InvoiceDetailsPro
 
       if (error) throw error;
 
+      // Save corrections for AI learning
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const corrections: Array<{ user_id: string; field_name: string; original_value: string; corrected_value: string; context?: string }> = [];
+        const context = invoice.invoice_number || undefined;
+
+        if (editData.total_amount !== (invoice.total_amount ?? invoice.subtotal ?? 0)) {
+          corrections.push({ user_id: user.id, field_name: "total_amount", original_value: String(invoice.total_amount ?? ""), corrected_value: String(editData.total_amount), context });
+        }
+        if (editData.invoice_number !== (invoice.invoice_number || "")) {
+          corrections.push({ user_id: user.id, field_name: "invoice_number", original_value: invoice.invoice_number || "", corrected_value: editData.invoice_number, context });
+        }
+        if (editData.currency !== (invoice.currency || "USD")) {
+          corrections.push({ user_id: user.id, field_name: "currency", original_value: invoice.currency || "USD", corrected_value: editData.currency, context });
+        }
+        if (editData.invoice_date !== (invoice.invoice_date || "")) {
+          corrections.push({ user_id: user.id, field_name: "invoice_date", original_value: invoice.invoice_date || "", corrected_value: editData.invoice_date, context });
+        }
+
+        if (corrections.length > 0) {
+          await supabase.from("invoice_corrections").insert(corrections);
+          console.log(`Saved ${corrections.length} correction(s) for AI learning`);
+        }
+      }
+
       const updatedInvoice = {
         ...invoice,
         invoice_number: editData.invoice_number || undefined,

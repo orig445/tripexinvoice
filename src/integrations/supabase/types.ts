@@ -156,6 +156,36 @@ export type Database = {
           },
         ]
       }
+      invoice_corrections: {
+        Row: {
+          context: string | null
+          corrected_value: string
+          created_at: string
+          field_name: string
+          id: string
+          original_value: string | null
+          user_id: string
+        }
+        Insert: {
+          context?: string | null
+          corrected_value: string
+          created_at?: string
+          field_name: string
+          id?: string
+          original_value?: string | null
+          user_id: string
+        }
+        Update: {
+          context?: string | null
+          corrected_value?: string
+          created_at?: string
+          field_name?: string
+          id?: string
+          original_value?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       invoices: {
         Row: {
           created_at: string
