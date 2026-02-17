@@ -306,6 +306,13 @@ If the conversation history shows a previously scanned invoice/receipt and the u
 - Use intent "scan" for these correction responses
 - Format the updated summary the same way as the original scan result
 
+### When user CONFIRMS data (says "כן", "נכון", "מאשר", "הכל נכון", "בסדר", "אוקיי", "yes", "ok", "correct"):
+If the conversation history shows a pending expense summary or scanned invoice summary and the user confirms it:
+- Respond warmly: "קיבלתי! ✅ מעדכן את ההוצאות שלך..."
+- Then add: "אם תצטרך עזרה עם משהו נוסף, אני כאן! 😊"
+- Use intent "expense_complete" if it was an expense flow, or "scan" if it was an OCR scan confirmation
+- This is the END of the flow — do NOT ask for more details or re-show the summary
+
 ### Important for ALL flows:
 - Ask for ONE field at a time
 - If the user provides multiple fields at once, acknowledge all of them
