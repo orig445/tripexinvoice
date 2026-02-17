@@ -76,6 +76,26 @@ serve(async (req) => {
       userTimezone = "",
     } = await req.json();
 
+    // ── IP-based Geolocation ──
+    let userLocation = "";
+    try {
+      const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+        || req.headers.get("cf-connecting-ip")
+        || req.headers.get("x-real-ip")
+        || "";
+      if (clientIp && clientIp !== "127.0.0.1" && clientIp !== "::1") {
+        const geoRes = await fetch(`http://ip-api.com/json/${clientIp}?fields=status,country,city,regionName,lat,lon&lang=he`);
+        if (geoRes.ok) {
+          const geo = await geoRes.json();
+          if (geo.status === "success") {
+            userLocation = `${geo.city || ""}, ${geo.regionName || ""}, ${geo.country || ""}`.replace(/, ,/g, ",").replace(/^, |, $/g, "");
+          }
+        }
+      }
+    } catch (geoErr) {
+      console.error("Geolocation error:", geoErr);
+    }
+
     // ── Session handling ──
     let sessionId = sessionToken || null;
     if (!sessionId) {
@@ -343,6 +363,7 @@ If the conversation history shows a pending expense summary or scanned invoice s
 {"intent": "<intent>", "text": "<your detailed, friendly answer>"}
 
 Current date & time: ${userDate || "unknown"} ${userTime || ""} (${userTimezone || "unknown timezone"})
+User's current location (based on IP): ${userLocation || "unknown"}
 Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}${knowledgeContext}`;
 
     const messages = [
