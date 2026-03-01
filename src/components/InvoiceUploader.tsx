@@ -100,12 +100,15 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
         throw new Error(analysisData?.error || "Error analyzing invoice");
       }
 
+      // Map AI fields to DB columns; tin → vendor_id for Philippine invoices
+      const { tin, ...restData } = analysisData.data;
       const invoiceData = {
-        ...analysisData.data,
+        ...restData,
         image_url: publicUrlData.publicUrl,
         raw_ai_response: analysisData.rawResponse,
         status: "processed",
         user_id: user?.id,
+        ...(tin ? { vendor_id: tin } : {}),
       };
 
       const { data: savedInvoice, error: saveError } = await supabase
