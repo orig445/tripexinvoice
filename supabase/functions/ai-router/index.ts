@@ -177,6 +177,7 @@ serve(async (req) => {
         if (d.tax_amount != null) lines.push(`🧾 VAT/Tax: ${d.tax_amount}${d.currency ? " " + d.currency : ""}`);
         if (d.invoice_date) lines.push(`📅 Date: ${d.invoice_date}`);
         if (d.item_count) lines.push(`📋 Items: ${d.item_count}`);
+        if (d.tin) lines.push(`🆔 TIN: ${d.tin}`);
         lines.push("\nIs the data correct? If something is wrong, let me know and I'll update it.");
 
         const ocrSummary = lines.join("\n");

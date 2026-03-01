@@ -126,6 +126,15 @@ Based on the vendor name, type of business, or items on the receipt, classify in
 CRITICAL - Item Count:
 Count the number of line items / products on the receipt. If unclear, use 1.
 
+CRITICAL - TIN Extraction (Philippines ONLY):
+If the invoice/receipt is from the Philippines (currency is PHP, or Philippine address/language detected):
+- Look for "TIN" (Taxpayer Identification Number) on the document.
+- Common labels: "TIN", "TIN:", "TIN No.", "VAT Reg TIN", "Taxpayer ID"
+- TIN format is typically: XXX-XXX-XXX-XXX or XXX-XXX-XXX-XXXV
+- Extract the EXACT printed TIN digits/dashes.
+- If NO TIN is visible, return null for the tin field.
+- ONLY extract TIN for Philippine documents. For all other countries, return null.
+
 Return a JSON object with ONLY these fields:
 {
   "invoice_number": "string - the document/receipt number, NOT the business ID",
@@ -135,7 +144,8 @@ Return a JSON object with ONLY these fields:
   "currency": "USD/ILS/EUR/GBP/PHP/etc",
   "category": "food/transport/hotel/office/telecom/entertainment/health/shopping/other",
   "item_count": number (how many line items/products),
-  "vendor_name": "string or null"
+  "vendor_name": "string or null",
+  "tin": "string or null — Taxpayer Identification Number, ONLY for Philippine invoices"
 }
 
 Return ONLY the JSON object, no additional text.${correctionsContext}`;
