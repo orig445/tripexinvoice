@@ -112,8 +112,8 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
         throw new Error(analysisData?.error || "Error analyzing invoice");
       }
 
-      // Map AI fields to DB columns; tin → vendor_id for Philippine invoices
-      const { tin, ...restData } = analysisData.data;
+      // Map AI fields to DB columns; strip fields not in invoices table
+      const { tin, category, item_count, ...restData } = analysisData.data;
       const invoiceData = {
         ...restData,
         image_url: publicUrlData.publicUrl,
