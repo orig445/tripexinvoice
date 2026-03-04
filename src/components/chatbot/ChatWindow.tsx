@@ -5,9 +5,9 @@ import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import { QuickActions } from "./QuickActions";
 import { useChatbot } from "@/hooks/useChatbot";
+import { pdfAllPagesToBase64 } from "@/lib/pdf-utils";
 import myloWaving from "@/assets/mylo-waving.jpeg";
 import myloThinking from "@/assets/mylo-thinking.jpeg";
-import myloSleeping from "@/assets/mylo-sleeping.jpeg";
 
 interface ChatWindowProps {
   onClose: () => void;
@@ -54,10 +54,16 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
     if (!file) return;
     e.target.value = "";
     try {
+      if (file.type === "application/pdf") {
+        const pages = await pdfAllPagesToBase64(file);
+        if (pages.length > 0) sendImage(pages[0]);
+        return;
+      }
+
       const base64 = await compressImage(file);
       sendImage(base64);
     } catch (err) {
-      console.error("Image compression error:", err);
+      console.error("File processing error:", err);
     }
   };
 
@@ -164,8 +170,7 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
       <input
         ref={cameraInputRef}
         type="file"
-        accept="image/*"
-        capture="environment"
+        accept="image/*,application/pdf"
         className="hidden"
         onChange={handleCameraFile}
       />
