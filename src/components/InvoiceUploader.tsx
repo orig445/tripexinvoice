@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { Upload, FileImage, Loader2, CheckCircle2, AlertCircle, Camera } from "lucide-react";
+import { Upload, FileImage, Loader2, CheckCircle2, AlertCircle, Camera, FileText } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { pdfPageToImage } from "@/lib/pdf-utils";
 
 interface InvoiceUploaderProps {
   onInvoiceProcessed: (invoice: any) => void;
@@ -59,8 +60,9 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
   };
 
   const processFile = async (file: File) => {
-    if (!file.type.startsWith("image/")) {
-      toast.error("Please upload an image file only");
+    const isPdf = file.type === "application/pdf";
+    if (!file.type.startsWith("image/") && !isPdf) {
+      toast.error("Please upload an image or PDF file");
       return;
     }
 
@@ -68,8 +70,18 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
     setStatus("uploading");
 
     try {
-      // Convert to JPEG (handles HEIC and other formats Oracle doesn't support)
-      const { base64, blob } = await compressToJpeg(file);
+      // Convert to JPEG (handles HEIC, PDF and other formats)
+      let base64: string;
+      let blob: Blob;
+      if (isPdf) {
+        const result = await pdfPageToImage(file);
+        base64 = result.base64DataUrl;
+        blob = result.blob;
+      } else {
+        const result = await compressToJpeg(file);
+        base64 = result.base64;
+        blob = result.blob;
+      }
       const previewUrl = URL.createObjectURL(blob);
       setPreviewUrl(previewUrl);
 
@@ -221,11 +233,11 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
                 <label className="cursor-pointer">
                   <input
                     type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                    disabled={isProcessing}
+                accept="image/*,application/pdf"
+                capture="environment"
+                onChange={handleFileSelect}
+                className="hidden"
+                disabled={isProcessing}
                   />
                   <Button variant="default" size="lg" asChild disabled={isProcessing}>
                     <span className="gap-2">
@@ -239,10 +251,10 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
               <label className="cursor-pointer">
                 <input
                   type="file"
-                  accept="image/*"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                  disabled={isProcessing}
+                accept="image/*,application/pdf"
+                onChange={handleFileSelect}
+                className="hidden"
+                disabled={isProcessing}
                 />
                 <Button variant={isMobile ? "outline" : "default"} size="lg" asChild disabled={isProcessing}>
                   <span className="gap-2">
@@ -254,7 +266,7 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
             </div>
 
             <p className="text-sm text-muted-foreground mt-4">
-              {isMobile ? "Take or select a photo from your device" : "Supports: JPG, PNG, WEBP"}
+              {isMobile ? "Take or select a photo/PDF from your device" : "Supports: JPG, PNG, WEBP, PDF"}
             </p>
           </>
         )}

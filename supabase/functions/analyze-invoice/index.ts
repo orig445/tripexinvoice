@@ -60,95 +60,125 @@ serve(async (req) => {
       throw new Error("Either imageBase64 or imageUrl must be provided");
     }
 
-    const systemPrompt = `You are an expert invoice/receipt analyzer. Analyze the image and extract the following information.
+    const systemPrompt = `You are an expert invoice/receipt OCR analyzer. Your job is to extract ONLY what is physically printed on the document. NEVER guess, calculate, or invent data.
 
-CRITICAL - Date Extraction Rules (HIGHEST PRIORITY):
-- Look CAREFULLY for the date PRINTED on the document. Common labels: "Date", "Invoice Date", "תאריך", "Date Issued", "Transaction Date".
-- The date is usually near the top of the receipt, next to the invoice number or time.
-- Read the EXACT digits printed. Do NOT guess or estimate the date.
-- If you see "06/27/2025" → that is MM/DD/YYYY → output "2025-06-27"
-- If you see "27/06/2025" → that is DD/MM/YYYY → output "2025-06-27"
-- If you see "2025-06-27" → output as-is
-- If you see "27 Jun 2025" or "June 27, 2025" → output "2025-06-27"
-- For Hebrew months: ינואר=01, פברואר=02, מרץ=03, אפריל=04, מאי=05, יוני=06, יולי=07, אוגוסט=08, ספטמבר=09, אוקטובר=10, נובמבר=11, דצמבר=12
-- NEVER invent a date. If no date is visible, return null.
-- NEVER use today's date or any default date.
-- Double-check: read the digits on the image one more time before answering.
+GOLDEN RULE: If you cannot clearly read a value, return null. Wrong data is worse than no data.
 
-CRITICAL - Finding the Document Number:
-Look for labels such as: Invoice #, Receipt #, Document #, Reference #, or any prominent number at the top of the document.
-For Hebrew documents, look for: "מספר קבלה", "אסמכתא", "מס' חשבונית", "מספר חשבונית", or "מס'" followed by digits.
-Do NOT confuse the document number with a business registration number (e.g. ח.פ. / עוסק מורשה).
+═══════════════════════════════════════
+VENDOR NAME (HIGHEST ERROR RATE - BE CAREFUL)
+═══════════════════════════════════════
+- The vendor/store name is usually the LARGEST text at the TOP of the receipt.
+- Read it CHARACTER BY CHARACTER. Do not guess or autocomplete.
+- Common Philippine chains to watch for (match these exactly if you recognize them):
+  ZUISPRESSO, NESPRESSO, S&R PIZZA, KENNY ROGERS ROASTERS, STARBUCKS, SAVEMORE, 
+  THE COFFEE BEAN & TEA LEAF, MCDONALD'S, JOLLIBEE, MR. KIMBOB BIBIMBOB, 7-ELEVEN
+- If the name is partially illegible, return what you CAN read clearly. Do NOT invent letters.
+- NEVER confuse the POS provider name (e.g., "Dynamic Global Enterprise", "CONDOR POS", "RETAIL SOFTWARE") with the vendor name.
 
-CRITICAL - Amount Extraction Rules (FOLLOW THESE STEPS IN ORDER):
+═══════════════════════════════════════
+INVOICE/RECEIPT NUMBER
+═══════════════════════════════════════
+- Look for labels: "Invoice No", "SI#", "OR NO.", "Receipt #", "Document #", "Inv. No."
+- For Hebrew: "מספר קבלה", "אסמכתא", "מס' חשבונית"
+- The invoice number is usually NEAR THE TOP, after a clear label.
+- Do NOT use: TIN numbers, MIN numbers, PTU numbers, serial numbers, transaction numbers, accreditation numbers, order numbers.
+- If multiple numbers exist with labels, prefer "Invoice No" or "SI#" or "OR NO."
+- Return the EXACT string printed (including leading zeros).
 
-STEP 0: FIRST, identify and COMPLETELY IGNORE these fields:
-  - "Cash" / "Cash Received" / "Cash Tendered" / "Paid" / "Payment" — this is money the customer GAVE, not the charge
-  - "Change" / "Change Due" / "Change Given" — this is money returned to the customer
-  - These amounts are NEVER the total. Pretend they don't exist.
+═══════════════════════════════════════
+DATE EXTRACTION (CRITICAL - READ CAREFULLY)
+═══════════════════════════════════════
+- Find the transaction/invoice date, usually near the top with a time stamp.
+- READ THE EXACT DIGITS. Do not guess the year.
+- Philippine receipts in 2026 will show dates like "02/09/2026" (MM/DD/YYYY) or "Feb 9 2026".
+- NEVER output a date from 2020, 2023, 2024 for a recent receipt unless that's truly printed.
+- Common date labels: "Date", "Date & Time", "Trans Date"
+- Format rules:
+  - "02/09/2026" (MM/DD/YYYY) → output "2026-02-09"
+  - "09/02/2026" (DD/MM/YYYY for non-US) → determine from context
+  - Philippine receipts use MM/DD/YYYY format
+  - Hebrew receipts use DD/MM/YYYY format
+- If the date is genuinely unreadable, return null.
+- NEVER use accreditation dates, PTU dates, or "Date Issued" of POS equipment as the invoice date.
 
-STEP 1: Find the TOTAL — the amount the customer was CHARGED.
-  Look for these labels IN THIS PRIORITY ORDER:
-  - "AMOUNT DUE" (highest priority - this is ALWAYS the total)
-  - "Total Amount" / "Total"
-  - "Grand Total"
-  - "Amount Payable"
-  - "סה"כ לתשלום" / "סה"כ כולל מע"מ"
-  IMPORTANT: The total is the amount the customer OWES, NOT the amount of cash they handed over.
-  If "Amount Due" says 150 and "Cash" says 200, the total is 150.
+═══════════════════════════════════════
+CURRENCY DETECTION (CRITICAL)
+═══════════════════════════════════════
+- FIRST: Detect the COUNTRY from address, language, or TIN format:
+  - Philippine address/TIN/PHP symbol → currency is ALWAYS "PHP"
+  - Hebrew text/Israeli address/₪ → currency is ALWAYS "ILS"
+  - Thai text/฿ → "THB"
+- SECOND: Look for explicit currency codes/symbols on the receipt.
+- NEVER default to USD or GBP for Philippine or Israeli receipts.
+- If the receipt has Philippine addresses, VAT REG TIN, or is clearly from the Philippines, the currency MUST be "PHP".
 
-STEP 2: Find the TAX/VAT.
-  Look for: VAT, Tax, מע"מ, GST.
-  The tax/VAT is ALWAYS SMALLER than the total.
+═══════════════════════════════════════
+TIN EXTRACTION (CRITICAL - 58% MISS RATE)
+═══════════════════════════════════════
+- For Philippine receipts, TIN is ALWAYS present and MUST be extracted.
+- Look for these labels CAREFULLY: "TIN", "TIN:", "VAT REG TIN:", "VAT Reg. TIN:", "VAT Reg TIN", "Taxpayer ID"
+- TIN format: XXX-XXX-XXX-XXXXX (digits separated by dashes, sometimes with trailing zeros or "V")
+- The TIN is usually printed near the TOP of the receipt, before the items.
+- Common patterns:
+  - "VAT REG TIN: 005-215-077-175" → extract "005-215-077-175"
+  - "VAT Reg. TIN: 635-381-780-00147" → extract "635-381-780-00147"
+  - "VAT REGTN: 009-316-981-0063" → extract "009-316-981-0063"
+- IMPORTANT: There may be a CUSTOMER TIN field at the bottom (usually blank) - ignore that. Extract the VENDOR's TIN from the top.
+- For non-Philippine receipts, return null.
 
-ABSOLUTE RULES - DO NOT VIOLATE:
-- Cash/Change amounts are NEVER the total_amount
-- If only one labeled amount exists (excluding Cash/Change), treat it as total_amount.
-- If "Amount Due" and "Total" both exist, use "Amount Due" as total_amount.
+═══════════════════════════════════════
+TOTAL AMOUNT (WHAT THE CUSTOMER OWES)
+═══════════════════════════════════════
+STEP 0 - COMPLETELY IGNORE these fields (they are NOT the total):
+  - "Cash" / "Cash Received" / "Cash Tendered" / "Amount Tendered" → money customer GAVE
+  - "Change" / "Change Due" → money returned to customer
+  - "Subtotal" → pre-discount amount, not final
+  - "Coupon" amounts
+  
+STEP 1 - Find the TOTAL using these labels IN PRIORITY ORDER:
+  1. "AMOUNT DUE" / "TOTAL AMOUNT DUE" (highest priority)
+  2. "Grand Total" / "Total Amount"
+  3. "Total" / "סה"כ לתשלום"
+  4. "Amount Payable"
 
-CRITICAL - Currency Detection Rules (in order of priority):
-1. Look for EXPLICIT currency codes printed on the invoice (PHP, USD, ILS, EUR, GBP, THB, JPY, etc.) — use that code exactly.
-2. Look for currency SYMBOLS: ₪=ILS, $=USD, €=EUR, £=GBP, ₱=PHP, ¥=JPY/CNY, ฿=THB, ₩=KRW, etc.
-3. ONLY as a last resort, infer from language: Hebrew→ILS, English→USD, etc.
+STEP 2 - Validate: Total should be LESS than or EQUAL to Cash. If Cash < Total, recheck.
 
-CRITICAL - Category Classification:
-Based on the vendor name, type of business, or items on the receipt, classify into ONE of these categories:
-- "food" — restaurants, cafes, fast food, bakeries, grocery stores, supermarkets
-- "transport" — taxis, uber, gas stations, parking, public transit, airlines
-- "hotel" — hotels, hostels, Airbnb, lodging
-- "office" — office supplies, printing, stationery
-- "telecom" — phone, internet, mobile plans
-- "entertainment" — movies, events, attractions
-- "health" — pharmacy, medical, doctor
-- "shopping" — clothing, electronics, general retail
-- "other" — anything that doesn't fit above
+═══════════════════════════════════════
+VAT/TAX AMOUNT
+═══════════════════════════════════════
+- Look for: "VAT Amount", "VAT (12%)", "מע"מ", "Tax Amount", "GST"
+- VAT must be SMALLER than the total.
+- For Philippine receipts, VAT is typically 12% of VATable Sales.
+- Read the EXACT number printed. Do NOT calculate VAT yourself.
+- If you see "VAT Amount: 23.46" → return 23.46
+- If no VAT line exists, return null. Do NOT return 0 unless "0.00" is explicitly printed.
 
-CRITICAL - Item Count:
-Count the number of line items / products on the receipt. If unclear, use 1.
+═══════════════════════════════════════
+CATEGORY CLASSIFICATION
+═══════════════════════════════════════
+Based on vendor type: "food" | "transport" | "hotel" | "office" | "telecom" | "entertainment" | "health" | "shopping" | "other"
 
-CRITICAL - TIN Extraction (Philippines ONLY):
-If the invoice/receipt is from the Philippines (currency is PHP, or Philippine address/language detected):
-- Look for "TIN" (Taxpayer Identification Number) on the document.
-- Common labels: "TIN", "TIN:", "TIN No.", "VAT Reg TIN", "Taxpayer ID"
-- TIN format is typically: XXX-XXX-XXX-XXX or XXX-XXX-XXX-XXXV
-- Extract the EXACT printed TIN digits/dashes.
-- If NO TIN is visible, return null for the tin field.
-- ONLY extract TIN for Philippine documents. For all other countries, return null.
+═══════════════════════════════════════
+ITEM COUNT
+═══════════════════════════════════════
+Count the distinct line items/products listed. If unclear, use 1.
 
-Return a JSON object with ONLY these fields:
+═══════════════════════════════════════
+OUTPUT FORMAT (JSON ONLY, NO OTHER TEXT)
+═══════════════════════════════════════
 {
-  "invoice_number": "string - the document/receipt number, NOT the business ID",
+  "invoice_number": "string or null",
   "invoice_date": "YYYY-MM-DD or null",
-  "total_amount": number or null (AMOUNT DUE / Total — what the customer owes),
-  "tax_amount": number or null (VAT/tax amount),
-  "currency": "USD/ILS/EUR/GBP/PHP/etc",
+  "total_amount": number or null,
+  "tax_amount": number or null,
+  "currency": "PHP/ILS/USD/EUR/etc",
   "category": "food/transport/hotel/office/telecom/entertainment/health/shopping/other",
-  "item_count": number (how many line items/products),
+  "item_count": number,
   "vendor_name": "string or null",
-  "tin": "string or null — Taxpayer Identification Number, ONLY for Philippine invoices"
+  "tin": "string or null (Philippine TIN only)"
 }
 
-Return ONLY the JSON object, no additional text.${correctionsContext}`;
+Return ONLY the JSON. No explanation, no markdown.${correctionsContext}`;
 
     // Call Oracle Generative AI (OCI) - US Chicago region
     // Using OpenAI-compatible chat completions endpoint with Meta Llama 4 Maverick Vision

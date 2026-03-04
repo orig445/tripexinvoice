@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, Camera, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { pdfAllPagesToBase64 } from "@/lib/pdf-utils";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -59,10 +60,18 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
     if (!file) return;
     e.target.value = "";
     try {
-      const base64 = await compressImage(file);
-      onImageCapture(base64);
+      if (file.type === "application/pdf") {
+        const pages = await pdfAllPagesToBase64(file);
+        if (pages.length > 0) {
+          // Send first page for OCR (most receipts are single-page)
+          onImageCapture(pages[0]);
+        }
+      } else {
+        const base64 = await compressImage(file);
+        onImageCapture(base64);
+      }
     } catch (err) {
-      console.error("Image compression error:", err);
+      console.error("File processing error:", err);
     }
   };
 
@@ -82,7 +91,7 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
       <input
         ref={cameraRef}
         type="file"
-        accept="image/*"
+        accept="image/*,application/pdf"
         capture="environment"
         className="hidden"
         onChange={handleFileChange}
@@ -102,7 +111,7 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
       <input
         ref={fileRef}
         type="file"
-        accept="image/*"
+        accept="image/*,application/pdf"
         className="hidden"
         onChange={handleFileChange}
       />
