@@ -181,78 +181,96 @@ OUTPUT FORMAT (JSON ONLY, NO OTHER TEXT)
 
 Return ONLY the JSON. No explanation, no markdown.${correctionsContext}`;
 
-    // ── Double-scan: call AI twice and merge for accuracy ──
-    const callAI = async () => {
-      const response = await fetch(
-        "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${ORACLE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "meta.llama-4-maverick-17b-128e-instruct-fp8",
-            messages: [
-              { role: "system", content: systemPrompt },
-              {
-                role: "user",
-                content: [
-                  { type: "text", text: "Please analyze this invoice and extract all information as JSON:" },
-                  imageContent,
-                ],
-              },
-            ],
-            max_tokens: 1024,
-            temperature: 0.1,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        if (response.status === 429) throw new Error("RATE_LIMIT");
-        if (response.status === 402) throw new Error("PAYMENT_REQUIRED");
-        const errorText = await response.text();
-        console.error("Oracle AI error:", response.status, errorText);
-        throw new Error(`Oracle AI error: ${response.status}`);
+    // Call Oracle AI
+    const response = await fetch(
+      "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${ORACLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "meta.llama-4-maverick-17b-128e-instruct-fp8",
+          messages: [
+            { role: "system", content: systemPrompt },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "Please analyze this invoice and extract all information as JSON:" },
+                imageContent,
+              ],
+            },
+          ],
+          max_tokens: 1024,
+          temperature: 0.1,
+        }),
       }
+    );
 
-      const aiResponse = await response.json();
-      const content = aiResponse.choices?.[0]?.message?.content;
-      if (!content) throw new Error("No response from Oracle AI");
-
-      const cleanedContent = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      return { parsed: JSON.parse(cleanedContent), raw: content };
-    };
-
-    // Run two scans in parallel
-    let scan1, scan2;
-    try {
-      [scan1, scan2] = await Promise.all([callAI(), callAI()]);
-    } catch (err: any) {
-      if (err.message === "RATE_LIMIT") {
+    if (!response.ok) {
+      if (response.status === 429) {
         return new Response(
           JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      if (err.message === "PAYMENT_REQUIRED") {
+      if (response.status === 402) {
         return new Response(
           JSON.stringify({ error: "Payment required. Please check your Oracle Cloud account." }),
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      throw err;
+      const errorText = await response.text();
+      console.error("Oracle AI error:", response.status, errorText);
+      throw new Error(`Oracle AI error: ${response.status} - ${errorText}`);
     }
 
-    // Merge: prefer non-null values, for numbers prefer the value that appears in both or the more detailed one
-    const merged = mergeScans(scan1.parsed, scan2.parsed);
+    const aiResponse = await response.json();
+    const content = aiResponse.choices?.[0]?.message?.content;
+
+    if (!content) {
+      throw new Error("No response from Oracle AI");
+    }
+
+    // Parse the JSON from the AI response
+    let parsedData;
+    try {
+      let cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      // Find JSON boundaries using brace counting
+      const startIdx = cleaned.indexOf("{");
+      if (startIdx !== -1) {
+        let depth = 0;
+        let endIdx = -1;
+        let inString = false;
+        let escapeNext = false;
+        for (let i = startIdx; i < cleaned.length; i++) {
+          const ch = cleaned[i];
+          if (escapeNext) { escapeNext = false; continue; }
+          if (ch === "\\") { escapeNext = true; continue; }
+          if (ch === '"') { inString = !inString; continue; }
+          if (inString) continue;
+          if (ch === "{") depth++;
+          else if (ch === "}") { depth--; if (depth === 0) { endIdx = i; break; } }
+        }
+        if (endIdx !== -1) cleaned = cleaned.substring(startIdx, endIdx + 1);
+      }
+      // Fix common JSON issues
+      cleaned = cleaned
+        .replace(/,\s*}/g, "}")
+        .replace(/,\s*]/g, "]")
+        .replace(/[\x00-\x1F\x7F]/g, "");
+      parsedData = JSON.parse(cleaned);
+    } catch (parseError) {
+      console.error("Failed to parse AI response:", content);
+      throw new Error("Failed to parse invoice data from AI response");
+    }
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        data: merged,
-        rawResponse: JSON.stringify({ scan1: scan1.raw, scan2: scan2.raw }),
+        data: parsedData,
+        rawResponse: content 
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
@@ -268,44 +286,3 @@ Return ONLY the JSON. No explanation, no markdown.${correctionsContext}`;
   }
 });
 
-function mergeScans(a: any, b: any): any {
-  const pick = (v1: any, v2: any) => v1 != null ? v1 : v2;
-  const pickNum = (v1: any, v2: any) => {
-    if (v1 != null && v2 != null) {
-      // If both agree (within 1%), use the value
-      if (Math.abs(v1 - v2) / Math.max(Math.abs(v1), 0.01) < 0.01) return v1;
-      // If they disagree, prefer the more precise (more decimal places)
-      const d1 = String(v1).split(".")[1]?.length || 0;
-      const d2 = String(v2).split(".")[1]?.length || 0;
-      return d1 >= d2 ? v1 : v2;
-    }
-    return v1 != null ? v1 : v2;
-  };
-  const pickStr = (v1: any, v2: any) => {
-    if (v1 && v2) return v1.length >= v2.length ? v1 : v2; // prefer more detailed
-    return v1 || v2;
-  };
-
-  return {
-    document_type: pick(a.document_type, b.document_type),
-    invoice_number: pickStr(a.invoice_number, b.invoice_number),
-    invoice_date: pick(a.invoice_date, b.invoice_date),
-    currency: pick(a.currency, b.currency),
-    merchant: {
-      name: pickStr(a.merchant?.name, b.merchant?.name),
-      tin: pickStr(a.merchant?.tin, b.merchant?.tin),
-      address: pickStr(a.merchant?.address, b.merchant?.address),
-      city: pickStr(a.merchant?.city, b.merchant?.city),
-    },
-    amounts: {
-      vatable_sales_amount: pickNum(a.amounts?.vatable_sales_amount, b.amounts?.vatable_sales_amount),
-      non_vatable_sales_amount: pickNum(a.amounts?.non_vatable_sales_amount, b.amounts?.non_vatable_sales_amount),
-      service_charge_amount: pickNum(a.amounts?.service_charge_amount, b.amounts?.service_charge_amount),
-      tax_amount: pickNum(a.amounts?.tax_amount, b.amounts?.tax_amount),
-    },
-    payment: {
-      method: pickStr(a.payment?.method, b.payment?.method),
-      amount_paid: pickNum(a.payment?.amount_paid, b.payment?.amount_paid),
-    },
-  };
-}
