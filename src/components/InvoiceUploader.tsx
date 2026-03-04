@@ -112,15 +112,23 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
         throw new Error(analysisData?.error || "Error analyzing invoice");
       }
 
-      // Map AI fields to DB columns; strip fields not in invoices table
-      const { tin, category, item_count, ...restData } = analysisData.data;
+      // Map new structured JSON to DB columns
+      const d = analysisData.data;
+      const totalAmount = (d.amounts?.vatable_sales_amount || 0) + (d.amounts?.non_vatable_sales_amount || 0) + (d.amounts?.service_charge_amount || 0) + (d.amounts?.tax_amount || 0);
       const invoiceData = {
-        ...restData,
+        invoice_number: d.invoice_number || null,
+        invoice_date: d.invoice_date || null,
+        currency: d.currency || null,
+        vendor_name: d.merchant?.name || null,
+        vendor_id: d.merchant?.tin || null,
+        vendor_address: [d.merchant?.address, d.merchant?.city].filter(Boolean).join(", ") || null,
+        total_amount: totalAmount || null,
+        tax_amount: d.amounts?.tax_amount || null,
+        subtotal: d.amounts?.vatable_sales_amount || null,
         image_url: publicUrlData.publicUrl,
         raw_ai_response: analysisData.rawResponse,
         status: "processed",
         user_id: user?.id,
-        ...(tin ? { vendor_id: tin } : {}),
       };
 
       const { data: savedInvoice, error: saveError } = await supabase

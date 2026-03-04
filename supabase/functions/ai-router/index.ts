@@ -162,22 +162,23 @@ serve(async (req) => {
           });
         }
 
-        // Build a summary of the scanned data
+        // Build a summary of the scanned data using new structured format
         const d = ocrData.data || {};
-        const categoryMap: Record<string, string> = {
-          food: "🍽️ Food", transport: "🚕 Transport", hotel: "🏨 Hotel",
-          office: "🏢 Office", telecom: "📱 Telecom", entertainment: "🎭 Entertainment",
-          health: "💊 Health", shopping: "🛍️ Shopping", other: "📦 Other",
-        };
         const lines: string[] = ["✅ Invoice scanned successfully! Here are the details:"];
-        if (d.vendor_name) lines.push(`🏪 Vendor: ${d.vendor_name}`);
-        if (d.category) lines.push(`📂 Category: ${categoryMap[d.category] || d.category}`);
-        if (d.invoice_number) lines.push(`🔢 Invoice number: ${d.invoice_number}`);
-        if (d.total_amount != null) lines.push(`💰 Total: ${d.total_amount}${d.currency ? " " + d.currency : ""}`);
-        if (d.tax_amount != null) lines.push(`🧾 VAT/Tax: ${d.tax_amount}${d.currency ? " " + d.currency : ""}`);
+        if (d.document_type) lines.push(`📄 Type: ${d.document_type.replace(/_/g, " ")}`);
+        if (d.merchant?.name) lines.push(`🏪 Merchant: ${d.merchant.name}`);
+        if (d.merchant?.tin) lines.push(`🆔 TIN: ${d.merchant.tin}`);
+        if (d.merchant?.address) lines.push(`📍 Address: ${d.merchant.address}`);
+        if (d.merchant?.city) lines.push(`🌆 City: ${d.merchant.city}`);
+        if (d.invoice_number) lines.push(`🔢 Invoice #: ${d.invoice_number}`);
         if (d.invoice_date) lines.push(`📅 Date: ${d.invoice_date}`);
-        if (d.item_count) lines.push(`📋 Items: ${d.item_count}`);
-        if (d.tin) lines.push(`🆔 TIN: ${d.tin}`);
+        const cur = d.currency || "";
+        if (d.amounts?.vatable_sales_amount != null) lines.push(`💵 VATable Sales: ${d.amounts.vatable_sales_amount} ${cur}`);
+        if (d.amounts?.non_vatable_sales_amount != null && d.amounts.non_vatable_sales_amount > 0) lines.push(`💵 Non-VAT Sales: ${d.amounts.non_vatable_sales_amount} ${cur}`);
+        if (d.amounts?.service_charge_amount != null && d.amounts.service_charge_amount > 0) lines.push(`💵 Service Charge: ${d.amounts.service_charge_amount} ${cur}`);
+        if (d.amounts?.tax_amount != null) lines.push(`🧾 VAT/Tax: ${d.amounts.tax_amount} ${cur}`);
+        if (d.payment?.method) lines.push(`💳 Payment: ${d.payment.method}`);
+        if (d.payment?.amount_paid != null) lines.push(`💰 Paid: ${d.payment.amount_paid} ${cur}`);
         lines.push("\nIs the data correct? If something is wrong, let me know and I'll update it.");
 
         const ocrSummary = lines.join("\n");

@@ -65,194 +65,194 @@ serve(async (req) => {
 GOLDEN RULE: If you cannot clearly read a value, return null. Wrong data is worse than no data.
 
 ═══════════════════════════════════════
-VENDOR NAME (HIGHEST ERROR RATE - BE CAREFUL)
+DOCUMENT TYPE
+═══════════════════════════════════════
+Classify as one of: "sales_invoice", "official_receipt", "charge_invoice", "delivery_receipt", "credit_memo", "debit_memo", "purchase_order", "quotation", "receipt", "other"
+Look for labels like "SALES INVOICE", "OFFICIAL RECEIPT", "OR", "SI", "CHARGE INVOICE" etc.
+
+═══════════════════════════════════════
+VENDOR / MERCHANT NAME (HIGHEST ERROR RATE - BE CAREFUL)
 ═══════════════════════════════════════
 - The vendor/store name is usually the LARGEST text at the TOP of the receipt.
 - Read it CHARACTER BY CHARACTER. Do not guess or autocomplete.
 - Common Philippine chains to watch for (match these exactly if you recognize them):
   ZUISPRESSO, NESPRESSO, S&R PIZZA, KENNY ROGERS ROASTERS, STARBUCKS, SAVEMORE, 
-  THE COFFEE BEAN & TEA LEAF, MCDONALD'S, JOLLIBEE, MR. KIMBOB BIBIMBOB, 7-ELEVEN
+  THE COFFEE BEAN & TEA LEAF, MCDONALD'S, JOLLIBEE, MR. KIMBOB BIBIMBOB, 7-ELEVEN,
+  BENCH, BENCH BOUTIQUE, UNIQLO, SM DEPARTMENT STORE, WATSONS, MERCURY DRUG
+- Also look for the parent company name in parentheses or smaller text below the store name.
+  Example: "BENCH BOUTIQUE" with "Suyen Corporation" → name = "Bench Boutique (Suyen Corporation)"
 - If the name is partially illegible, return what you CAN read clearly. Do NOT invent letters.
-- NEVER confuse the POS provider name (e.g., "Dynamic Global Enterprise", "CONDOR POS", "RETAIL SOFTWARE") with the vendor name.
+- NEVER confuse the POS provider name with the vendor name.
+
+═══════════════════════════════════════
+MERCHANT ADDRESS & CITY
+═══════════════════════════════════════
+- Extract the FULL address printed below/near the merchant name.
+- Separate into "address" (street, floor, unit, building, barangay) and "city" (city + country).
+- Example: "2nd Flr, Unit 228-231, Paranaque Integrated, Brgy. Tambo" → address
+           "Paranaque City, Philippines" → city
 
 ═══════════════════════════════════════
 INVOICE/RECEIPT NUMBER
 ═══════════════════════════════════════
-- Look for labels: "Invoice No", "SI#", "OR NO.", "Receipt #", "Document #", "Inv. No."
+- Look for labels: "Invoice No", "SI#", "OR NO.", "Receipt #", "Document #"
 - For Hebrew: "מספר קבלה", "אסמכתא", "מס' חשבונית"
-- The invoice number is usually NEAR THE TOP, after a clear label.
-- Do NOT use: TIN numbers, MIN numbers, PTU numbers, serial numbers, transaction numbers, accreditation numbers, order numbers.
-- If multiple numbers exist with labels, prefer "Invoice No" or "SI#" or "OR NO."
+- Do NOT use: TIN numbers, MIN numbers, PTU numbers, serial numbers, accreditation numbers.
 - Return the EXACT string printed (including leading zeros).
 
 ═══════════════════════════════════════
-DATE EXTRACTION (CRITICAL - READ CAREFULLY)
+DATE EXTRACTION (CRITICAL)
 ═══════════════════════════════════════
 - Find the transaction/invoice date, usually near the top with a time stamp.
 - READ THE EXACT DIGITS. Do not guess the year.
-- Philippine receipts in 2026 will show dates like "02/09/2026" (MM/DD/YYYY) or "Feb 9 2026".
-- NEVER output a date from 2020, 2023, 2024 for a recent receipt unless that's truly printed.
-- Common date labels: "Date", "Date & Time", "Trans Date"
-- Format rules:
-  - "02/09/2026" (MM/DD/YYYY) → output "2026-02-09"
-  - "09/02/2026" (DD/MM/YYYY for non-US) → determine from context
-  - Philippine receipts use MM/DD/YYYY format
-  - Hebrew receipts use DD/MM/YYYY format
-- If the date is genuinely unreadable, return null.
-- NEVER use accreditation dates, PTU dates, or "Date Issued" of POS equipment as the invoice date.
+- Philippine receipts use MM/DD/YYYY format → output as YYYY-MM-DD
+- Hebrew receipts use DD/MM/YYYY format → output as YYYY-MM-DD
+- NEVER use accreditation dates, PTU dates as the invoice date.
 
 ═══════════════════════════════════════
-CURRENCY DETECTION (CRITICAL)
+CURRENCY DETECTION
 ═══════════════════════════════════════
-- FIRST: Detect the COUNTRY from address, language, or TIN format:
-  - Philippine address/TIN/PHP symbol → currency is ALWAYS "PHP"
-  - Hebrew text/Israeli address/₪ → currency is ALWAYS "ILS"
-  - Thai text/฿ → "THB"
-- SECOND: Look for explicit currency codes/symbols on the receipt.
-- NEVER default to USD or GBP for Philippine or Israeli receipts.
-- If the receipt has Philippine addresses, VAT REG TIN, or is clearly from the Philippines, the currency MUST be "PHP".
+- Philippine address/TIN/PHP symbol → currency is ALWAYS "PHP"
+- Hebrew text/Israeli address/₪ → currency is ALWAYS "ILS"
+- Thai text/฿ → "THB"
+- NEVER default to USD for Philippine or Israeli receipts.
 
 ═══════════════════════════════════════
-TIN EXTRACTION (CRITICAL - 58% MISS RATE)
+TIN EXTRACTION
 ═══════════════════════════════════════
-- For Philippine receipts, TIN is ALWAYS present and MUST be extracted.
-- Look for these labels CAREFULLY: "TIN", "TIN:", "VAT REG TIN:", "VAT Reg. TIN:", "VAT Reg TIN", "Taxpayer ID"
-- TIN format: XXX-XXX-XXX-XXXXX (digits separated by dashes, sometimes with trailing zeros or "V")
-- The TIN is usually printed near the TOP of the receipt, before the items.
-- Common patterns:
-  - "VAT REG TIN: 005-215-077-175" → extract "005-215-077-175"
-  - "VAT Reg. TIN: 635-381-780-00147" → extract "635-381-780-00147"
-  - "VAT REGTN: 009-316-981-0063" → extract "009-316-981-0063"
-- IMPORTANT: There may be a CUSTOMER TIN field at the bottom (usually blank) - ignore that. Extract the VENDOR's TIN from the top.
+- For Philippine receipts, TIN format: XXX-XXX-XXX-XXXXX
+- Extract the VENDOR's TIN from the top. Ignore customer TIN at the bottom.
 - For non-Philippine receipts, return null.
 
 ═══════════════════════════════════════
-TOTAL AMOUNT (WHAT THE CUSTOMER OWES)
+AMOUNTS (CRITICAL - READ EXACTLY)
 ═══════════════════════════════════════
-STEP 0 - COMPLETELY IGNORE these fields (they are NOT the total):
-  - "Cash" / "Cash Received" / "Cash Tendered" / "Amount Tendered" → money customer GAVE
-  - "Change" / "Change Due" → money returned to customer
-  - "Subtotal" → pre-discount amount, not final
-  - "Coupon" amounts
-  
-STEP 1 - Find the TOTAL using these labels IN PRIORITY ORDER:
-  1. "AMOUNT DUE" / "TOTAL AMOUNT DUE" (highest priority)
-  2. "Grand Total" / "Total Amount"
-  3. "Total" / "סה"כ לתשלום"
-  4. "Amount Payable"
+Extract these EXACT amounts as printed on the document:
 
-STEP 2 - Validate: Total should be LESS than or EQUAL to Cash. If Cash < Total, recheck.
+1. "vatable_sales_amount" - Look for: "VATable Sales", "VATable Amount", "Net of VAT"
+   This is the base amount BEFORE tax. Read the exact number.
 
-═══════════════════════════════════════
-VAT/TAX AMOUNT
-═══════════════════════════════════════
-- Look for: "VAT Amount", "VAT (12%)", "מע"מ", "Tax Amount", "GST"
-- VAT must be SMALLER than the total.
-- For Philippine receipts, VAT is typically 12% of VATable Sales.
-- Read the EXACT number printed. Do NOT calculate VAT yourself.
-- If you see "VAT Amount: 23.46" → return 23.46
-- If no VAT line exists, return null. Do NOT return 0 unless "0.00" is explicitly printed.
+2. "non_vatable_sales_amount" - Look for: "Non-VAT", "VAT-Exempt Sales", "Zero Rated Sales"
+   Often 0.00. Read the exact number. If not found, use 0.00.
+
+3. "service_charge_amount" - Look for: "Service Charge", "SC"
+   Often 0.00. Read the exact number. If not found, use 0.00.
+
+4. "tax_amount" - Look for: "VAT Amount", "VAT (12%)", "Tax Amount", "מע"מ"
+   This is the TAX portion. Must be SMALLER than vatable_sales_amount.
+   Read the EXACT number. Do NOT calculate it yourself.
+
+COMPLETELY IGNORE these fields (they are NOT amounts to extract):
+- "Cash" / "Cash Received" / "Cash Tendered" / "Amount Tendered"
+- "Change" / "Change Due"
 
 ═══════════════════════════════════════
-CATEGORY CLASSIFICATION
+PAYMENT INFO
 ═══════════════════════════════════════
-Based on vendor type: "food" | "transport" | "hotel" | "office" | "telecom" | "entertainment" | "health" | "shopping" | "other"
-
-═══════════════════════════════════════
-ITEM COUNT
-═══════════════════════════════════════
-Count the distinct line items/products listed. If unclear, use 1.
+- "method": How did the customer pay? "Cash", "Credit Card", "Debit Card", "GCash", "Maya", etc.
+- "amount_paid": The actual amount the customer handed over (Cash Tendered / Amount Tendered).
+  This may be MORE than the total (customer gave change). Read exact number.
 
 ═══════════════════════════════════════
 OUTPUT FORMAT (JSON ONLY, NO OTHER TEXT)
 ═══════════════════════════════════════
 {
+  "document_type": "sales_invoice|official_receipt|receipt|other",
   "invoice_number": "string or null",
   "invoice_date": "YYYY-MM-DD or null",
-  "total_amount": number or null,
-  "tax_amount": number or null,
-  "currency": "PHP/ILS/USD/EUR/etc",
-  "category": "food/transport/hotel/office/telecom/entertainment/health/shopping/other",
-  "item_count": number,
-  "vendor_name": "string or null",
-  "tin": "string or null (Philippine TIN only)"
+  "currency": "PHP|ILS|USD|EUR|etc",
+  "merchant": {
+    "name": "string or null",
+    "tin": "string or null",
+    "address": "string or null",
+    "city": "string or null"
+  },
+  "amounts": {
+    "vatable_sales_amount": number or null,
+    "non_vatable_sales_amount": number or null,
+    "service_charge_amount": number or null,
+    "tax_amount": number or null
+  },
+  "payment": {
+    "method": "string or null",
+    "amount_paid": number or null
+  }
 }
 
 Return ONLY the JSON. No explanation, no markdown.${correctionsContext}`;
 
-    // Call Oracle Generative AI (OCI) - US Chicago region
-    // Using OpenAI-compatible chat completions endpoint with Meta Llama 4 Maverick Vision
-    const response = await fetch(
-      "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${ORACLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "meta.llama-4-maverick-17b-128e-instruct-fp8",
-          messages: [
-            { role: "system", content: systemPrompt },
-            {
-              role: "user",
-              content: [
-                { type: "text", text: "Please analyze this invoice and extract all information as JSON:" },
-                imageContent,
-              ],
-            },
-          ],
-          max_tokens: 1024,
-          temperature: 0.1,
-        }),
-      }
-    );
+    // ── Double-scan: call AI twice and merge for accuracy ──
+    const callAI = async () => {
+      const response = await fetch(
+        "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${ORACLE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "meta.llama-4-maverick-17b-128e-instruct-fp8",
+            messages: [
+              { role: "system", content: systemPrompt },
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: "Please analyze this invoice and extract all information as JSON:" },
+                  imageContent,
+                ],
+              },
+            ],
+            max_tokens: 1024,
+            temperature: 0.1,
+          }),
+        }
+      );
 
-    if (!response.ok) {
-      if (response.status === 429) {
+      if (!response.ok) {
+        if (response.status === 429) throw new Error("RATE_LIMIT");
+        if (response.status === 402) throw new Error("PAYMENT_REQUIRED");
+        const errorText = await response.text();
+        console.error("Oracle AI error:", response.status, errorText);
+        throw new Error(`Oracle AI error: ${response.status}`);
+      }
+
+      const aiResponse = await response.json();
+      const content = aiResponse.choices?.[0]?.message?.content;
+      if (!content) throw new Error("No response from Oracle AI");
+
+      const cleanedContent = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      return { parsed: JSON.parse(cleanedContent), raw: content };
+    };
+
+    // Run two scans in parallel
+    let scan1, scan2;
+    try {
+      [scan1, scan2] = await Promise.all([callAI(), callAI()]);
+    } catch (err: any) {
+      if (err.message === "RATE_LIMIT") {
         return new Response(
           JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      if (response.status === 402) {
+      if (err.message === "PAYMENT_REQUIRED") {
         return new Response(
           JSON.stringify({ error: "Payment required. Please check your Oracle Cloud account." }),
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      const errorText = await response.text();
-      console.error("Oracle AI error:", response.status, errorText);
-      throw new Error(`Oracle AI error: ${response.status} - ${errorText}`);
+      throw err;
     }
 
-    const aiResponse = await response.json();
-    const content = aiResponse.choices?.[0]?.message?.content;
-
-    if (!content) {
-      throw new Error("No response from Oracle AI");
-    }
-
-    // Parse the JSON from the AI response
-    let parsedData;
-    try {
-      // Remove markdown code blocks if present
-      const cleanedContent = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      parsedData = JSON.parse(cleanedContent);
-    } catch (parseError) {
-      console.error("Failed to parse AI response:", content);
-      throw new Error("Failed to parse invoice data from AI response");
-    }
-
-    // Post-processing: ensure category exists
-    if (!parsedData.category) parsedData.category = "other";
-    if (!parsedData.item_count) parsedData.item_count = 1;
+    // Merge: prefer non-null values, for numbers prefer the value that appears in both or the more detailed one
+    const merged = mergeScans(scan1.parsed, scan2.parsed);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        data: parsedData,
-        rawResponse: content 
+        data: merged,
+        rawResponse: JSON.stringify({ scan1: scan1.raw, scan2: scan2.raw }),
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
@@ -267,3 +267,45 @@ Return ONLY the JSON. No explanation, no markdown.${correctionsContext}`;
     );
   }
 });
+
+function mergeScans(a: any, b: any): any {
+  const pick = (v1: any, v2: any) => v1 != null ? v1 : v2;
+  const pickNum = (v1: any, v2: any) => {
+    if (v1 != null && v2 != null) {
+      // If both agree (within 1%), use the value
+      if (Math.abs(v1 - v2) / Math.max(Math.abs(v1), 0.01) < 0.01) return v1;
+      // If they disagree, prefer the more precise (more decimal places)
+      const d1 = String(v1).split(".")[1]?.length || 0;
+      const d2 = String(v2).split(".")[1]?.length || 0;
+      return d1 >= d2 ? v1 : v2;
+    }
+    return v1 != null ? v1 : v2;
+  };
+  const pickStr = (v1: any, v2: any) => {
+    if (v1 && v2) return v1.length >= v2.length ? v1 : v2; // prefer more detailed
+    return v1 || v2;
+  };
+
+  return {
+    document_type: pick(a.document_type, b.document_type),
+    invoice_number: pickStr(a.invoice_number, b.invoice_number),
+    invoice_date: pick(a.invoice_date, b.invoice_date),
+    currency: pick(a.currency, b.currency),
+    merchant: {
+      name: pickStr(a.merchant?.name, b.merchant?.name),
+      tin: pickStr(a.merchant?.tin, b.merchant?.tin),
+      address: pickStr(a.merchant?.address, b.merchant?.address),
+      city: pickStr(a.merchant?.city, b.merchant?.city),
+    },
+    amounts: {
+      vatable_sales_amount: pickNum(a.amounts?.vatable_sales_amount, b.amounts?.vatable_sales_amount),
+      non_vatable_sales_amount: pickNum(a.amounts?.non_vatable_sales_amount, b.amounts?.non_vatable_sales_amount),
+      service_charge_amount: pickNum(a.amounts?.service_charge_amount, b.amounts?.service_charge_amount),
+      tax_amount: pickNum(a.amounts?.tax_amount, b.amounts?.tax_amount),
+    },
+    payment: {
+      method: pickStr(a.payment?.method, b.payment?.method),
+      amount_paid: pickNum(a.payment?.amount_paid, b.payment?.amount_paid),
+    },
+  };
+}
