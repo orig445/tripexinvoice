@@ -181,96 +181,103 @@ OUTPUT FORMAT (JSON ONLY, NO OTHER TEXT)
 
 Return ONLY the JSON. No explanation, no markdown.${correctionsContext}`;
 
-    // Call Oracle AI
-    const response = await fetch(
-      "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions",
-      {
+    const ORACLE_URL = "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions";
+    const MODEL = "meta.llama-4-maverick-17b-128e-instruct-fp8";
+
+    const callOracle = async (messages: any[], maxTokens = 1024) => {
+      const response = await fetch(ORACLE_URL, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${ORACLE_API_KEY}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          model: "meta.llama-4-maverick-17b-128e-instruct-fp8",
-          messages: [
-            { role: "system", content: systemPrompt },
-            {
-              role: "user",
-              content: [
-                { type: "text", text: "Please analyze this invoice and extract all information as JSON:" },
-                imageContent,
-              ],
-            },
-          ],
-          max_tokens: 1024,
-          temperature: 0.1,
-        }),
+        body: JSON.stringify({ model: MODEL, messages, max_tokens: maxTokens, temperature: 0.1 }),
+      });
+      if (!response.ok) {
+        if (response.status === 429) throw { code: 429, msg: "Rate limit exceeded" };
+        if (response.status === 402) throw { code: 402, msg: "Payment required" };
+        const errText = await response.text();
+        throw new Error(`Oracle AI error: ${response.status} - ${errText}`);
       }
-    );
+      const data = await response.json();
+      return data.choices?.[0]?.message?.content || "";
+    };
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "Payment required. Please check your Oracle Cloud account." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      const errorText = await response.text();
-      console.error("Oracle AI error:", response.status, errorText);
-      throw new Error(`Oracle AI error: ${response.status} - ${errorText}`);
-    }
-
-    const aiResponse = await response.json();
-    const content = aiResponse.choices?.[0]?.message?.content;
-
-    if (!content) {
-      throw new Error("No response from Oracle AI");
-    }
-
-    // Parse the JSON from the AI response
-    let parsedData;
-    try {
-      let cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      // Find JSON boundaries using brace counting
+    const parseJson = (raw: string) => {
+      let cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
       const startIdx = cleaned.indexOf("{");
       if (startIdx !== -1) {
-        let depth = 0;
-        let endIdx = -1;
-        let inString = false;
-        let escapeNext = false;
+        let depth = 0, endIdx = -1, inStr = false, esc = false;
         for (let i = startIdx; i < cleaned.length; i++) {
           const ch = cleaned[i];
-          if (escapeNext) { escapeNext = false; continue; }
-          if (ch === "\\") { escapeNext = true; continue; }
-          if (ch === '"') { inString = !inString; continue; }
-          if (inString) continue;
+          if (esc) { esc = false; continue; }
+          if (ch === "\\") { esc = true; continue; }
+          if (ch === '"') { inStr = !inStr; continue; }
+          if (inStr) continue;
           if (ch === "{") depth++;
           else if (ch === "}") { depth--; if (depth === 0) { endIdx = i; break; } }
         }
         if (endIdx !== -1) cleaned = cleaned.substring(startIdx, endIdx + 1);
       }
-      // Fix common JSON issues
-      cleaned = cleaned
-        .replace(/,\s*}/g, "}")
-        .replace(/,\s*]/g, "]")
-        .replace(/[\x00-\x1F\x7F]/g, "");
-      parsedData = JSON.parse(cleaned);
-    } catch (parseError) {
-      console.error("Failed to parse AI response:", content);
-      throw new Error("Failed to parse invoice data from AI response");
+      cleaned = cleaned.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]").replace(/[\x00-\x1F\x7F]/g, "");
+      return JSON.parse(cleaned);
+    };
+
+    // ── SCAN 1: Extract data ──
+    let scan1Raw: string;
+    let scan1Data: any;
+    try {
+      scan1Raw = await callOracle([
+        { role: "system", content: systemPrompt },
+        { role: "user", content: [
+          { type: "text", text: "Please analyze this invoice and extract all information as JSON:" },
+          imageContent,
+        ]},
+      ]);
+      scan1Data = parseJson(scan1Raw);
+    } catch (err: any) {
+      if (err.code === 429 || err.code === 402) {
+        return new Response(JSON.stringify({ error: err.msg }), {
+          status: err.code, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      throw err;
+    }
+
+    // ── SCAN 2: Verify extracted data ──
+    let finalData = scan1Data;
+    try {
+      const verifyPrompt = `You are a receipt/invoice verification expert. I extracted the following data from a receipt image. Please look at the SAME image and verify each field. If any value is WRONG, return the corrected JSON. If everything is correct, return the SAME JSON unchanged.
+
+EXTRACTED DATA:
+${JSON.stringify(scan1Data, null, 2)}
+
+RULES:
+- Compare each field against what you see in the image
+- Pay special attention to: amounts, dates, merchant name, TIN, invoice number
+- If VAT amount seems wrong (e.g. larger than vatable sales), fix it
+- If merchant name has typos compared to the image, fix it
+- Return ONLY the corrected/verified JSON, no explanation`;
+
+      const scan2Raw = await callOracle([
+        { role: "system", content: verifyPrompt },
+        { role: "user", content: [
+          { type: "text", text: "Verify this extracted invoice data against the image:" },
+          imageContent,
+        ]},
+      ], 1024);
+      finalData = parseJson(scan2Raw);
+      console.log("Verification scan completed successfully");
+    } catch (verifyErr) {
+      // If verification fails, use scan 1 data
+      console.error("Verification scan failed, using scan 1 data:", verifyErr);
     }
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        data: parsedData,
-        rawResponse: content 
+        data: finalData,
+        rawResponse: scan1Raw! 
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
