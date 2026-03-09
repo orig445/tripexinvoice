@@ -132,7 +132,7 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
             <div className="relative">
               <img
                 src={myloWaving}
-                alt="Mylo waving"
+                alt="Milo waving"
                 className="w-24 h-24 rounded-full border-2 border-primary/20 object-cover animate-in zoom-in duration-500 hover:scale-110 transition-transform duration-300"
               />
               <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-triplex-success rounded-full border-2 border-background animate-pulse" />
