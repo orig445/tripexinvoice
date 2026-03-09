@@ -152,6 +152,24 @@ export function KnowledgeBase() {
     }
   };
 
+  const handleDownload = async (doc: KnowledgeDocument) => {
+    const { data, error } = await supabase.storage
+      .from("knowledge")
+      .download(doc.file_url);
+
+    if (error || !data) {
+      toast.error("שגיאה בהורדת הקובץ");
+      return;
+    }
+
+    const url = URL.createObjectURL(data);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = doc.file_name;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const getFileIcon = (fileType: string) => {
     if (fileType.includes("image")) return <Image className="h-4 w-4" />;
     if (fileType.includes("spreadsheet") || fileType.includes("excel") || fileType.includes("csv"))
