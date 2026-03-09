@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Upload, Trash2, FileText, Image, FileSpreadsheet, Loader2, Brain, RefreshCw } from "lucide-react";
+import { Upload, Trash2, FileText, Image, FileSpreadsheet, Loader2, Brain, RefreshCw, Download } from "lucide-react";
 
 interface KnowledgeDocument {
   id: string;
