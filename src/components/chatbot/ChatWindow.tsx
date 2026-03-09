@@ -89,8 +89,8 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
     }
   };
 
-  const botName = config?.bot_name || "Mylo AI";
-  const welcomeMsg = config?.welcome_message || "Hello! I'm Mylo 🦊 How can I help you today?";
+  const botName = config?.bot_name || "Milo AI";
+  const welcomeMsg = config?.welcome_message || "Hello! I'm Milo 🦊 How can I help you today?";
 
   return (
     <div className="flex flex-col w-[360px] h-[500px] sm:w-[380px] sm:h-[520px] bg-background rounded-2xl shadow-xl border overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
