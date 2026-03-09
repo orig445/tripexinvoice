@@ -11,7 +11,7 @@ interface ChatMessageProps {
   onAction?: (action: string, data?: Record<string, any>) => void;
 }
 
-function getMyloAvatar(intent?: string): string {
+function getMiloAvatar(intent?: string): string {
   switch (intent) {
     case "help":
       return myloReading;
