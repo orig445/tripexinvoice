@@ -146,6 +146,47 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
       toast.success("Invoice analyzed successfully!");
       onInvoiceProcessed(savedInvoice);
 
+      // Save to knowledge base for model learning (async, non-blocking)
+      try {
+        const knowledgeContent = [
+          `Invoice #${savedInvoice.invoice_number || 'N/A'}`,
+          `Date: ${savedInvoice.invoice_date || 'N/A'}`,
+          `Vendor: ${savedInvoice.vendor_name || 'N/A'}`,
+          `Vendor ID/TIN: ${savedInvoice.vendor_id || 'N/A'}`,
+          `Address: ${savedInvoice.vendor_address || 'N/A'}`,
+          `Currency: ${savedInvoice.currency || 'N/A'}`,
+          `Subtotal: ${savedInvoice.subtotal ?? 'N/A'}`,
+          `Tax: ${savedInvoice.tax_amount ?? 'N/A'}`,
+          `Total: ${savedInvoice.total_amount ?? 'N/A'}`,
+          `Status: ${savedInvoice.status}`,
+        ].join('\n');
+
+        // Create knowledge document entry
+        const { data: knowledgeDoc, error: knowledgeDocError } = await supabase
+          .from("knowledge_documents")
+          .insert({
+            file_name: `invoice-${savedInvoice.invoice_number || savedInvoice.id}.txt`,
+            file_type: "text/plain",
+            file_url: savedInvoice.image_url || "",
+            file_size: knowledgeContent.length,
+            uploaded_by: user?.id,
+            status: "ready",
+          })
+          .select()
+          .single();
+
+        if (!knowledgeDocError && knowledgeDoc) {
+          await supabase.from("knowledge_chunks").insert({
+            document_id: knowledgeDoc.id,
+            content: knowledgeContent,
+            chunk_index: 0,
+          });
+          console.log("Invoice saved to knowledge base for learning");
+        }
+      } catch (kbError) {
+        console.error("Failed to save to knowledge base (non-critical):", kbError);
+      }
+
       setTimeout(() => {
         setStatus("idle");
         setPreviewUrl(null);
