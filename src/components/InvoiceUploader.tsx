@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { pdfPageToImage } from "@/lib/pdf-utils";
+import { analyzeInvoice } from "@/lib/api-service";
 
 interface InvoiceUploaderProps {
   onInvoiceProcessed: (invoice: any) => void;
