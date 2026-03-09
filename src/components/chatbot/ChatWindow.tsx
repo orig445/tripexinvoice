@@ -98,7 +98,7 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
       <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-primary to-triplex-teal-light text-primary-foreground">
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-full overflow-hidden border-2 border-primary-foreground/30 hover:scale-110 transition-transform duration-200">
-            <img src={myloWaving} alt="Mylo" className="w-full h-full object-cover" />
+            <img src={myloWaving} alt="Milo" className="w-full h-full object-cover" />
           </div>
           <div>
             <h3 className="text-sm font-semibold">{botName}</h3>
