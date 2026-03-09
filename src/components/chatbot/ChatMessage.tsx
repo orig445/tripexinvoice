@@ -38,7 +38,7 @@ export function ChatMessage({ message, onAction }: ChatMessageProps) {
     DisplayResults: { icon: BarChart3,   label: "Show Results" },
   };
 
-  const myloAvatar = getMyloAvatar(message.intent);
+  const miloAvatar = getMiloAvatar(message.intent);
 
   return (
     <div className={`flex gap-2.5 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
