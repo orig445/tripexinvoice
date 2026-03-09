@@ -140,9 +140,7 @@ export function KnowledgeBase() {
 
   const handleReprocess = async (doc: KnowledgeDocument) => {
     toast.info(`מעבד מחדש ${doc.file_name}...`);
-    const { error } = await supabase.functions.invoke("process-knowledge", {
-      body: { document_id: doc.id },
-    });
+    const { error } = await processKnowledgeDocument(doc.id);
     if (error) {
       toast.error("שגיאה בעיבוד מחדש");
     } else {

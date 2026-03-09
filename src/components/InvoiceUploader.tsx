@@ -102,12 +102,7 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
 
       setStatus("analyzing");
 
-      const { data: analysisData, error: analysisError } = await supabase.functions.invoke(
-        "analyze-invoice",
-        {
-          body: { imageBase64: base64 },
-        }
-      );
+      const { data: analysisData, error: analysisError } = await analyzeInvoice(base64);
 
       if (analysisError || !analysisData?.success) {
         throw new Error(analysisData?.error || "Error analyzing invoice");

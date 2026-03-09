@@ -128,8 +128,8 @@ export function useChatbot() {
       setMessages((prev) => [...prev, tempMsg]);
 
       try {
-        const { data, error } = await supabase.functions.invoke("ai-router", {
-          body: { text: base64, type: "image", source: "web", sessionToken: sessionId },
+        const { data, error } = await sendImageForScan({
+          base64, source: "web", sessionToken: sessionId,
         });
 
         if (error) throw error;
