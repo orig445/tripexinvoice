@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -30,25 +31,28 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddDbContext<TripExDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-// ── Authentication (Supabase JWT) ──
-var supabaseUrl = builder.Configuration["Supabase:Url"]
-    ?? Environment.GetEnvironmentVariable("SUPABASE_URL")
-    ?? throw new InvalidOperationException("SUPABASE_URL not configured");
+// ── Authentication (Standard JWT with HMAC) ──
+var jwtSecret = builder.Configuration["Jwt:Secret"]
+    ?? Environment.GetEnvironmentVariable("JWT_SECRET")
+    ?? throw new InvalidOperationException("JWT_SECRET not configured");
+
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "TripEx.Api";
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "TripEx.Client";
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        options.Authority = $"{supabaseUrl}/auth/v1";
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
-            ValidIssuer = $"{supabaseUrl}/auth/v1",
+            ValidIssuer = jwtIssuer,
             ValidateAudience = true,
-            ValidAudience = "authenticated",
+            ValidAudience = jwtAudience,
             ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+            ClockSkew = TimeSpan.FromMinutes(1)
         };
-        // Supabase uses HMAC, fetch JWKS
-        options.MetadataAddress = $"{supabaseUrl}/auth/v1/.well-known/openid-configuration";
     });
 
 // ── Services ──
@@ -58,8 +62,16 @@ builder.Services.AddScoped<ChatService>();
 builder.Services.AddScoped<InvoiceService>();
 builder.Services.AddScoped<KnowledgeService>();
 builder.Services.AddScoped<GeolocationService>();
+builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<FileStorageService>();
 
 var app = builder.Build();
+
+// ── Ensure storage directory exists ──
+var storagePath = app.Configuration["Storage:LocalPath"]
+    ?? Environment.GetEnvironmentVariable("STORAGE_PATH")
+    ?? Path.Combine(Directory.GetCurrentDirectory(), "storage");
+Directory.CreateDirectory(storagePath);
 
 // ── Middleware ──
 if (app.Environment.IsDevelopment())

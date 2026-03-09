@@ -18,6 +18,7 @@ public class TripExDbContext : DbContext
     public DbSet<KnowledgeChunk> KnowledgeChunks => Set<KnowledgeChunk>();
     public DbSet<Profile> Profiles => Set<Profile>();
     public DbSet<UserRole> UserRoles => Set<UserRole>();
+    public DbSet<UserCredential> UserCredentials => Set<UserCredential>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -31,6 +32,11 @@ public class TripExDbContext : DbContext
         modelBuilder.Entity<KnowledgeChunk>().ToTable("knowledge_chunks");
         modelBuilder.Entity<Profile>().ToTable("profiles");
         modelBuilder.Entity<UserRole>().ToTable("user_roles");
+        modelBuilder.Entity<UserCredential>().ToTable("user_credentials");
+
+        modelBuilder.Entity<UserCredential>()
+            .HasIndex(c => c.Email)
+            .IsUnique();
     }
 }
 
@@ -159,8 +165,8 @@ public class Profile
     [Column("user_id")] public Guid UserId { get; set; }
     [Column("email")] public string? Email { get; set; }
     [Column("display_name")] public string? DisplayName { get; set; }
-    [Column("created_at")] public DateTime CreatedAt { get; set; }
-    [Column("updated_at")] public DateTime UpdatedAt { get; set; }
+    [Column("created_at")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    [Column("updated_at")] public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
 [Table("user_roles")]
@@ -169,5 +175,15 @@ public class UserRole
     [Key, Column("id")] public Guid Id { get; set; } = Guid.NewGuid();
     [Column("user_id")] public Guid UserId { get; set; }
     [Column("role")] public string Role { get; set; } = "user";
+    [Column("created_at")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+[Table("user_credentials")]
+public class UserCredential
+{
+    [Key, Column("id")] public Guid Id { get; set; } = Guid.NewGuid();
+    [Column("user_id")] public Guid UserId { get; set; }
+    [Column("email")] public string Email { get; set; } = "";
+    [Column("password_hash")] public string PasswordHash { get; set; } = "";
     [Column("created_at")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

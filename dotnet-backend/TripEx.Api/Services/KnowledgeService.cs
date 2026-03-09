@@ -1,17 +1,20 @@
 namespace TripEx.Api.Services;
 
 /// <summary>
-/// Service for processing knowledge base documents (chunking text for RAG)
+/// Service for processing knowledge base documents (chunking text for RAG).
+/// Reads files from local storage or S3 instead of Supabase Storage.
 /// </summary>
 public class KnowledgeService
 {
     private readonly Data.TripExDbContext _db;
+    private readonly FileStorageService _storage;
     private const int ChunkSize = 1000;
     private const int ChunkOverlap = 200;
 
-    public KnowledgeService(Data.TripExDbContext db)
+    public KnowledgeService(Data.TripExDbContext db, FileStorageService storage)
     {
         _db = db;
+        _storage = storage;
     }
 
     public async Task<(bool Success, int ChunksCreated, string? Error)> ProcessDocumentAsync(Guid documentId)
@@ -24,20 +27,22 @@ public class KnowledgeService
 
         try
         {
-            // TODO: Download file from Supabase Storage and extract text
-            // For now, this is a placeholder — you need to implement file download
-            // using Supabase Storage REST API:
-            // GET {SUPABASE_URL}/storage/v1/object/knowledge/{doc.FileUrl}
-            // Headers: Authorization: Bearer {SERVICE_ROLE_KEY}
-            //
-            // Then extract text based on file type:
-            // - text/csv/json/xml → read as string
-            // - pdf/docx → use a library like iTextSharp or DocumentFormat.OpenXml
-            // - images → call Oracle AI Vision for OCR
+            // Download file from configured storage (local or S3)
+            var fileBytes = await _storage.ReadFileAsync(doc.FileUrl);
+            
+            // Extract text based on file type
+            var extractedText = ExtractText(fileBytes, doc.FileType, doc.FileName);
+            
+            if (string.IsNullOrWhiteSpace(extractedText))
+            {
+                doc.Status = "error";
+                await _db.SaveChangesAsync();
+                return (false, 0, "Could not extract text from document");
+            }
 
-            throw new NotImplementedException(
-                "Implement file download from Supabase Storage and text extraction. " +
-                "See the Edge Function source in supabase/functions/process-knowledge/index.ts for logic.");
+            var chunksCreated = await ChunkAndSaveAsync(documentId, extractedText);
+
+            return (true, chunksCreated, null);
         }
         catch (Exception ex)
         {
@@ -45,6 +50,36 @@ public class KnowledgeService
             await _db.SaveChangesAsync();
             return (false, 0, ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Extract text from file bytes based on file type.
+    /// Supports plain text, CSV, JSON, XML out of the box.
+    /// For PDF/DOCX, add iTextSharp or DocumentFormat.OpenXml packages.
+    /// </summary>
+    private static string ExtractText(byte[] fileBytes, string fileType, string fileName)
+    {
+        var lowerType = fileType.ToLowerInvariant();
+        var lowerName = fileName.ToLowerInvariant();
+
+        // Plain text formats
+        if (lowerType.Contains("text") || lowerType.Contains("csv") ||
+            lowerType.Contains("json") || lowerType.Contains("xml") ||
+            lowerName.EndsWith(".txt") || lowerName.EndsWith(".csv") ||
+            lowerName.EndsWith(".json") || lowerName.EndsWith(".xml") ||
+            lowerName.EndsWith(".md"))
+        {
+            return System.Text.Encoding.UTF8.GetString(fileBytes);
+        }
+
+        // TODO: Add PDF support with iTextSharp:
+        // if (lowerName.EndsWith(".pdf")) return ExtractPdfText(fileBytes);
+        
+        // TODO: Add DOCX support with DocumentFormat.OpenXml:
+        // if (lowerName.EndsWith(".docx")) return ExtractDocxText(fileBytes);
+
+        // Fallback: try reading as UTF-8
+        return System.Text.Encoding.UTF8.GetString(fileBytes);
     }
 
     /// <summary>
