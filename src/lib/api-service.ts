@@ -1,0 +1,124 @@
+/**
+ * API Service Layer
+ * 
+ * Central service for all backend API calls.
+ * Replace VITE_API_BASE_URL with your C# .NET backend URL.
+ * 
+ * When running against Supabase Edge Functions (dev/sandbox), 
+ * it falls back to Supabase functions.invoke().
+ * 
+ * When VITE_API_BASE_URL is set, all calls go to your external backend.
+ */
+
+import { supabase } from "@/integrations/supabase/client";
+
+// Set this env var to point to your C# backend, e.g. "https://api.tripex.io"
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+
+/** Whether we're using an external backend */
+export const isExternalBackend = !!API_BASE_URL;
+
+/** Get auth token for API calls */
+async function getAuthToken(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token || null;
+}
+
+/** Generic API call to external backend */
+async function callExternalAPI<T = any>(
+  endpoint: string,
+  body: Record<string, any>,
+): Promise<{ data: T | null; error: Error | null }> {
+  try {
+    const token = await getAuthToken();
+    const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      return { data: null, error: new Error(`API error ${res.status}: ${errText}`) };
+    }
+
+    const data = await res.json();
+    return { data, error: null };
+  } catch (err: any) {
+    return { data: null, error: err };
+  }
+}
+
+/** Fallback: call Supabase Edge Function */
+async function callSupabaseFunction<T = any>(
+  functionName: string,
+  body: Record<string, any>,
+): Promise<{ data: T | null; error: Error | null }> {
+  const { data, error } = await supabase.functions.invoke(functionName, { body });
+  return { data: data as T, error: error ? new Error(String(error)) : null };
+}
+
+// ─── Public API Methods ───
+
+/** Send a chat message (text) to AI Router */
+export async function sendChatMessage(params: {
+  text: string;
+  source?: string;
+  sessionToken?: string | null;
+  userDate?: string;
+  userTime?: string;
+  userTimezone?: string;
+}) {
+  const body = {
+    text: params.text,
+    type: "text",
+    source: params.source || "web",
+    sessionToken: params.sessionToken || null,
+    userDate: params.userDate || "",
+    userTime: params.userTime || "",
+    userTimezone: params.userTimezone || "",
+  };
+
+  if (isExternalBackend) {
+    return callExternalAPI("/api/chat", body);
+  }
+  return callSupabaseFunction("ai-router", body);
+}
+
+/** Send an image (base64) for scanning via AI Router */
+export async function sendImageForScan(params: {
+  base64: string;
+  source?: string;
+  sessionToken?: string | null;
+}) {
+  const body = {
+    text: params.base64,
+    type: "image",
+    source: params.source || "web",
+    sessionToken: params.sessionToken || null,
+  };
+
+  if (isExternalBackend) {
+    return callExternalAPI("/api/chat", body);
+  }
+  return callSupabaseFunction("ai-router", body);
+}
+
+/** Direct invoice analysis (standalone OCR) */
+export async function analyzeInvoice(imageBase64: string) {
+  if (isExternalBackend) {
+    return callExternalAPI("/api/invoice/analyze", { imageBase64 });
+  }
+  return callSupabaseFunction("analyze-invoice", { imageBase64 });
+}
+
+/** Trigger knowledge document processing */
+export async function processKnowledgeDocument(documentId: string) {
+  if (isExternalBackend) {
+    return callExternalAPI("/api/knowledge/process", { document_id: documentId });
+  }
+  return callSupabaseFunction("process-knowledge", { document_id: documentId });
+}

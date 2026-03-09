@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { sendChatMessage, sendImageForScan } from "@/lib/api-service";
 
 export interface ChatMessage {
   id: string;
@@ -78,8 +79,8 @@ export function useChatbot() {
         const userLocalTime = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
         const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-        const { data, error } = await supabase.functions.invoke("ai-router", {
-          body: { text, type: "text", source: "web", sessionToken: sessionId, userDate: userLocalDate, userTime: userLocalTime, userTimezone: timezone },
+        const { data, error } = await sendChatMessage({
+          text, source: "web", sessionToken: sessionId, userDate: userLocalDate, userTime: userLocalTime, userTimezone: timezone,
         });
 
         if (error) throw error;
@@ -127,8 +128,8 @@ export function useChatbot() {
       setMessages((prev) => [...prev, tempMsg]);
 
       try {
-        const { data, error } = await supabase.functions.invoke("ai-router", {
-          body: { text: base64, type: "image", source: "web", sessionToken: sessionId },
+        const { data, error } = await sendImageForScan({
+          base64, source: "web", sessionToken: sessionId,
         });
 
         if (error) throw error;

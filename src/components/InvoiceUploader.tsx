@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { pdfPageToImage } from "@/lib/pdf-utils";
+import { analyzeInvoice } from "@/lib/api-service";
 
 interface InvoiceUploaderProps {
   onInvoiceProcessed: (invoice: any) => void;
@@ -101,12 +102,7 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
 
       setStatus("analyzing");
 
-      const { data: analysisData, error: analysisError } = await supabase.functions.invoke(
-        "analyze-invoice",
-        {
-          body: { imageBase64: base64 },
-        }
-      );
+      const { data: analysisData, error: analysisError } = await analyzeInvoice(base64);
 
       if (analysisError || !analysisData?.success) {
         throw new Error(analysisData?.error || "Error analyzing invoice");

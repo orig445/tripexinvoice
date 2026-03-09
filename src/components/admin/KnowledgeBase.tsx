@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { processKnowledgeDocument } from "@/lib/api-service";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -99,9 +100,7 @@ export function KnowledgeBase() {
         }
 
         // Trigger processing
-        supabase.functions.invoke("process-knowledge", {
-          body: { document_id: doc.id },
-        }).catch((err) => {
+        processKnowledgeDocument(doc.id).catch((err) => {
           console.error("Processing trigger error:", err);
         });
 
@@ -141,9 +140,7 @@ export function KnowledgeBase() {
 
   const handleReprocess = async (doc: KnowledgeDocument) => {
     toast.info(`מעבד מחדש ${doc.file_name}...`);
-    const { error } = await supabase.functions.invoke("process-knowledge", {
-      body: { document_id: doc.id },
-    });
+    const { error } = await processKnowledgeDocument(doc.id);
     if (error) {
       toast.error("שגיאה בעיבוד מחדש");
     } else {
