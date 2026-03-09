@@ -11,7 +11,7 @@ interface ChatMessageProps {
   onAction?: (action: string, data?: Record<string, any>) => void;
 }
 
-function getMyloAvatar(intent?: string): string {
+function getMiloAvatar(intent?: string): string {
   switch (intent) {
     case "help":
       return myloReading;
@@ -38,7 +38,7 @@ export function ChatMessage({ message, onAction }: ChatMessageProps) {
     DisplayResults: { icon: BarChart3,   label: "Show Results" },
   };
 
-  const myloAvatar = getMyloAvatar(message.intent);
+  const miloAvatar = getMiloAvatar(message.intent);
 
   return (
     <div className={`flex gap-2.5 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
@@ -48,7 +48,7 @@ export function ChatMessage({ message, onAction }: ChatMessageProps) {
         </div>
       ) : (
         <div className="w-8 h-8 rounded-full flex-shrink-0 mt-0.5 overflow-hidden border border-primary/20 animate-in zoom-in duration-300 hover:scale-110 transition-transform">
-          <img src={myloAvatar} alt="Mylo" className="w-full h-full object-cover" />
+          <img src={miloAvatar} alt="Milo" className="w-full h-full object-cover" />
         </div>
       )}
 

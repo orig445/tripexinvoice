@@ -6,7 +6,27 @@ interface DashboardStatsProps {
 }
 
 export function DashboardStats({ invoices }: DashboardStatsProps) {
-  const totalAmount = invoices.reduce((sum, inv) => sum + (inv.total_amount || 0), 0);
+  // Group totals by currency
+  const totalsByCurrency: Record<string, number> = {};
+  invoices.forEach((inv) => {
+    const currency = inv.currency || "ILS";
+    totalsByCurrency[currency] = (totalsByCurrency[currency] || 0) + (inv.total_amount || 0);
+  });
+
+  const formattedTotals = Object.entries(totalsByCurrency)
+    .filter(([_, amount]) => amount > 0)
+    .map(([currency, amount]) => {
+      try {
+        return new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency,
+          maximumFractionDigits: 0,
+        }).format(amount);
+      } catch {
+        return `${amount.toLocaleString()} ${currency}`;
+      }
+    });
+
   const uniqueVendors = new Set(invoices.map((inv) => inv.vendor_name).filter(Boolean)).size;
   
   const thisMonth = new Date();
@@ -26,11 +46,7 @@ export function DashboardStats({ invoices }: DashboardStatsProps) {
     },
     {
       label: "Total Amount",
-      value: new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
-        maximumFractionDigits: 0,
-      }).format(totalAmount),
+      value: formattedTotals.length > 0 ? formattedTotals.join(" | ") : "$0",
       icon: TrendingUp,
       color: "text-triplex-success",
       bgColor: "bg-triplex-success/10",
