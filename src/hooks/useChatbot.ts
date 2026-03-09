@@ -79,8 +79,8 @@ export function useChatbot() {
         const userLocalTime = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
         const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-        const { data, error } = await supabase.functions.invoke("ai-router", {
-          body: { text, type: "text", source: "web", sessionToken: sessionId, userDate: userLocalDate, userTime: userLocalTime, userTimezone: timezone },
+        const { data, error } = await sendChatMessage({
+          text, source: "web", sessionToken: sessionId, userDate: userLocalDate, userTime: userLocalTime, userTimezone: timezone,
         });
 
         if (error) throw error;
