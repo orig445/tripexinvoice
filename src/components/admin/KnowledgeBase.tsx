@@ -263,6 +263,15 @@ export function KnowledgeBase() {
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
+                    title="הורד"
+                    onClick={() => handleDownload(doc)}
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
                     title="עבד מחדש"
                     onClick={() => handleReprocess(doc)}
                   >
