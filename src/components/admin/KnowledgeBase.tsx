@@ -100,9 +100,7 @@ export function KnowledgeBase() {
         }
 
         // Trigger processing
-        supabase.functions.invoke("process-knowledge", {
-          body: { document_id: doc.id },
-        }).catch((err) => {
+        processKnowledgeDocument(doc.id).catch((err) => {
           console.error("Processing trigger error:", err);
         });
 
