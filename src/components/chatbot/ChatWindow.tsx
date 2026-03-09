@@ -151,7 +151,7 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
         {isLoading && (
           <div className="flex gap-2.5">
             <div className="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border border-primary/20">
-              <img src={myloThinking} alt="Mylo thinking" className="w-full h-full object-cover animate-[wiggle_1s_ease-in-out_infinite]" />
+              <img src={myloThinking} alt="Milo thinking" className="w-full h-full object-cover animate-[wiggle_1s_ease-in-out_infinite]" />
             </div>
             <div className="bg-muted rounded-2xl rounded-tl-sm px-4 py-3">
               <div className="flex gap-1">

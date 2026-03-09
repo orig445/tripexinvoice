@@ -20,7 +20,7 @@ export function ChatbotWidget() {
           className="w-16 h-16 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center hover:scale-110 active:scale-95 overflow-hidden border-2 border-primary/30 bg-background"
           aria-label="Open chat"
         >
-          <img src={myloWaving} alt="Mylo" className="w-full h-full object-cover" />
+          <img src={myloWaving} alt="Milo" className="w-full h-full object-cover" />
         </button>
       )}
     </div>
