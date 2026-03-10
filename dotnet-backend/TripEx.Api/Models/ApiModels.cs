@@ -54,22 +54,49 @@ public class ChatResponse
 }
 
 // ═══════════════════════════════════════
-// Invoice Models
+// Invoice Models (AlgoText-compatible format)
 // ═══════════════════════════════════════
 
 public class AnalyzeInvoiceRequest
 {
     public string? ImageBase64 { get; set; }
     public string? ImageUrl { get; set; }
+    public string? Country { get; set; }  // "IL", "PH", etc.
 }
 
 public class AnalyzeInvoiceResponse
 {
     public bool Success { get; set; }
-    public InvoiceData? Data { get; set; }
+    public InvoiceFields? Fields { get; set; }
     public string? RawResponse { get; set; }
     public string? Error { get; set; }
 }
+
+/// <summary>
+/// Flat field structure matching AlgoText format ($.fields.*)
+/// TripEx client reads: fields.total, fields.totalVAT, fields.currency,
+/// fields.invoiceNumber, fields.invoiceDate, fields.type
+/// </summary>
+public class InvoiceFields
+{
+    public string? Total { get; set; }
+    public string? TotalVAT { get; set; }
+    public string? Currency { get; set; }
+    public string? InvoiceNumber { get; set; }
+    public string? InvoiceDate { get; set; }  // YYYY-MM-DD
+    public string? Type { get; set; }         // category
+    public string? SubCategory { get; set; }
+    public string? MerchantName { get; set; }
+    public string? MerchantTin { get; set; }
+    public string? MerchantAddress { get; set; }
+    public string? MerchantCity { get; set; }
+    public string? PaymentMethod { get; set; }
+    public string? AmountPaid { get; set; }
+}
+
+// ═══════════════════════════════════════
+// Legacy internal models (used during AI extraction)
+// ═══════════════════════════════════════
 
 public class InvoiceData
 {
