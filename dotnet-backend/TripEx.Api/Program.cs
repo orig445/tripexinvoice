@@ -1,7 +1,9 @@
 using System.Text;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using TripEx.Api.Auth;
 using TripEx.Api.Data;
 using TripEx.Api.Services;
 
@@ -31,7 +33,7 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddDbContext<TripExDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-// ── Authentication (Standard JWT with HMAC) ──
+// ── Authentication (JWT + API Key) ──
 var jwtSecret = builder.Configuration["Jwt:Secret"]
     ?? Environment.GetEnvironmentVariable("JWT_SECRET")
     ?? throw new InvalidOperationException("JWT_SECRET not configured");
@@ -39,8 +41,16 @@ var jwtSecret = builder.Configuration["Jwt:Secret"]
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "TripEx.Api";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "TripEx.Client";
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+var apiKey = builder.Configuration["ApiKey:Key"]
+    ?? Environment.GetEnvironmentVariable("API_KEY")
+    ?? ""; // Optional — if empty, API key auth is disabled
+
+builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultScheme = "MultiAuth";
+        options.DefaultChallengeScheme = "MultiAuth";
+    })
+    .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
     {
         options.TokenValidationParameters = new TokenValidationParameters
         {
@@ -52,6 +62,23 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
             ClockSkew = TimeSpan.FromMinutes(1)
+        };
+    })
+    .AddScheme<ApiKeyAuthenticationOptions, ApiKeyAuthenticationHandler>("ApiKey", options =>
+    {
+        options.ApiKey = apiKey;
+        options.ClientName = builder.Configuration["ApiKey:ClientName"] ?? "TripExClient";
+    })
+    .AddPolicyScheme("MultiAuth", "JWT or API Key", options =>
+    {
+        options.ForwardDefaultSelector = context =>
+        {
+            // If X-Api-Key header present, use API Key scheme
+            if (context.Request.Headers.ContainsKey("X-Api-Key"))
+                return "ApiKey";
+
+            // Otherwise fall back to JWT
+            return JwtBearerDefaults.AuthenticationScheme;
         };
     });
 
