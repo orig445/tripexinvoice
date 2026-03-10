@@ -26,7 +26,7 @@ public class InvoiceController : ControllerBase
     {
         try
         {
-            var result = await _invoiceService.AnalyzeAsync(request.ImageBase64, request.ImageUrl);
+            var result = await _invoiceService.AnalyzeAsync(request.ImageBase64, request.ImageUrl, request.Country);
             return Ok(result);
         }
         catch (Exception ex)
