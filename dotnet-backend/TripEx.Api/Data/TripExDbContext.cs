@@ -112,7 +112,7 @@ public class Invoice
     [Column("subtotal")] public decimal? Subtotal { get; set; }
     [Column("tax_amount")] public decimal? TaxAmount { get; set; }
     [Column("total_amount")] public decimal? TotalAmount { get; set; }
-    [Column("line_items", TypeName = "jsonb")] public string? LineItems { get; set; }
+    [Column("line_items", TypeName = "nvarchar(max)")] public string? LineItems { get; set; }
     [Column("notes")] public string? Notes { get; set; }
     [Column("payment_terms")] public string? PaymentTerms { get; set; }
     [Column("image_url")] public string? ImageUrl { get; set; }

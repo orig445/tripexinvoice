@@ -31,7 +31,7 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
     ?? throw new InvalidOperationException("DATABASE_URL not configured");
 
 builder.Services.AddDbContext<TripExDbContext>(options =>
-    options.UseNpgsql(connectionString));
+    options.UseSqlServer(connectionString));
 
 // ── Authentication (JWT + API Key) ──
 var jwtSecret = builder.Configuration["Jwt:Secret"]
