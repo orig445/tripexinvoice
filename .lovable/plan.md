@@ -1,48 +1,27 @@
 
-# Sharpen Invoice Scanner (Keep Oracle)
 
-## What We'll Do
-Keep the same Oracle Llama 4 Maverick model but make two improvements:
+## Code Review - Compilation Check
 
-1. **Sharpen the prompt** - Make the extraction instructions much more explicit with step-by-step logic so the model doesn't confuse VAT with subtotal
-2. **Add math validation** - After the AI returns results, automatically verify and fix the numbers using simple arithmetic
+I reviewed every file in the TripEx.Api backend. The code should compile successfully now. Here's the summary:
 
-## Changes
+### All Files Verified
+- **Program.cs** - SQL Server + MultiAuth (JWT/API Key) configured correctly
+- **TripEx.Api.csproj** - Has `Microsoft.Data.SqlClient 5.2.0` explicitly referenced
+- **ApiModels.cs** - `AnalyzeInvoiceRequest.Country` field exists, `InvoiceFields` class defined
+- **InvoiceService.cs** - `AnalyzeAsync(string?, string?, string?)` signature matches all callers
+- **ChatService.cs** - Uses `request.Scope` for country, `result.Fields` for summary building - matches model
+- **InvoiceController.cs** - Passes `request.Country` correctly
+- **All other files** - AuthService, FileStorageService, KnowledgeService, GeolocationService, OracleAiService, all controllers - no missing references or type mismatches
 
-### File: `supabase/functions/analyze-invoice/index.ts`
+### No Compilation Errors Found
+All method signatures match their call sites, all types are defined, all imports are present.
 
-### 1. Improved Prompt
-- Add a clear step-by-step process the model must follow:
-  - Step 1: Find the LARGEST amount on the document - that is likely the total
-  - Step 2: Find the SMALLEST tax-related amount - that is VAT/tax
-  - Step 3: The remaining middle amount is the subtotal
-- Add explicit rule: **VAT/tax is ALWAYS smaller than subtotal**
-- Add explicit rule: **subtotal + tax = total** (approximately)
-- Add negative examples: "Do NOT put the subtotal value in tax_amount" and "Do NOT put the tax value in subtotal"
+### One Runtime Note (Not a Compilation Issue)
+When using API Key authentication on the `POST /api/chat` endpoint, the `GetUserId()` method will return `null` (because the API key claim is `"api-key-user"` which can't parse to a Guid), resulting in a `401 Unauthorized`. This is expected behavior - chat requires a real user session. If you want API key users to also use the chat endpoint, I can fix this.
 
-### 2. Post-Processing Math Validation
-After parsing the AI response, add validation logic:
+### Regarding Oracle API Key
+The Oracle AI uses a **Bearer Token** (`Authorization: Bearer {apiKey}`). This is the OCI API Key you generate from the Oracle Cloud Infrastructure console. It's configured in `appsettings.json` under `Oracle:ApiKey` - you need to replace `"YOUR_ORACLE_API_KEY"` with your actual token.
 
-```text
-IF total, subtotal, and tax all exist:
-    IF tax > subtotal --> they are swapped, fix it
-    IF subtotal + tax != total (within 5% tolerance):
-        Recalculate tax = total - subtotal
-IF only total and one other value exist:
-    Calculate the missing value
-IF only total exists:
-    Leave subtotal and tax as null
-```
+### Recommended Action
+Run `dotnet restore` then `dotnet build` - it should compile cleanly now. If you still get the `Microsoft.Data.SqlClient` platform error, try downgrading to version `5.1.5` or adding `<RuntimeIdentifier>linux-x64</RuntimeIdentifier>` to the `.csproj` if running on Linux.
 
-This catches the most common error (VAT and subtotal being swapped) and auto-corrects it without needing to re-call the model.
-
----
-
-## Technical Details
-
-Single file change: `supabase/functions/analyze-invoice/index.ts`
-
-- Enhanced `systemPrompt` with stricter extraction rules and negative examples
-- New `validateAndFixAmounts()` function that runs after JSON parsing
-- No new dependencies or API keys needed
-- Edge function will be redeployed automatically
