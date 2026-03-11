@@ -63,7 +63,7 @@ public class ChatMessage
     [Column("role")] public string Role { get; set; } = "user";
     [Column("content")] public string Content { get; set; } = "";
     [Column("intent")] public string? Intent { get; set; }
-    [Column("metadata", TypeName = "jsonb")] public string? Metadata { get; set; }
+    [Column("metadata", TypeName = "nvarchar(max)")] public string? Metadata { get; set; }
     [Column("created_at")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
@@ -90,7 +90,7 @@ public class ChatbotLog
     [Column("session_id")] public Guid? SessionId { get; set; }
     [Column("user_id")] public Guid? UserId { get; set; }
     [Column("event_type")] public string EventType { get; set; } = "";
-    [Column("details", TypeName = "jsonb")] public string? Details { get; set; }
+    [Column("details", TypeName = "nvarchar(max)")] public string? Details { get; set; }
     [Column("created_at")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
@@ -112,7 +112,7 @@ public class Invoice
     [Column("subtotal")] public decimal? Subtotal { get; set; }
     [Column("tax_amount")] public decimal? TaxAmount { get; set; }
     [Column("total_amount")] public decimal? TotalAmount { get; set; }
-    [Column("line_items", TypeName = "jsonb")] public string? LineItems { get; set; }
+    [Column("line_items", TypeName = "nvarchar(max)")] public string? LineItems { get; set; }
     [Column("notes")] public string? Notes { get; set; }
     [Column("payment_terms")] public string? PaymentTerms { get; set; }
     [Column("image_url")] public string? ImageUrl { get; set; }

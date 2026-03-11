@@ -175,7 +175,9 @@ public class ChatService
             Details = JsonSerializer.Serialize(new { source = request.Source })
         });
 
-        var result = await _invoiceService.AnalyzeAsync(request.Text, null);
+        // Extract country from request scope or default
+        var country = request.Scope; // client can pass country in Scope field
+        var result = await _invoiceService.AnalyzeAsync(request.Text, null, country);
 
         if (!result.Success)
         {
@@ -187,21 +189,21 @@ public class ChatService
             };
         }
 
-        // Build summary
-        var d = result.Data!;
+        // Build summary from AlgoText-compatible fields
+        var f = result.Fields;
         var lines = new List<string> { "✅ Invoice scanned successfully! Here are the details:" };
-        if (d.DocumentType != null) lines.Add($"📄 Type: {d.DocumentType.Replace("_", " ")}");
-        if (d.Merchant?.Name != null) lines.Add($"🏪 Merchant: {d.Merchant.Name}");
-        if (d.Merchant?.Tin != null) lines.Add($"🆔 TIN: {d.Merchant.Tin}");
-        if (d.Merchant?.Address != null) lines.Add($"📍 Address: {d.Merchant.Address}");
-        if (d.Merchant?.City != null) lines.Add($"🌆 City: {d.Merchant.City}");
-        if (d.InvoiceNumber != null) lines.Add($"🔢 Invoice #: {d.InvoiceNumber}");
-        if (d.InvoiceDate != null) lines.Add($"📅 Date: {d.InvoiceDate}");
-        var cur = d.Currency ?? "";
-        if (d.Amounts?.VatableSalesAmount != null) lines.Add($"💵 VATable Sales: {d.Amounts.VatableSalesAmount} {cur}");
-        if (d.Amounts?.TaxAmount != null) lines.Add($"🧾 VAT/Tax: {d.Amounts.TaxAmount} {cur}");
-        if (d.Payment?.Method != null) lines.Add($"💳 Payment: {d.Payment.Method}");
-        if (d.Payment?.AmountPaid != null) lines.Add($"💰 Paid: {d.Payment.AmountPaid} {cur}");
+        if (f?.Type != null) lines.Add($"📄 Type: {f.Type.Replace("_", " ")}");
+        if (f?.MerchantName != null) lines.Add($"🏪 Merchant: {f.MerchantName}");
+        if (f?.MerchantTin != null) lines.Add($"🆔 TIN: {f.MerchantTin}");
+        if (f?.MerchantAddress != null) lines.Add($"📍 Address: {f.MerchantAddress}");
+        if (f?.MerchantCity != null) lines.Add($"🌆 City: {f.MerchantCity}");
+        if (f?.InvoiceNumber != null) lines.Add($"🔢 Invoice #: {f.InvoiceNumber}");
+        if (f?.InvoiceDate != null) lines.Add($"📅 Date: {f.InvoiceDate}");
+        var cur = f?.Currency ?? "";
+        if (f?.Total != null) lines.Add($"💵 Total: {f.Total} {cur}");
+        if (f?.TotalVAT != null) lines.Add($"🧾 VAT/Tax: {f.TotalVAT} {cur}");
+        if (f?.PaymentMethod != null) lines.Add($"💳 Payment: {f.PaymentMethod}");
+        if (f?.AmountPaid != null) lines.Add($"💰 Paid: {f.AmountPaid} {cur}");
         lines.Add("\nIs the data correct? If something is wrong, let me know and I'll update it.");
 
         var summary = string.Join("\n", lines);
@@ -214,13 +216,13 @@ public class ChatService
             Role = "assistant",
             Content = summary,
             Intent = "scan",
-            Metadata = JsonSerializer.Serialize(new { actions = Array.Empty<string>(), scanned_data = result.Data })
+            Metadata = JsonSerializer.Serialize(new { actions = Array.Empty<string>(), scanned_fields = result.Fields })
         });
         await _db.SaveChangesAsync();
 
-        // Convert Data to dictionary for response
+        // Convert Fields to dictionary for response
         var dataDict = JsonSerializer.Deserialize<Dictionary<string, object?>>(
-            JsonSerializer.Serialize(result.Data)) ?? new();
+            JsonSerializer.Serialize(result.Fields)) ?? new();
 
         return new ChatResponse
         {
@@ -242,7 +244,7 @@ public class ChatService
 
             // Full query search
             using var cmd = connection.CreateCommand();
-            cmd.CommandText = "SELECT file_name, content FROM search_knowledge(@query, @max)";
+            cmd.CommandText = "SELECT file_name, content FROM dbo.search_knowledge(@query, @max)";
             var queryParam = cmd.CreateParameter();
             queryParam.ParameterName = "query";
             queryParam.Value = queryText;
@@ -266,7 +268,7 @@ public class ChatService
             foreach (var word in words)
             {
                 using var wordCmd = connection.CreateCommand();
-                wordCmd.CommandText = "SELECT file_name, content FROM search_knowledge(@query, @max)";
+                wordCmd.CommandText = "SELECT file_name, content FROM dbo.search_knowledge(@query, @max)";
                 var wqp = wordCmd.CreateParameter();
                 wqp.ParameterName = "query";
                 wqp.Value = word;
