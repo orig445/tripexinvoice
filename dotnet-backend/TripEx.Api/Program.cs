@@ -98,30 +98,37 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<TripExDbContext>();
-    try
-    {
-        // Try to create all tables from EF model (works only if DB is new)
-        db.Database.EnsureCreated();
-    }
-    catch { /* DB already exists */ }
-
-    // Fallback: run init-db.sql to create missing tables in existing DB
-    var initSqlPath = Path.Combine(AppContext.BaseDirectory, "Data", "init-db.sql");
-    if (!initSqlPath.Contains("publish")) // also check source dir
-        initSqlPath = Path.Combine(Directory.GetCurrentDirectory(), "Data", "init-db.sql");
+    
+    // Run init-db.sql to create missing tables — split by GO batches
+    var initSqlPath = Path.Combine(Directory.GetCurrentDirectory(), "Data", "init-db.sql");
+    if (!File.Exists(initSqlPath))
+        initSqlPath = Path.Combine(AppContext.BaseDirectory, "Data", "init-db.sql");
     
     if (File.Exists(initSqlPath))
     {
-        try
+        var sql = File.ReadAllText(initSqlPath);
+        var batches = System.Text.RegularExpressions.Regex.Split(sql, @"^\s*GO\s*$",
+            System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        foreach (var batch in batches)
         {
-            var sql = File.ReadAllText(initSqlPath);
-            db.Database.ExecuteSqlRaw(sql);
-            Console.WriteLine("✅ Database tables verified/created from init-db.sql");
+            var trimmed = batch.Trim();
+            if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("PRINT")) continue;
+            try
+            {
+                db.Database.ExecuteSqlRaw(trimmed);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ Batch note: {ex.Message}");
+            }
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"⚠️ init-db.sql execution note: {ex.Message}");
-        }
+        Console.WriteLine("✅ Database tables verified/created from init-db.sql");
+    }
+    else
+    {
+        Console.WriteLine("⚠️ init-db.sql not found, trying EnsureCreated...");
+        try { db.Database.EnsureCreated(); } catch { }
     }
 }
 
