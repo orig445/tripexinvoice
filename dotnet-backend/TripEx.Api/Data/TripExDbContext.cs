@@ -90,7 +90,7 @@ public class ChatbotLog
     [Column("session_id")] public Guid? SessionId { get; set; }
     [Column("user_id")] public Guid? UserId { get; set; }
     [Column("event_type")] public string EventType { get; set; } = "";
-    [Column("details", TypeName = "jsonb")] public string? Details { get; set; }
+    [Column("details", TypeName = "nvarchar(max)")] public string? Details { get; set; }
     [Column("created_at")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
