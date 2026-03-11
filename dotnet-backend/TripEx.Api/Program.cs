@@ -94,6 +94,13 @@ builder.Services.AddScoped<FileStorageService>();
 
 var app = builder.Build();
 
+// ── Ensure database tables exist ──
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<TripExDbContext>();
+    db.Database.EnsureCreated();
+}
+
 // ── Ensure storage directory exists ──
 var storagePath = app.Configuration["Storage:LocalPath"]
     ?? Environment.GetEnvironmentVariable("STORAGE_PATH")
