@@ -98,7 +98,31 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<TripExDbContext>();
-    db.Database.EnsureCreated();
+    try
+    {
+        // Try to create all tables from EF model (works only if DB is new)
+        db.Database.EnsureCreated();
+    }
+    catch { /* DB already exists */ }
+
+    // Fallback: run init-db.sql to create missing tables in existing DB
+    var initSqlPath = Path.Combine(AppContext.BaseDirectory, "Data", "init-db.sql");
+    if (!initSqlPath.Contains("publish")) // also check source dir
+        initSqlPath = Path.Combine(Directory.GetCurrentDirectory(), "Data", "init-db.sql");
+    
+    if (File.Exists(initSqlPath))
+    {
+        try
+        {
+            var sql = File.ReadAllText(initSqlPath);
+            db.Database.ExecuteSqlRaw(sql);
+            Console.WriteLine("✅ Database tables verified/created from init-db.sql");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ init-db.sql execution note: {ex.Message}");
+        }
+    }
 }
 
 // ── Ensure storage directory exists ──
