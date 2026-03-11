@@ -268,7 +268,7 @@ public class ChatService
             foreach (var word in words)
             {
                 using var wordCmd = connection.CreateCommand();
-                wordCmd.CommandText = "SELECT file_name, content FROM search_knowledge(@query, @max)";
+                wordCmd.CommandText = "SELECT file_name, content FROM dbo.search_knowledge(@query, @max)";
                 var wqp = wordCmd.CreateParameter();
                 wqp.ParameterName = "query";
                 wqp.Value = word;
