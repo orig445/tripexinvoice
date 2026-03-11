@@ -63,7 +63,7 @@ public class ChatMessage
     [Column("role")] public string Role { get; set; } = "user";
     [Column("content")] public string Content { get; set; } = "";
     [Column("intent")] public string? Intent { get; set; }
-    [Column("metadata", TypeName = "jsonb")] public string? Metadata { get; set; }
+    [Column("metadata", TypeName = "nvarchar(max)")] public string? Metadata { get; set; }
     [Column("created_at")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
