@@ -244,7 +244,7 @@ public class ChatService
 
             // Full query search
             using var cmd = connection.CreateCommand();
-            cmd.CommandText = "SELECT file_name, content FROM search_knowledge(@query, @max)";
+            cmd.CommandText = "SELECT file_name, content FROM dbo.search_knowledge(@query, @max)";
             var queryParam = cmd.CreateParameter();
             queryParam.ParameterName = "query";
             queryParam.Value = queryText;
