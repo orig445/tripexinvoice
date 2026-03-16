@@ -26,7 +26,11 @@ public class InvoiceController : ControllerBase
     {
         try
         {
-            var result = await _invoiceService.AnalyzeAsync(request.ImageBase64, request.ImageUrl, request.Country);
+            Guid? userId = null;
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (Guid.TryParse(userIdClaim, out var uid)) userId = uid;
+
+            var result = await _invoiceService.AnalyzeAsync(request.ImageBase64, request.ImageUrl, request.Country, userId);
             return Ok(result);
         }
         catch (Exception ex)
