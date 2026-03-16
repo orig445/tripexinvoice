@@ -1,48 +1,92 @@
 
-# Sharpen Invoice Scanner (Keep Oracle)
 
-## What We'll Do
-Keep the same Oracle Llama 4 Maverick model but make two improvements:
+# שיפור אלגוריתם OCR + לוגים + שדות חסרים
 
-1. **Sharpen the prompt** - Make the extraction instructions much more explicit with step-by-step logic so the model doesn't confuse VAT with subtotal
-2. **Add math validation** - After the AI returns results, automatically verify and fix the numbers using simple arithmetic
-
-## Changes
-
-### File: `supabase/functions/analyze-invoice/index.ts`
-
-### 1. Improved Prompt
-- Add a clear step-by-step process the model must follow:
-  - Step 1: Find the LARGEST amount on the document - that is likely the total
-  - Step 2: Find the SMALLEST tax-related amount - that is VAT/tax
-  - Step 3: The remaining middle amount is the subtotal
-- Add explicit rule: **VAT/tax is ALWAYS smaller than subtotal**
-- Add explicit rule: **subtotal + tax = total** (approximately)
-- Add negative examples: "Do NOT put the subtotal value in tax_amount" and "Do NOT put the tax value in subtotal"
-
-### 2. Post-Processing Math Validation
-After parsing the AI response, add validation logic:
-
-```text
-IF total, subtotal, and tax all exist:
-    IF tax > subtotal --> they are swapped, fix it
-    IF subtotal + tax != total (within 5% tolerance):
-        Recalculate tax = total - subtotal
-IF only total and one other value exist:
-    Calculate the missing value
-IF only total exists:
-    Leave subtotal and tax as null
-```
-
-This catches the most common error (VAT and subtotal being swapped) and auto-corrects it without needing to re-call the model.
+## סיכום
+שיפור כולל של תהליך הסריקה ב-C# Backend: וולידציה לפי מטבע/תאריך, לוגים מפורטים לסריקות, ותיקון 4 שדות שלא ממופים כרגע (Expense Type, Total Amount, Extra Details).
 
 ---
 
-## Technical Details
+## שינויים
 
-Single file change: `supabase/functions/analyze-invoice/index.ts`
+### 1. וולידציה מטבע-תאריך (InvoiceService.cs)
+פונקציה חדשה `ValidateDateByCurrency()` שרצה אחרי Scan 2:
+- **PHP (פיליפינים)**: תאריך MM/DD/YYYY — אם המודל החזיר DD/MM/YYYY, מזהה ומתקן (אם היום > 12 זה סימן שהפורמט הפוך)
+- **ILS (ישראל)**: תאריך DD/MM/YYYY — אם המודל החזיר MM/DD/YYYY, מתקן
+- **USD (ארה"ב)**: MM/DD/YYYY — ולידציה שהחודש ≤ 12
+- הוספת הנחיה מפורשת בפרומפט לפי מטבע
 
-- Enhanced `systemPrompt` with stricter extraction rules and negative examples
-- New `validateAndFixAmounts()` function that runs after JSON parsing
-- No new dependencies or API keys needed
-- Edge function will be redeployed automatically
+### 2. לוגים מפורטים לסריקות (InvoiceService.cs + ChatService.cs)
+- טבלה חדשה `ocr_scan_logs` עם עמודות:
+  - `id`, `user_id`, `session_id`, `scan1_raw`, `scan2_raw`, `final_fields` (JSON), `country`, `currency_detected`, `processing_time_ms`, `errors`, `created_at`
+- שמירה אוטומטית בכל סריקה — Scan 1 raw, Scan 2 raw, תוצאה סופית, זמן עיבוד
+- ישמש לדיבאג ולסאפורט
+
+### 3. Expense Type — הוספת קטגוריות ומיפוי (InvoiceService.cs)
+כרגע `Type` ממופה ל-`document_type` (sales_invoice/receipt) — לא ל-expense type.
+- הוספת שדה `expense_type` לפרומפט עם הקטגוריות הספציפיות:
+  `business_meal`, `vehicle`, `entertainment`, `hotel`, `internet`, `parking`, `other`, `meal`, `taxi`
+- הוספת שדה `ExpenseType` ל-`InvoiceFields`
+- מיפוי ב-`MapToAlgoTextFields()`
+
+### 4. Total Amount — תיקון מיפוי (InvoiceService.cs)
+כרגע `Total` מחושב מ-`payment.amount_paid` או מסכום amounts — אבל לא נשמר ב-`TotalAmount` כשדה נפרד.
+- הוספת fallback: אם `amount_paid` ריק, חישוב vatable + tax = total
+- הוספת שדה `TotalAmount` ל-`InvoiceFields` (בנוסף ל-`Total` הקיים) כדי לוודא שהערך תמיד מגיע
+
+### 5. Extra Details — שמירת כל הנתונים הנסרקים (InvoiceFields + MapToAlgoTextFields)
+הוספת שדה `ExtraDetails` (JSON string) ל-`InvoiceFields` שמכיל את **כל** ה-JSON הגולמי שהמודל החזיר — כולל שדות שלא ממופים לשדות ספציפיים:
+- line items, כתובת לקוח, הערות, תנאי תשלום
+- כל שדה נוסף שהמודל מחלץ מהחשבונית
+
+---
+
+## פרטים טכניים
+
+| פריט | פירוט |
+|---|---|
+| קבצים שישתנו | `InvoiceService.cs`, `ApiModels.cs` (InvoiceFields), `TripExDbContext.cs`, `ChatService.cs` |
+| Entity חדש | `OcrScanLog` |
+| טבלה חדשה (migration) | `ocr_scan_logs` |
+| שדות חדשים ב-InvoiceFields | `ExpenseType`, `TotalAmount`, `ExtraDetails` |
+| פונקציות חדשות | `ValidateDateByCurrency()`, `LogOcrScan()` |
+| פונקציות שישתנו | `GetExtractionPrompt()`, `MapToAlgoTextFields()`, `AnalyzeAsync()` |
+| תלויות חדשות | אין |
+
+### שינוי בפרומפט
+הוספה ל-`GetExtractionPrompt()`:
+```text
+EXPENSE CATEGORY: Classify as one of: "business_meal", "vehicle", "entertainment", 
+"hotel", "internet", "parking", "other", "meal", "taxi"
+
+DATE FORMAT RULES:
+- For PHP/Philippines: dates are MM/DD/YYYY
+- For ILS/Israel: dates are DD/MM/YYYY  
+- For USD/US: dates are MM/DD/YYYY
+- Always output as YYYY-MM-DD
+```
+
+הוספה ל-JSON output format:
+```text
+"expense_type": "string",
+"extra_details": { ...all other extracted fields... }
+```
+
+### סקריפט T-SQL לטבלה חדשה
+```sql
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ocr_scan_logs')
+CREATE TABLE ocr_scan_logs (
+    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    user_id UNIQUEIDENTIFIER NULL,
+    session_id UNIQUEIDENTIFIER NULL,
+    scan1_raw NVARCHAR(MAX) NULL,
+    scan2_raw NVARCHAR(MAX) NULL,
+    final_fields NVARCHAR(MAX) NULL,
+    country NVARCHAR(10) NULL,
+    currency_detected NVARCHAR(10) NULL,
+    processing_time_ms INT NULL,
+    errors NVARCHAR(MAX) NULL,
+    created_at DATETIME2 DEFAULT GETUTCDATE()
+);
+```
+
