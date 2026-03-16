@@ -34,6 +34,7 @@ public class TripExDbContext : DbContext
         modelBuilder.Entity<Profile>().ToTable("profiles");
         modelBuilder.Entity<UserRole>().ToTable("user_roles");
         modelBuilder.Entity<UserCredential>().ToTable("user_credentials");
+        modelBuilder.Entity<OcrScanLog>().ToTable("ocr_scan_logs");
 
         modelBuilder.Entity<UserCredential>()
             .HasIndex(c => c.Email)
