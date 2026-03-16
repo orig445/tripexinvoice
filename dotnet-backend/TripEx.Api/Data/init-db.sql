@@ -160,6 +160,23 @@ CREATE TABLE knowledge_chunks (
 );
 GO
 
+-- ── 12. OCR Scan Logs ──
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ocr_scan_logs')
+CREATE TABLE ocr_scan_logs (
+    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    user_id UNIQUEIDENTIFIER NULL,
+    session_id UNIQUEIDENTIFIER NULL,
+    scan1_raw NVARCHAR(MAX) NULL,
+    scan2_raw NVARCHAR(MAX) NULL,
+    final_fields NVARCHAR(MAX) NULL,
+    country NVARCHAR(10) NULL,
+    currency_detected NVARCHAR(10) NULL,
+    processing_time_ms INT NULL,
+    errors NVARCHAR(MAX) NULL,
+    created_at DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+);
+GO
+
 -- ═══════════════════════════════════════════════════════════
 -- Indexes
 -- ═══════════════════════════════════════════════════════════
@@ -190,6 +207,12 @@ IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_knowledge_chunks_docum
 
 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_chatbot_logs_session_id')
     CREATE INDEX IX_chatbot_logs_session_id ON chatbot_logs(session_id);
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_ocr_scan_logs_user_id')
+    CREATE INDEX IX_ocr_scan_logs_user_id ON ocr_scan_logs(user_id);
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_ocr_scan_logs_created_at')
+    CREATE INDEX IX_ocr_scan_logs_created_at ON ocr_scan_logs(created_at DESC);
 GO
 
 -- ═══════════════════════════════════════════════════════════

@@ -19,6 +19,7 @@ public class TripExDbContext : DbContext
     public DbSet<Profile> Profiles => Set<Profile>();
     public DbSet<UserRole> UserRoles => Set<UserRole>();
     public DbSet<UserCredential> UserCredentials => Set<UserCredential>();
+    public DbSet<OcrScanLog> OcrScanLogs => Set<OcrScanLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -33,6 +34,7 @@ public class TripExDbContext : DbContext
         modelBuilder.Entity<Profile>().ToTable("profiles");
         modelBuilder.Entity<UserRole>().ToTable("user_roles");
         modelBuilder.Entity<UserCredential>().ToTable("user_credentials");
+        modelBuilder.Entity<OcrScanLog>().ToTable("ocr_scan_logs");
 
         modelBuilder.Entity<UserCredential>()
             .HasIndex(c => c.Email)
@@ -185,5 +187,21 @@ public class UserCredential
     [Column("user_id")] public Guid UserId { get; set; }
     [Column("email")] public string Email { get; set; } = "";
     [Column("password_hash")] public string PasswordHash { get; set; } = "";
+    [Column("created_at")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+[Table("ocr_scan_logs")]
+public class OcrScanLog
+{
+    [Key, Column("id")] public Guid Id { get; set; } = Guid.NewGuid();
+    [Column("user_id")] public Guid? UserId { get; set; }
+    [Column("session_id")] public Guid? SessionId { get; set; }
+    [Column("scan1_raw", TypeName = "nvarchar(max)")] public string? Scan1Raw { get; set; }
+    [Column("scan2_raw", TypeName = "nvarchar(max)")] public string? Scan2Raw { get; set; }
+    [Column("final_fields", TypeName = "nvarchar(max)")] public string? FinalFields { get; set; }
+    [Column("country")] public string? Country { get; set; }
+    [Column("currency_detected")] public string? CurrencyDetected { get; set; }
+    [Column("processing_time_ms")] public int? ProcessingTimeMs { get; set; }
+    [Column("errors", TypeName = "nvarchar(max)")] public string? Errors { get; set; }
     [Column("created_at")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
