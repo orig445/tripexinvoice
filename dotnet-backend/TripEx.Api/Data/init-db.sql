@@ -207,6 +207,12 @@ IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_knowledge_chunks_docum
 
 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_chatbot_logs_session_id')
     CREATE INDEX IX_chatbot_logs_session_id ON chatbot_logs(session_id);
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_ocr_scan_logs_user_id')
+    CREATE INDEX IX_ocr_scan_logs_user_id ON ocr_scan_logs(user_id);
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_ocr_scan_logs_created_at')
+    CREATE INDEX IX_ocr_scan_logs_created_at ON ocr_scan_logs(created_at DESC);
 GO
 
 -- ═══════════════════════════════════════════════════════════
