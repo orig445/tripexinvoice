@@ -92,6 +92,9 @@ public class InvoiceFields
     public string? MerchantCity { get; set; }
     public string? PaymentMethod { get; set; }
     public string? AmountPaid { get; set; }
+    public string? ExpenseType { get; set; }      // business_meal, vehicle, entertainment, hotel, internet, parking, other, meal, taxi
+    public string? TotalAmount { get; set; }      // Total amount (same as Total, explicit field)
+    public string? ExtraDetails { get; set; }     // JSON string with all raw extracted data
 }
 
 // ═══════════════════════════════════════

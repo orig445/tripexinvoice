@@ -19,6 +19,7 @@ public class TripExDbContext : DbContext
     public DbSet<Profile> Profiles => Set<Profile>();
     public DbSet<UserRole> UserRoles => Set<UserRole>();
     public DbSet<UserCredential> UserCredentials => Set<UserCredential>();
+    public DbSet<OcrScanLog> OcrScanLogs => Set<OcrScanLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
