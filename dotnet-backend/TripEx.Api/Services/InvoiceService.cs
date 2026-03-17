@@ -394,11 +394,9 @@ RULES:
         // Total = payment.amount_paid or sum of amounts
         decimal? totalValue = null;
 
-        if (json.TryGetProperty("payment", out var payment) &&
-            payment.TryGetProperty("amount_paid", out var amountPaid) &&
-            amountPaid.ValueKind == JsonValueKind.Number)
+        if (json.TryGetProperty("payment", out var payment))
         {
-            totalValue = amountPaid.GetDecimal();
+            totalValue = GetDecimalFromElement(payment, "amount_paid");
         }
 
         // Fallback: calculate from amounts
@@ -407,16 +405,24 @@ RULES:
             if (json.TryGetProperty("amounts", out var amounts))
             {
                 decimal total = 0;
-                if (amounts.TryGetProperty("vatable_sales_amount", out var vat) && vat.ValueKind == JsonValueKind.Number)
-                    total += vat.GetDecimal();
-                if (amounts.TryGetProperty("non_vatable_sales_amount", out var nonVat) && nonVat.ValueKind == JsonValueKind.Number)
-                    total += nonVat.GetDecimal();
-                if (amounts.TryGetProperty("service_charge_amount", out var sc) && sc.ValueKind == JsonValueKind.Number)
-                    total += sc.GetDecimal();
-                if (amounts.TryGetProperty("tax_amount", out var tax) && tax.ValueKind == JsonValueKind.Number)
-                    total += tax.GetDecimal();
+                var vat = GetDecimalFromElement(amounts, "vatable_sales_amount");
+                var nonVat = GetDecimalFromElement(amounts, "non_vatable_sales_amount");
+                var sc = GetDecimalFromElement(amounts, "service_charge_amount");
+                var tax = GetDecimalFromElement(amounts, "tax_amount");
+                if (vat.HasValue) total += vat.Value;
+                if (nonVat.HasValue) total += nonVat.Value;
+                if (sc.HasValue) total += sc.Value;
+                if (tax.HasValue) total += tax.Value;
                 if (total > 0) totalValue = total;
             }
+        }
+
+        // Fallback: look for top-level "total" or "total_amount"
+        if (!totalValue.HasValue || totalValue.Value == 0)
+        {
+            totalValue = GetDecimalFromElement(json, "total") 
+                      ?? GetDecimalFromElement(json, "total_amount")
+                      ?? GetDecimalFromElement(json, "sale_amount");
         }
 
         if (totalValue.HasValue)
@@ -426,47 +432,102 @@ RULES:
         }
 
         // TotalVAT = amounts.tax_amount
-        if (json.TryGetProperty("amounts", out var amt) &&
-            amt.TryGetProperty("tax_amount", out var taxAmt) &&
-            taxAmt.ValueKind == JsonValueKind.Number)
+        if (json.TryGetProperty("amounts", out var amt))
         {
-            fields.TotalVAT = taxAmt.GetDecimal().ToString("F2");
+            var taxVal = GetDecimalFromElement(amt, "tax_amount");
+            if (taxVal.HasValue)
+                fields.TotalVAT = taxVal.Value.ToString("F2");
+        }
+
+        // SubCategory — store vatable_sales_amount as sub_category info
+        if (json.TryGetProperty("amounts", out var amtSub))
+        {
+            var vatableVal = GetDecimalFromElement(amtSub, "vatable_sales_amount");
+            if (vatableVal.HasValue)
+                fields.SubCategory = vatableVal.Value.ToString("F2");
         }
 
         // Direct fields
-        fields.Currency = json.TryGetProperty("currency", out var cur) ? cur.GetString() : null;
-        fields.InvoiceNumber = json.TryGetProperty("invoice_number", out var inv) ? inv.GetString() : null;
-        fields.InvoiceDate = json.TryGetProperty("invoice_date", out var dt) ? dt.GetString() : null;
-        fields.Type = json.TryGetProperty("document_type", out var docType) ? docType.GetString() : null;
+        fields.Currency = GetStringProp(json, "currency");
+        fields.InvoiceNumber = GetStringProp(json, "invoice_number");
+        fields.InvoiceDate = GetStringProp(json, "invoice_date");
+        fields.Type = GetStringProp(json, "document_type");
 
-        // Expense Type
-        if (json.TryGetProperty("expense_type", out var expType))
+        // Expense Type — check multiple possible locations
+        var expTypeStr = GetStringProp(json, "expense_type") 
+                      ?? GetStringProp(json, "category")
+                      ?? GetStringProp(json, "expense_category");
+        if (!string.IsNullOrEmpty(expTypeStr))
         {
-            var expTypeStr = expType.GetString();
-            fields.ExpenseType = ValidExpenseTypes.Contains(expTypeStr ?? "") ? expTypeStr : "other";
+            // Normalize: lowercase, trim, replace spaces with underscore
+            expTypeStr = expTypeStr.Trim().ToLowerInvariant().Replace(" ", "_");
+            fields.ExpenseType = ValidExpenseTypes.Contains(expTypeStr) ? expTypeStr : "other";
+        }
+        else
+        {
+            fields.ExpenseType = "other";
         }
 
         // Merchant info — with name cleaning
         if (json.TryGetProperty("merchant", out var merchant))
         {
-            fields.MerchantName = CleanMerchantName(merchant.TryGetProperty("name", out var name) ? name.GetString() : null);
-            fields.MerchantTin = merchant.TryGetProperty("tin", out var tin) ? tin.GetString() : null;
-            fields.MerchantAddress = merchant.TryGetProperty("address", out var addr) ? addr.GetString() : null;
-            fields.MerchantCity = merchant.TryGetProperty("city", out var city) ? city.GetString() : null;
+            fields.MerchantName = CleanMerchantName(GetStringProp(merchant, "name"));
+            fields.MerchantTin = GetStringProp(merchant, "tin");
+            fields.MerchantAddress = GetStringProp(merchant, "address");
+            fields.MerchantCity = GetStringProp(merchant, "city");
         }
 
         // Payment
         if (json.TryGetProperty("payment", out var pay))
         {
-            fields.PaymentMethod = pay.TryGetProperty("method", out var method) ? method.GetString() : null;
-            if (pay.TryGetProperty("amount_paid", out var paid) && paid.ValueKind == JsonValueKind.Number)
-                fields.AmountPaid = paid.GetDecimal().ToString("F2");
+            fields.PaymentMethod = GetStringProp(pay, "method");
+            var paidVal = GetDecimalFromElement(pay, "amount_paid");
+            if (paidVal.HasValue)
+                fields.AmountPaid = paidVal.Value.ToString("F2");
         }
 
         // Extra Details — store the entire raw JSON for support/debugging
         fields.ExtraDetails = json.GetRawText();
 
         return fields;
+    }
+
+    /// <summary>
+    /// Get a decimal value from a JSON element property, handling both Number and String types
+    /// </summary>
+    private static decimal? GetDecimalFromElement(JsonElement el, string prop)
+    {
+        if (!el.TryGetProperty(prop, out var val)) return null;
+        
+        if (val.ValueKind == JsonValueKind.Number)
+            return val.GetDecimal();
+        
+        if (val.ValueKind == JsonValueKind.String)
+        {
+            var str = val.GetString();
+            if (!string.IsNullOrEmpty(str))
+            {
+                str = Regex.Replace(str, @"[₱₪$€£¥,\s]", "");
+                if (decimal.TryParse(str, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
+                    return parsed;
+            }
+        }
+        
+        return null;
+    }
+
+    /// <summary>
+    /// Safely get string property from JSON element
+    /// </summary>
+    private static string? GetStringProp(JsonElement el, string prop)
+    {
+        if (el.TryGetProperty(prop, out var val))
+        {
+            if (val.ValueKind == JsonValueKind.String) return val.GetString();
+            if (val.ValueKind != JsonValueKind.Null && val.ValueKind != JsonValueKind.Undefined)
+                return val.GetRawText().Trim('"');
+        }
+        return null;
     }
 
     /// <summary>
