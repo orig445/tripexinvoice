@@ -228,8 +228,24 @@ RULES:
 
     private static decimal? GetDecimalProp(JsonElement el, string prop)
     {
-        if (el.TryGetProperty(prop, out var val) && val.ValueKind == JsonValueKind.Number)
+        if (!el.TryGetProperty(prop, out var val)) return null;
+        
+        if (val.ValueKind == JsonValueKind.Number)
             return val.GetDecimal();
+        
+        // AI often returns amounts as strings like "13,328.00" or "13328.00"
+        if (val.ValueKind == JsonValueKind.String)
+        {
+            var str = val.GetString();
+            if (!string.IsNullOrEmpty(str))
+            {
+                // Remove currency symbols, commas, spaces
+                str = Regex.Replace(str, @"[₱₪$€£¥,\s]", "");
+                if (decimal.TryParse(str, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
+                    return parsed;
+            }
+        }
+        
         return null;
     }
 
