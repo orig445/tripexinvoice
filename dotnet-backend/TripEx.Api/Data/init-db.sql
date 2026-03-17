@@ -70,7 +70,7 @@ CREATE TABLE chatbot_config (
     avatar_url NVARCHAR(500) NULL,
     welcome_message NVARCHAR(MAX) NOT NULL DEFAULT N'שלום! אני TripEX AI, העוזר האישי שלך לניהול נסיעות והוצאות. איך אוכל לעזור?',
     system_prompt NVARCHAR(MAX) NOT NULL DEFAULT '',
-    model_name NVARCHAR(200) NOT NULL DEFAULT 'meta.llama-4-maverick-17b-128e-instruct-fp8',
+    model_name NVARCHAR(200) NOT NULL DEFAULT 'google.gemini-3-flash',
     temperature DECIMAL(3,2) NOT NULL DEFAULT 0.3,
     max_tokens INT NOT NULL DEFAULT 1024,
     is_active BIT NOT NULL DEFAULT 1,
@@ -160,20 +160,15 @@ CREATE TABLE knowledge_chunks (
 );
 GO
 
--- ── 12. OCR Scan Logs ──
-IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ocr_scan_logs')
-CREATE TABLE ocr_scan_logs (
-    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    user_id UNIQUEIDENTIFIER NULL,
-    session_id UNIQUEIDENTIFIER NULL,
-    scan1_raw NVARCHAR(MAX) NULL,
-    scan2_raw NVARCHAR(MAX) NULL,
-    final_fields NVARCHAR(MAX) NULL,
-    country NVARCHAR(10) NULL,
-    currency_detected NVARCHAR(10) NULL,
-    processing_time_ms INT NULL,
-    errors NVARCHAR(MAX) NULL,
-    created_at DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+-- ── 12. InvoiceScanLogs (NEW — for OCR debugging & support) ──
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'InvoiceScanLogs')
+CREATE TABLE [dbo].[InvoiceScanLogs] (
+    [Id] UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    [UserId] UNIQUEIDENTIFIER NOT NULL,
+    [RawAiResponse] NVARCHAR(MAX) NULL,
+    [CountryHint] NVARCHAR(10) NULL,
+    [Status] NVARCHAR(50) NULL,
+    [CreatedAt] DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET()
 );
 GO
 
@@ -208,11 +203,11 @@ IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_knowledge_chunks_docum
 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_chatbot_logs_session_id')
     CREATE INDEX IX_chatbot_logs_session_id ON chatbot_logs(session_id);
 
-IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_ocr_scan_logs_user_id')
-    CREATE INDEX IX_ocr_scan_logs_user_id ON ocr_scan_logs(user_id);
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_InvoiceScanLogs_UserId')
+    CREATE INDEX IX_InvoiceScanLogs_UserId ON [InvoiceScanLogs]([UserId]);
 
-IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_ocr_scan_logs_created_at')
-    CREATE INDEX IX_ocr_scan_logs_created_at ON ocr_scan_logs(created_at DESC);
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_InvoiceScanLogs_CreatedAt')
+    CREATE INDEX IX_InvoiceScanLogs_CreatedAt ON [InvoiceScanLogs]([CreatedAt] DESC);
 GO
 
 -- ═══════════════════════════════════════════════════════════
@@ -234,7 +229,7 @@ Detect user intent and respond accordingly:
 - Manage expenses -> respond with JSON: {"intent": "expense", "action": "redirect", "text": "<your response>"}
 - General chat -> respond with JSON: {"intent": "general", "action": "none", "text": "<your natural response>"}
 Always respond in the user''s language. Always return valid JSON with: intent, action, text.',
-        'meta.llama-4-maverick-17b-128e-instruct-fp8'
+        'google.gemini-3-flash'
     );
 END
 GO

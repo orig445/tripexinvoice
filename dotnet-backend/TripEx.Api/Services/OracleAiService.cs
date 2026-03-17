@@ -5,7 +5,7 @@ using TripEx.Api.Models;
 namespace TripEx.Api.Services;
 
 /// <summary>
-/// Service for calling Oracle Generative AI (Llama 4 Maverick)
+/// Service for calling Oracle Generative AI — Gemini 3 Flash via OCI API
 /// </summary>
 public class OracleAiService
 {
@@ -13,6 +13,7 @@ public class OracleAiService
     private readonly string _apiKey;
     private readonly string _endpoint;
     private readonly string _model;
+    private readonly string? _compartmentId;
 
     public OracleAiService(IHttpClientFactory httpClientFactory, IConfiguration config)
     {
@@ -23,11 +24,36 @@ public class OracleAiService
         _endpoint = config["Oracle:Endpoint"]
             ?? "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions";
         _model = config["Oracle:Model"]
-            ?? "meta.llama-4-maverick-17b-128e-instruct-fp8";
+            ?? "google.gemini-3-flash";
+        _compartmentId = config["Oracle:CompartmentId"];
     }
 
     /// <summary>
-    /// Send messages to Oracle AI and get response text
+    /// Invoice-specific call: sends image + country hint to Gemini 3 Flash
+    /// </summary>
+    public async Task<string> CallGeminiFlashAsync(string imageBase64, string countryHint)
+    {
+        var prompt = PrepareSystemPrompt(countryHint);
+
+        var messages = new List<OracleMessage>
+        {
+            new() { Role = "system", Content = prompt },
+            new()
+            {
+                Role = "user",
+                Content = new object[]
+                {
+                    new { type = "image_url", image_url = new { url = imageBase64.StartsWith("data:") ? imageBase64 : $"data:image/jpeg;base64,{imageBase64}" } },
+                    new { type = "text", text = "Extract data from this invoice." }
+                }
+            }
+        };
+
+        return await ChatAsync(messages, 1000, 0.1);
+    }
+
+    /// <summary>
+    /// General-purpose chat (used by ChatService and others)
     /// </summary>
     public async Task<string> ChatAsync(
         List<OracleMessage> messages,
@@ -72,6 +98,52 @@ public class OracleAiService
     }
 
     /// <summary>
+    /// Prepare system prompt based on country hint
+    /// </summary>
+    private string PrepareSystemPrompt(string? countryHint)
+    {
+        string locale = countryHint?.ToUpperInvariant() switch
+        {
+            "IL" => "Israel (DD/MM/YYYY, ILS ₪)",
+            "PH" => "Philippines (MM/DD/YYYY, PHP ₱)",
+            "US" => "United States (MM/DD/YYYY, USD $)",
+            "TH" => "Thailand (DD/MM/YYYY, THB ฿)",
+            _ => "Unknown locale"
+        };
+
+        return $@"You are an expert invoice/receipt OCR analyzer. Extract data for {locale}.
+Return STRICT JSON only — no markdown, no explanation.
+
+GOLDEN RULE: If you cannot clearly read a value, return null. Wrong data is worse than no data.
+
+DOCUMENT TYPES to recognize:
+- Standard invoice/receipt, Payment terminal (Maya, GCash, BPI), Digital receipt, Handwritten receipt
+
+EXTRACTION RULES:
+1. VENDOR: Largest text at TOP. For terminals: business name, NOT terminal brand.
+2. AMOUNT: Look for ""SALE AMOUNT"", ""TOTAL"", ""סה""כ"". Return as NUMBER (13328.00 not ""13,328.00"").
+3. TAX: Must be SMALLER than subtotal. If tax > subtotal, they are SWAPPED. If no tax visible, use 0.
+4. DATE: Transaction date only (not permit/accreditation). Output as YYYY-MM-DD.
+5. INVOICE NUMBER: Document/transaction number, NOT TIN/tax ID.
+6. CATEGORY: Must be one of: business_meal, vehicle, entertainment, hotel, internet, parking, meal, taxi, other.
+
+CURRENCY: ₱=PHP, ₪=ILS, ฿=THB, $=USD (unless context says otherwise).
+
+OUTPUT FORMAT:
+{{
+  ""document_type"": ""string"",
+  ""invoice_number"": ""string or null"",
+  ""invoice_date"": ""YYYY-MM-DD or null"",
+  ""currency"": ""string"",
+  ""expense_type"": ""business_meal|vehicle|entertainment|hotel|internet|parking|other|meal|taxi"",
+  ""merchant"": {{ ""name"": ""string"", ""tin"": ""string or null"", ""address"": ""string or null"", ""city"": ""string or null"" }},
+  ""amounts"": {{ ""vatable_sales_amount"": number, ""non_vatable_sales_amount"": 0, ""service_charge_amount"": 0, ""tax_amount"": number }},
+  ""payment"": {{ ""method"": ""string or null"", ""amount_paid"": number }},
+  ""item_count"": number
+}}";
+    }
+
+    /// <summary>
     /// Parse JSON from AI response (handles markdown wrappers, brace counting)
     /// </summary>
     public static JsonElement ParseJsonFromAiResponse(string raw)
@@ -79,7 +151,6 @@ public class OracleAiService
         var cleaned = Regex.Replace(raw, @"```json\n?", "");
         cleaned = Regex.Replace(cleaned, @"```\n?", "").Trim();
 
-        // Find outermost { } using brace counting
         var startIdx = cleaned.IndexOf('{');
         if (startIdx >= 0)
         {
@@ -99,7 +170,6 @@ public class OracleAiService
                 cleaned = cleaned[startIdx..(endIdx + 1)];
         }
 
-        // Clean trailing commas
         cleaned = Regex.Replace(cleaned, @",\s*}", "}");
         cleaned = Regex.Replace(cleaned, @",\s*]", "]");
 
@@ -107,7 +177,7 @@ public class OracleAiService
     }
 
     /// <summary>
-    /// Decode unicode escape sequences like \u05e9\u05dc\u05d5\u05dd
+    /// Decode unicode escape sequences
     /// </summary>
     public static string DecodeUnicodeEscapes(string str)
     {
