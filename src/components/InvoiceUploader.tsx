@@ -108,24 +108,51 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
         throw new Error(analysisData?.error || "Error analyzing invoice");
       }
 
-      // Map new structured JSON to DB columns
-      const d = analysisData.data;
-      const totalAmount = (d.amounts?.vatable_sales_amount || 0) + (d.amounts?.non_vatable_sales_amount || 0) + (d.amounts?.service_charge_amount || 0) + (d.amounts?.tax_amount || 0);
-      const invoiceData = {
-        invoice_number: d.invoice_number || null,
-        invoice_date: d.invoice_date || null,
-        currency: d.currency || null,
-        vendor_name: d.merchant?.name || null,
-        vendor_id: d.merchant?.tin || null,
-        vendor_address: [d.merchant?.address, d.merchant?.city].filter(Boolean).join(", ") || null,
-        total_amount: totalAmount || null,
-        tax_amount: d.amounts?.tax_amount || null,
-        subtotal: d.amounts?.vatable_sales_amount || null,
-        image_url: publicUrlData.publicUrl,
-        raw_ai_response: analysisData.rawResponse,
-        status: "processed",
-        user_id: user?.id,
-      };
+      // Map response — support both flat fields format (C# backend) and nested format (Supabase)
+      const raw = analysisData;
+      const f = raw.fields || raw.Fields; // C# backend returns flat InvoiceFields
+      const d = raw.data; // Legacy nested format
+      
+      let invoiceData: Record<string, any>;
+      
+      if (f) {
+        // Flat fields format from C# backend
+        invoiceData = {
+          invoice_number: f.invoiceNumber || f.InvoiceNumber || null,
+          invoice_date: f.invoiceDate || f.InvoiceDate || null,
+          currency: f.currency || f.Currency || null,
+          vendor_name: f.merchantName || f.MerchantName || null,
+          vendor_id: f.merchantTin || f.MerchantTin || null,
+          vendor_address: [f.merchantAddress || f.MerchantAddress, f.merchantCity || f.MerchantCity].filter(Boolean).join(", ") || null,
+          total_amount: parseFloat(f.total || f.Total || f.totalAmount || f.TotalAmount || "0") || null,
+          tax_amount: parseFloat(f.totalVAT || f.TotalVAT || "0") || null,
+          subtotal: parseFloat(f.subCategory || f.SubCategory || "0") || null,
+          image_url: publicUrlData.publicUrl,
+          raw_ai_response: raw.rawResponse || raw.RawResponse || JSON.stringify(raw),
+          status: "processed",
+          user_id: user?.id,
+        };
+      } else if (d) {
+        // Legacy nested format (Supabase edge functions)
+        const totalAmount = (d.amounts?.vatable_sales_amount || 0) + (d.amounts?.non_vatable_sales_amount || 0) + (d.amounts?.service_charge_amount || 0) + (d.amounts?.tax_amount || 0);
+        invoiceData = {
+          invoice_number: d.invoice_number || null,
+          invoice_date: d.invoice_date || null,
+          currency: d.currency || null,
+          vendor_name: d.merchant?.name || null,
+          vendor_id: d.merchant?.tin || null,
+          vendor_address: [d.merchant?.address, d.merchant?.city].filter(Boolean).join(", ") || null,
+          total_amount: totalAmount || null,
+          tax_amount: d.amounts?.tax_amount || null,
+          subtotal: d.amounts?.vatable_sales_amount || null,
+          image_url: publicUrlData.publicUrl,
+          raw_ai_response: raw.rawResponse || JSON.stringify(raw),
+          status: "processed",
+          user_id: user?.id,
+        };
+      } else {
+        throw new Error("Unexpected response format from OCR");
+      }
 
       const { data: savedInvoice, error: saveError } = await supabase
         .from("invoices")
