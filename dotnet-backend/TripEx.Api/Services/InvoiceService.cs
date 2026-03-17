@@ -621,45 +621,62 @@ Look for TIN format XXX-XXX-XXX-XXXXX. Look for 'Official Receipt' or 'Sales Inv
 GOLDEN RULE: If you cannot clearly read a value, return null. Wrong data is worse than no data.
 {countryHint}
 
+═══ DOCUMENT TYPE RECOGNITION ═══
+This could be ANY of these document types — adapt your extraction accordingly:
+- Standard invoice/receipt (paper)
+- Payment TERMINAL receipt (Maya, GCash, BPI, etc.) — look for ""SALE AMOUNT"", ""TRANSACTION NO."", ""DATE/TIME""
+- Digital/email receipt
+- Handwritten receipt
+
 ═══ STEP-BY-STEP EXTRACTION PROCESS ═══
 
 STEP 1 — VENDOR/MERCHANT NAME:
 - Look at the LARGEST text at the TOP of the document
+- For payment terminal receipts: the terminal brand (e.g. ""maya"") is NOT the merchant — look for the business name printed ABOVE or BELOW the terminal brand
 - Read it CHARACTER BY CHARACTER — do NOT guess or autocomplete
 - Do NOT confuse product names with the store/business name
-- Do NOT invent letters that aren't there
 
-STEP 2 — FIND THE TOTAL (LARGEST AMOUNT):
-- Look for labels: ""AMOUNT DUE"", ""TOTAL"", ""סה""כ לתשלום"", ""Grand Total""
-- This should be the LARGEST monetary value on the document
+STEP 2 — FIND THE TOTAL (THE AMOUNT THE CUSTOMER PAID):
+- Look for labels: ""SALE AMOUNT"", ""AMOUNT DUE"", ""TOTAL"", ""סה""כ לתשלום"", ""Grand Total"", ""Total Amount""
+- For payment terminals: ""SALE AMOUNT"" is the total — use this value!
+- Read the number EXACTLY as printed including decimals
+- ⚠️ Remove currency symbols (₱, ₪, $) but keep the number exactly
 - IGNORE: Cash given, Change amounts
-- If you see ""Amount Paid"" or ""Cash"" — that's what the customer gave, NOT the total
+- ⚠️ CRITICAL: Return amounts as NUMBERS, not strings! Example: 13328.00, not ""13,328.00""
 
 STEP 3 — FIND TAX/VAT (SMALLER THAN SUBTOTAL):
-- Look for: ""VAT"", ""Tax"", ""מע""מ"", ""Output Tax""
+- Look for: ""VAT"", ""Tax"", ""מע""מ"", ""Output Tax"", ""VATable Sales""
 - ⚠️ CRITICAL: tax_amount MUST BE SMALLER than vatable_sales_amount
 - If tax seems larger than subtotal, you have them SWAPPED — switch them!
+- If no tax/VAT is visible on the document, set tax_amount to 0
 
 STEP 4 — DATE:
-- Read the EXACT DIGITS on the document
+- Read the EXACT DIGITS printed on the document
+- For payment terminals: look for ""DATE/TIME"" field — extract ONLY the date part
+- Common formats you may see:
+  * ""2026/02/08 11:01:31"" → extract as ""2026-02-08""
+  * ""02/08/2026"" (MM/DD/YYYY for PH/US) → extract as ""2026-02-08""  
+  * ""08/02/2026"" (DD/MM/YYYY for IL) → extract as ""2026-02-08""
 - Look for the TRANSACTION date, NOT accreditation/permit/certification dates
-- Output as YYYY-MM-DD
+- ⚠️ ALWAYS output as YYYY-MM-DD format
 
-STEP 5 — INVOICE NUMBER:
-- Look for: ""Invoice No"", ""SI#"", ""OR NO."", ""Receipt #"", ""מספר קבלה"", ""אסמכתא""
+STEP 5 — INVOICE/TRANSACTION NUMBER:
+- Look for: ""TRANSACTION NO."", ""Invoice No"", ""SI#"", ""OR NO."", ""Receipt #"", ""REFERENCE NO."", ""BATCH NO."", ""מספר קבלה"", ""אסמכתא""
 - ⚠️ This is NOT the TIN/tax ID! Invoice numbers are usually shorter and numeric
+- For payment terminals: use TRANSACTION NO. or REFERENCE NO.
 
 STEP 6 — EXPENSE CATEGORY:
-- Classify the purchase as ONE of these exact values:
-  ""business_meal"" — restaurant, cafe, catering for business
-  ""vehicle"" — gas, car rental, car maintenance
-  ""entertainment"" — events, shows, recreation
-  ""hotel"" — accommodation, lodging
-  ""internet"" — internet service, phone bills, telecom
-  ""parking"" — parking fees
-  ""meal"" — food/drink purchase (non-business)
-  ""taxi"" — taxi, ride-sharing, transportation
+- You MUST classify the purchase as ONE of these exact values:
+  ""business_meal"" — restaurant, cafe, catering for business purposes
+  ""vehicle"" — gas station, car rental, car maintenance, fuel
+  ""entertainment"" — events, shows, recreation, activities
+  ""hotel"" — accommodation, lodging, resort, hotel
+  ""internet"" — internet service, phone bills, telecom, data plans
+  ""parking"" — parking fees, parking lot
+  ""meal"" — food/drink purchase (non-business context)
+  ""taxi"" — taxi, ride-sharing (Grab, Uber), transportation
   ""other"" — anything that doesn't fit above
+- ⚠️ You MUST always provide this field! Default to ""other"" if unsure.
 
 ═══ NEGATIVE EXAMPLES (DO NOT DO THIS) ═══
 ❌ Do NOT put the subtotal value in tax_amount
@@ -667,23 +684,25 @@ STEP 6 — EXPENSE CATEGORY:
 ❌ Do NOT put TIN in invoice_number
 ❌ Do NOT put invoice_number in TIN
 ❌ Do NOT invent or autocomplete merchant names
+❌ Do NOT return amounts as strings — they must be numbers
+❌ Do NOT leave expense_type empty — always classify
 
-DOCUMENT TYPE: Classify as one of: ""sales_invoice"", ""official_receipt"", ""charge_invoice"", ""delivery_receipt"", ""credit_memo"", ""debit_memo"", ""purchase_order"", ""quotation"", ""receipt"", ""other""
+DOCUMENT TYPE: Classify as one of: ""sales_invoice"", ""official_receipt"", ""charge_invoice"", ""delivery_receipt"", ""credit_memo"", ""debit_memo"", ""purchase_order"", ""quotation"", ""receipt"", ""payment_terminal"", ""other""
 
 CURRENCY: Philippine/₱ = PHP. Hebrew/₪ = ILS. Thai/฿ = THB. Dollar/$ = USD (unless context says otherwise).
 
 TIN: Philippine format: XXX-XXX-XXX-XXXXX. Non-Philippine = null.
 
-AMOUNTS: Extract exactly as printed:
-1. ""vatable_sales_amount"" - base amount BEFORE tax
-2. ""non_vatable_sales_amount"" - VAT-exempt (default 0)
-3. ""service_charge_amount"" - service charge (default 0)  
-4. ""tax_amount"" - VAT/tax portion (MUST be SMALLER than vatable_sales)
+AMOUNTS: Extract exactly as printed. All values MUST be numbers (not strings):
+1. ""vatable_sales_amount"" - base amount BEFORE tax (number)
+2. ""non_vatable_sales_amount"" - VAT-exempt, default 0 (number)
+3. ""service_charge_amount"" - service charge, default 0 (number)
+4. ""tax_amount"" - VAT/tax portion, MUST be SMALLER than vatable_sales (number)
 LOGIC CHECK: vatable_sales_amount + tax_amount ≈ amount_paid
 
-PAYMENT: ""method"" (Cash/Card/GCash etc), ""amount_paid"" (the total the customer paid).
+PAYMENT: ""method"" (Cash/Card/GCash/Mastercard/Visa etc), ""amount_paid"" (the total the customer paid, as number).
 
-OUTPUT FORMAT (JSON ONLY):
+OUTPUT FORMAT (JSON ONLY — no explanation, no markdown):
 {{
   ""document_type"": ""string"",
   ""invoice_number"": ""string or null"",
