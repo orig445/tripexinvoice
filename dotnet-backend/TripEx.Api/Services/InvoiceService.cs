@@ -259,48 +259,123 @@ RULES:
         var dateStr = dateProp.GetString();
         if (string.IsNullOrEmpty(dateStr)) return json;
 
-        // Already in YYYY-MM-DD format — validate day/month aren't swapped
-        var match = Regex.Match(dateStr, @"^(\d{4})-(\d{2})-(\d{2})$");
-        if (!match.Success) return json;
-
-        int year = int.Parse(match.Groups[1].Value);
-        int month = int.Parse(match.Groups[2].Value);
-        int day = int.Parse(match.Groups[3].Value);
-
-        bool needsSwap = false;
         var effectiveCurrency = currency?.ToUpperInvariant();
         var effectiveCountry = country?.ToUpperInvariant();
 
-        // If month > 12, it's definitely wrong — swap
-        if (month > 12 && day <= 12)
+        // Try to parse various date formats the AI might return
+        string? normalizedDate = TryNormalizeDate(dateStr, effectiveCurrency, effectiveCountry);
+        
+        if (normalizedDate != null && normalizedDate != dateStr)
         {
-            needsSwap = true;
-            Console.WriteLine($"[OCR-DATE] Month={month} > 12, swapping with day={day}");
-        }
-        // Philippines (MM/DD) — if the AI read DD/MM but country is PH, and day ≤ 12, we can't be sure
-        // Israel (DD/MM) — if the AI read MM/DD but country is IL, and month ≤ 12, ambiguous
-        // Only swap when we're confident (month > 12)
-        else if (month <= 12 && day <= 12)
-        {
-            // Ambiguous case — trust the AI's output but log it
-            Console.WriteLine($"[OCR-DATE] Ambiguous date {dateStr} for currency={effectiveCurrency}, country={effectiveCountry} — keeping as-is");
-        }
-
-        if (needsSwap)
-        {
-            var corrected = $"{year:D4}-{day:D2}-{month:D2}";
-            // Validate the corrected date is real
-            if (DateTime.TryParseExact(corrected, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
-            {
-                Console.WriteLine($"[OCR-DATE] Corrected: {dateStr} → {corrected}");
-                var dict = JsonSerializer.Deserialize<Dictionary<string, object>>(json.GetRawText()) ?? new();
-                dict["invoice_date"] = corrected;
-                var rebuilt = JsonSerializer.SerializeToUtf8Bytes(dict);
-                return JsonDocument.Parse(rebuilt).RootElement.Clone();
-            }
+            Console.WriteLine($"[OCR-DATE] Normalized: {dateStr} → {normalizedDate} (currency={effectiveCurrency}, country={effectiveCountry})");
+            var dict = JsonSerializer.Deserialize<Dictionary<string, object>>(json.GetRawText()) ?? new();
+            dict["invoice_date"] = normalizedDate;
+            var rebuilt = JsonSerializer.SerializeToUtf8Bytes(dict);
+            return JsonDocument.Parse(rebuilt).RootElement.Clone();
         }
 
         return json;
+    }
+
+    /// <summary>
+    /// Normalize various date formats to YYYY-MM-DD, considering currency/country conventions
+    /// </summary>
+    private static string? TryNormalizeDate(string dateStr, string? currency, string? country)
+    {
+        // Clean the date string
+        dateStr = dateStr.Trim();
+        
+        // Try YYYY-MM-DD (already correct format)
+        var matchYMD = Regex.Match(dateStr, @"^(\d{4})[-/](\d{1,2})[-/](\d{1,2})");
+        if (matchYMD.Success)
+        {
+            int year = int.Parse(matchYMD.Groups[1].Value);
+            int g2 = int.Parse(matchYMD.Groups[2].Value);
+            int g3 = int.Parse(matchYMD.Groups[3].Value);
+            
+            // YYYY/MM/DD format (common in payment terminals like Maya)
+            if (g2 <= 12 && g3 >= 1 && g3 <= 31)
+            {
+                var result = $"{year:D4}-{g2:D2}-{g3:D2}";
+                if (DateTime.TryParseExact(result, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
+                    return result;
+            }
+            // YYYY/DD/MM — month and day might be swapped
+            if (g2 > 12 && g3 <= 12)
+            {
+                var result = $"{year:D4}-{g3:D2}-{g2:D2}";
+                if (DateTime.TryParseExact(result, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
+                    return result;
+            }
+        }
+
+        // Try DD/MM/YYYY or MM/DD/YYYY
+        var matchDMY = Regex.Match(dateStr, @"^(\d{1,2})[-/](\d{1,2})[-/](\d{4})");
+        if (matchDMY.Success)
+        {
+            int g1 = int.Parse(matchDMY.Groups[1].Value);
+            int g2 = int.Parse(matchDMY.Groups[2].Value);
+            int year = int.Parse(matchDMY.Groups[3].Value);
+
+            // If first number > 12, it MUST be day (DD/MM/YYYY)
+            if (g1 > 12 && g2 <= 12)
+            {
+                var result = $"{year:D4}-{g2:D2}-{g1:D2}";
+                if (DateTime.TryParseExact(result, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
+                    return result;
+            }
+            // If second number > 12, it MUST be day (MM/DD/YYYY)
+            if (g2 > 12 && g1 <= 12)
+            {
+                var result = $"{year:D4}-{g1:D2}-{g2:D2}";
+                if (DateTime.TryParseExact(result, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
+                    return result;
+            }
+            // Ambiguous — use currency/country hint
+            if (g1 <= 12 && g2 <= 12)
+            {
+                bool useDDMM = currency == "ILS" || country == "IL"; // Israel = DD/MM
+                bool useMMDD = currency == "PHP" || currency == "USD" || country == "PH" || country == "US"; // PH/US = MM/DD
+                
+                int month, day;
+                if (useDDMM) { day = g1; month = g2; }
+                else if (useMMDD) { month = g1; day = g2; }
+                else { month = g1; day = g2; } // default MM/DD
+                
+                var result = $"{year:D4}-{month:D2}-{day:D2}";
+                if (DateTime.TryParseExact(result, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
+                    return result;
+            }
+        }
+
+        // Try DD/MM/YY or MM/DD/YY
+        var matchShort = Regex.Match(dateStr, @"^(\d{1,2})[-/](\d{1,2})[-/](\d{2})$");
+        if (matchShort.Success)
+        {
+            int g1 = int.Parse(matchShort.Groups[1].Value);
+            int g2 = int.Parse(matchShort.Groups[2].Value);
+            int year = 2000 + int.Parse(matchShort.Groups[3].Value);
+            // Recurse with full year
+            return TryNormalizeDate($"{g1}/{g2}/{year}", currency, country);
+        }
+
+        // Already YYYY-MM-DD — validate month > 12 swap
+        var matchISO = Regex.Match(dateStr, @"^(\d{4})-(\d{2})-(\d{2})$");
+        if (matchISO.Success)
+        {
+            int year = int.Parse(matchISO.Groups[1].Value);
+            int month = int.Parse(matchISO.Groups[2].Value);
+            int day = int.Parse(matchISO.Groups[3].Value);
+            
+            if (month > 12 && day <= 12)
+            {
+                var result = $"{year:D4}-{day:D2}-{month:D2}";
+                if (DateTime.TryParseExact(result, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
+                    return result;
+            }
+        }
+
+        return null; // couldn't normalize, keep original
     }
 
     // ═══════════════════════════════════════
