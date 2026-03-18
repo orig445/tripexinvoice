@@ -75,7 +75,7 @@ public class OracleAiService
         var request = new HttpRequestMessage(HttpMethod.Post, _endpoint);
         request.Headers.Add("Authorization", $"Bearer {_apiKey}");
         request.Content = new StringContent(
-            JsonSerializer.Serialize(requestBody),
+            JsonSerializer.Serialize(requestDict),
             System.Text.Encoding.UTF8,
             "application/json");
 
