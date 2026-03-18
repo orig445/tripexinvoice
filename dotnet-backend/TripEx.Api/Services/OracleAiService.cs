@@ -60,18 +60,22 @@ public class OracleAiService
         int maxTokens = 1024,
         double temperature = 0.3)
     {
-        var requestBody = new
+        var requestDict = new Dictionary<string, object>
         {
-            model = _model,
-            messages = messages.Select(m => new { role = m.Role, content = m.Content }).ToArray(),
-            max_tokens = maxTokens,
-            temperature
+            ["model"] = _model,
+            ["messages"] = messages.Select(m => new { role = m.Role, content = m.Content }).ToArray(),
+            ["max_tokens"] = maxTokens,
+            ["temperature"] = temperature
         };
+
+        // OCI requires compartmentId in the request body
+        if (!string.IsNullOrEmpty(_compartmentId))
+            requestDict["compartmentId"] = _compartmentId;
 
         var request = new HttpRequestMessage(HttpMethod.Post, _endpoint);
         request.Headers.Add("Authorization", $"Bearer {_apiKey}");
         request.Content = new StringContent(
-            JsonSerializer.Serialize(requestBody),
+            JsonSerializer.Serialize(requestDict),
             System.Text.Encoding.UTF8,
             "application/json");
 
