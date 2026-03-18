@@ -24,7 +24,7 @@ public class OracleAiService
         _endpoint = config["Oracle:Endpoint"]
             ?? "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions";
         _model = config["Oracle:Model"]
-            ?? "google.gemini-3-flash";
+            ?? "google.gemini-2.5-flash";
         _compartmentId = config["Oracle:CompartmentId"];
     }
 
