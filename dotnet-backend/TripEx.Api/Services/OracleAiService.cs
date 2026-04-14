@@ -207,8 +207,8 @@ DOCUMENT TYPES to recognize:
 
 EXTRACTION RULES:
 1. VENDOR: Largest text at TOP. For terminals: business name, NOT terminal brand.
-2. AMOUNT: This is the FINAL TOTAL amount the customer pays — INCLUDING VAT, taxes, service charges, and all fees. Look for ""TOTAL"", ""GRAND TOTAL"", ""AMOUNT DUE"", ""SALE AMOUNT"", ""סה""כ לתשלום"", ""סה""כ"". Do NOT use subtotal or pre-tax amount. Return as NUMBER (13328.00 not ""13,328.00"").
-3. TAX: The VAT/tax portion only. Must be SMALLER than the total. If tax > total, they are SWAPPED. If no tax visible, use 0.
+2. AMOUNT: Look for ""SALE AMOUNT"", ""TOTAL"", ""סה""כ"". Return as NUMBER (13328.00 not ""13,328.00"").
+3. TAX: Must be SMALLER than subtotal. If tax > subtotal, they are SWAPPED. If no tax visible, use 0.
 4. DATE: Transaction date only (not permit/accreditation). Output as YYYY-MM-DD.
 5. INVOICE NUMBER: Document/transaction number, NOT TIN/tax ID.
 6. CATEGORY: Must be one of: business_meal, vehicle, entertainment, hotel, internet, parking, meal, taxi, other.
