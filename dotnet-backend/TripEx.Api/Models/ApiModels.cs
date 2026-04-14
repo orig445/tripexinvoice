@@ -94,6 +94,9 @@ public class InvoiceFields
     public string? AmountPaid { get; set; }
     public string? ExpenseType { get; set; }      // business_meal, vehicle, entertainment, hotel, internet, parking, other, meal, taxi
     public string? TotalAmount { get; set; }      // Total amount (same as Total, explicit field)
+    public string? FormOfPayment { get; set; }    // credit, cash, bank
+    public string? CardLast4 { get; set; }        // Last 4 digits of credit card
+    public string? CardType { get; set; }         // visa, mastercard, amex, diners, isracart, other
     public string? ExtraDetails { get; set; }     // JSON string with all raw extracted data
 }
 

@@ -224,9 +224,18 @@ OUTPUT FORMAT:
   ""expense_type"": ""business_meal|vehicle|entertainment|hotel|internet|parking|other|meal|taxi"",
   ""merchant"": {{ ""name"": ""string"", ""tin"": ""string or null"", ""address"": ""string or null"", ""city"": ""string or null"" }},
   ""amounts"": {{ ""vatable_sales_amount"": number, ""non_vatable_sales_amount"": 0, ""service_charge_amount"": 0, ""tax_amount"": number }},
-  ""payment"": {{ ""method"": ""string or null"", ""amount_paid"": number }},
+  ""payment"": {{ ""method"": ""string or null"", ""amount_paid"": number, ""form_of_payment"": ""credit|cash|bank"", ""card_last4"": ""string or null"", ""card_type"": ""visa|mastercard|amex|diners|isracart|other or null"" }},
   ""item_count"": number
-}}";
+}}
+
+PAYMENT FORM RULES:
+- form_of_payment: Identify if payment was by credit card, cash, or bank transfer.
+  Look for: ""אשראי"", ""credit"", ""כרטיס"", ""card"", ""visa"", ""mastercard"", ""מזומן"", ""cash"", ""העברה"", ""bank"", ""EMV"", ""Contactless"".
+  If EMV, Contactless, chip, swipe, or card number visible → ""credit"".
+  If no payment method found → default to ""cash"".
+- card_last4: If credit card, extract last 4 digits (look for ****1234, XXXX-1234, etc.)
+- card_type: Identify card network from text or BIN:
+  Visa (starts with 4), Mastercard (starts with 5), Amex (starts with 3), Isracard/Isracart, Diners, etc.";
     }
 
     /// <summary>
