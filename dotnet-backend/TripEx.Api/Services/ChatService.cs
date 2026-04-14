@@ -203,6 +203,18 @@ public class ChatService
         if (f?.Total != null) lines.Add($"💵 Total: {f.Total} {cur}");
         if (f?.TotalVAT != null) lines.Add($"🧾 VAT/Tax: {f.TotalVAT} {cur}");
         if (f?.PaymentMethod != null) lines.Add($"💳 Payment: {f.PaymentMethod}");
+        // Form of payment
+        if (f?.FormOfPayment == "credit")
+        {
+            var creditInfo = "💳 Form of Payment: Credit Card";
+            if (!string.IsNullOrEmpty(f.CardType)) creditInfo += $" ({CultureInfo.InvariantCulture.TextInfo.ToTitleCase(f.CardType)})";
+            if (!string.IsNullOrEmpty(f.CardLast4)) creditInfo += $" ****{f.CardLast4}";
+            lines.Add(creditInfo);
+        }
+        else if (f?.FormOfPayment == "bank")
+            lines.Add("🏦 Form of Payment: Bank Transfer");
+        else
+            lines.Add("💵 Form of Payment: Cash");
         if (f?.AmountPaid != null) lines.Add($"💰 Paid: {f.AmountPaid} {cur}");
         lines.Add("\nIs the data correct? If something is wrong, let me know and I'll update it.");
 
