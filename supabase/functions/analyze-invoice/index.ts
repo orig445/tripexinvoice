@@ -5,6 +5,106 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const ORACLE_URL = "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions";
+const MODEL = Deno.env.get("ORACLE_MODEL") || "google.gemini-2.5-flash";
+const ORACLE_COMPARTMENT_ID =
+  Deno.env.get("ORACLE_COMPARTMENT_ID") ||
+  Deno.env.get("oraclecompartmentid") ||
+  Deno.env.get("Oracle__CompartmentId") ||
+  "";
+
+function inferFormOfPayment(method: unknown, currentValue: unknown): "credit" | "cash" | "bank" {
+  const text = `${String(currentValue ?? "")} ${String(method ?? "")}`.toLowerCase().trim();
+
+  if (
+    text.includes("credit") ||
+    text.includes("debit") ||
+    text.includes("card") ||
+    text.includes("visa") ||
+    text.includes("master") ||
+    text.includes("amex") ||
+    text.includes("diners") ||
+    text.includes("isracard") ||
+    text.includes("ישראכרט") ||
+    text.includes("אשראי") ||
+    text.includes("כרטיס") ||
+    text.includes("סליקה") ||
+    text.includes("סליקת") ||
+    text.includes("emv") ||
+    text.includes("contactless") ||
+    text.includes("tap") ||
+    text.includes("chip") ||
+    text.includes("swipe")
+  ) {
+    return "credit";
+  }
+
+  if (
+    text.includes("bank") ||
+    text.includes("transfer") ||
+    text.includes("wire") ||
+    text.includes("iban") ||
+    text.includes("העברה")
+  ) {
+    return "bank";
+  }
+
+  if (text.includes("cash") || text.includes("מזומן")) {
+    return "cash";
+  }
+
+  return "cash";
+}
+
+function inferCardType(method: unknown, currentValue: unknown): string | null {
+  const text = `${String(currentValue ?? "")} ${String(method ?? "")}`.toLowerCase();
+
+  if (text.includes("visa") || text.includes("ויזה")) return "visa";
+  if (text.includes("mastercard") || text.includes("master card") || text.includes("מאסטר") || text.includes("מסטר")) return "mastercard";
+  if (text.includes("amex") || text.includes("american express") || text.includes("אמריקן אקספרס")) return "amex";
+  if (text.includes("diners") || text.includes("דיינרס")) return "diners";
+  if (text.includes("isracard") || text.includes("ישראכרט")) return "isracart";
+  if (text.includes("card") || text.includes("כרטיס") || text.includes("אשראי") || text.includes("סליקה")) return "other";
+
+  return null;
+}
+
+function inferCardLast4(method: unknown, currentValue: unknown): string | null {
+  const existing = String(currentValue ?? "").trim();
+  if (/^\d{4}$/.test(existing)) return existing;
+
+  const text = String(method ?? "");
+  const maskedMatch = text.match(/(?:\*{2,}|x{2,}|X{2,}|•{2,}|#){1,}[\s-]?(\d{4})/);
+  if (maskedMatch?.[1]) return maskedMatch[1];
+
+  const endingMatch = text.match(/(?:card|visa|mastercard|amex|diners|ישראכרט|כרטיס|אשראי|סליקת|סליקה)[^\d]{0,20}(\d{4})\b/i);
+  if (endingMatch?.[1]) return endingMatch[1];
+
+  return null;
+}
+
+function normalizeInvoiceData(data: any) {
+  if (!data || typeof data !== "object") return data;
+
+  const normalized = structuredClone(data);
+  const payment = normalized.payment && typeof normalized.payment === "object" ? normalized.payment : {};
+  const method = payment.method ?? null;
+
+  const formOfPayment = inferFormOfPayment(method, payment.form_of_payment);
+  payment.form_of_payment = formOfPayment;
+
+  if (formOfPayment === "credit") {
+    payment.card_last4 = inferCardLast4(method, payment.card_last4);
+    payment.card_type = inferCardType(method, payment.card_type);
+  } else {
+    payment.card_last4 = null;
+    payment.card_type = null;
+  }
+
+  normalized.payment = payment;
+  return normalized;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -42,13 +142,14 @@ serve(async (req) => {
       console.error("Failed to fetch corrections:", e);
     }
 
-    // Build the image content based on what was provided
     let imageContent;
     if (imageBase64) {
+      const normalizedBase64 = imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`;
+      if (normalizedBase64.length < 128) throw new Error("Invalid imageBase64 payload");
       imageContent = {
         type: "image_url",
         image_url: {
-          url: imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`,
+          url: normalizedBase64,
         },
       };
     } else if (imageUrl) {
@@ -76,11 +177,10 @@ VENDOR / MERCHANT NAME (HIGHEST ERROR RATE - BE CAREFUL)
 - The vendor/store name is usually the LARGEST text at the TOP of the receipt.
 - Read it CHARACTER BY CHARACTER. Do not guess or autocomplete.
 - Common Philippine chains to watch for (match these exactly if you recognize them):
-  ZUISPRESSO, NESPRESSO, S&R PIZZA, KENNY ROGERS ROASTERS, STARBUCKS, SAVEMORE, 
+  ZUISPRESSO, NESPRESSO, S&R PIZZA, KENNY ROGERS ROASTERS, STARBUCKS, SAVEMORE,
   THE COFFEE BEAN & TEA LEAF, MCDONALD'S, JOLLIBEE, MR. KIMBOB BIBIMBOB, 7-ELEVEN,
   BENCH, BENCH BOUTIQUE, UNIQLO, SM DEPARTMENT STORE, WATSONS, MERCURY DRUG
 - Also look for the parent company name in parentheses or smaller text below the store name.
-  Example: "BENCH BOUTIQUE" with "Suyen Corporation" → name = "Bench Boutique (Suyen Corporation)"
 - If the name is partially illegible, return what you CAN read clearly. Do NOT invent letters.
 - NEVER confuse the POS provider name with the vendor name.
 
@@ -89,8 +189,6 @@ MERCHANT ADDRESS & CITY
 ═══════════════════════════════════════
 - Extract the FULL address printed below/near the merchant name.
 - Separate into "address" (street, floor, unit, building, barangay) and "city" (city + country).
-- Example: "2nd Flr, Unit 228-231, Paranaque Integrated, Brgy. Tambo" → address
-           "Paranaque City, Philippines" → city
 
 ═══════════════════════════════════════
 INVOICE/RECEIPT NUMBER
@@ -128,30 +226,25 @@ TIN EXTRACTION
 AMOUNTS (CRITICAL - READ EXACTLY)
 ═══════════════════════════════════════
 Extract these EXACT amounts as printed on the document:
-
-1. "vatable_sales_amount" - Look for: "VATable Sales", "VATable Amount", "Net of VAT"
-   This is the base amount BEFORE tax. Read the exact number.
-
-2. "non_vatable_sales_amount" - Look for: "Non-VAT", "VAT-Exempt Sales", "Zero Rated Sales"
-   Often 0.00. Read the exact number. If not found, use 0.00.
-
-3. "service_charge_amount" - Look for: "Service Charge", "SC"
-   Often 0.00. Read the exact number. If not found, use 0.00.
-
-4. "tax_amount" - Look for: "VAT Amount", "VAT (12%)", "Tax Amount", "מע"מ"
-   This is the TAX portion. Must be SMALLER than vatable_sales_amount.
-   Read the EXACT number. Do NOT calculate it yourself.
-
-COMPLETELY IGNORE these fields (they are NOT amounts to extract):
-- "Cash" / "Cash Received" / "Cash Tendered" / "Amount Tendered"
-- "Change" / "Change Due"
+- vatable_sales_amount: Look for "VATable Sales", "VATable Amount", "Net of VAT"
+- non_vatable_sales_amount: Look for "Non-VAT", "VAT-Exempt Sales", "Zero Rated Sales"
+- service_charge_amount: Look for "Service Charge", "SC"
+- tax_amount: Look for "VAT Amount", "VAT (12%)", "Tax Amount", "מע"מ"
+- COMPLETELY IGNORE: "Cash", "Cash Received", "Cash Tendered", "Amount Tendered", "Change", "Change Due"
 
 ═══════════════════════════════════════
-PAYMENT INFO
+PAYMENT INFO (CRITICAL)
 ═══════════════════════════════════════
-- "method": How did the customer pay? "Cash", "Credit Card", "Debit Card", "GCash", "Maya", etc.
-- "amount_paid": The actual amount the customer handed over (Cash Tendered / Amount Tendered).
-  This may be MORE than the total (customer gave change). Read exact number.
+- payment.method: return the EXACT text printed for payment method, character by character.
+- payment.amount_paid: the actual paid/tendered amount if printed.
+- payment.form_of_payment must be one of: "credit", "cash", "bank"
+- If the text contains "סליקת אשראי", "סליקה", "אשראי", "כרטיס", "Credit", "Debit", "Visa", "Mastercard", "Amex", "EMV", "Contactless" → form_of_payment = "credit"
+- If the text contains "העברה", "bank", "transfer", "wire" → form_of_payment = "bank"
+- If the text contains "cash", "מזומן" → form_of_payment = "cash"
+- If payment method is missing, default form_of_payment to "cash"
+- If it is a credit/debit card transaction, extract payment.card_last4 when visible
+- If it is a credit/debit card transaction, extract payment.card_type as one of: "visa", "mastercard", "amex", "diners", "isracart", "other"
+- IMPORTANT: "סליקת אשראי" is ALWAYS credit, never cash.
 
 ═══════════════════════════════════════
 OUTPUT FORMAT (JSON ONLY, NO OTHER TEXT)
@@ -175,23 +268,34 @@ OUTPUT FORMAT (JSON ONLY, NO OTHER TEXT)
   },
   "payment": {
     "method": "string or null",
-    "amount_paid": number or null
+    "amount_paid": number or null,
+    "form_of_payment": "credit|cash|bank",
+    "card_last4": "string or null",
+    "card_type": "visa|mastercard|amex|diners|isracart|other|null"
   }
 }
 
 Return ONLY the JSON. No explanation, no markdown.${correctionsContext}`;
 
-    const ORACLE_URL = "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions";
-    const MODEL = "meta.llama-4-maverick-17b-128e-instruct-fp8";
-
     const callOracle = async (messages: any[], maxTokens = 1024) => {
+      const body: Record<string, unknown> = {
+        model: MODEL,
+        messages,
+        max_tokens: maxTokens,
+        temperature: 0.1,
+      };
+
+      if (ORACLE_COMPARTMENT_ID) {
+        body.compartmentId = ORACLE_COMPARTMENT_ID;
+      }
+
       const response = await fetch(ORACLE_URL, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${ORACLE_API_KEY}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ model: MODEL, messages, max_tokens: maxTokens, temperature: 0.1 }),
+        body: JSON.stringify(body),
       });
       if (!response.ok) {
         if (response.status === 429) throw { code: 429, msg: "Rate limit exceeded" };
@@ -223,7 +327,6 @@ Return ONLY the JSON. No explanation, no markdown.${correctionsContext}`;
       return JSON.parse(cleaned);
     };
 
-    // ── SCAN 1: Extract data ──
     let scan1Raw: string;
     let scan1Data: any;
     try {
@@ -233,8 +336,8 @@ Return ONLY the JSON. No explanation, no markdown.${correctionsContext}`;
           { type: "text", text: "Please analyze this invoice and extract all information as JSON:" },
           imageContent,
         ]},
-      ]);
-      scan1Data = parseJson(scan1Raw);
+      ], 2048);
+      scan1Data = normalizeInvoiceData(parseJson(scan1Raw));
     } catch (err: any) {
       if (err.code === 429 || err.code === 402) {
         return new Response(JSON.stringify({ error: err.msg }), {
@@ -244,7 +347,6 @@ Return ONLY the JSON. No explanation, no markdown.${correctionsContext}`;
       throw err;
     }
 
-    // ── SCAN 2: Verify extracted data ──
     let finalData = scan1Data;
     try {
       const verifyPrompt = `You are a receipt/invoice verification expert. I extracted the following data from a receipt image. Please look at the SAME image and verify each field. If any value is WRONG, return the corrected JSON. If everything is correct, return the SAME JSON unchanged.
@@ -254,7 +356,8 @@ ${JSON.stringify(scan1Data, null, 2)}
 
 RULES:
 - Compare each field against what you see in the image
-- Pay special attention to: amounts, dates, merchant name, TIN, invoice number
+- Pay special attention to: amounts, dates, merchant name, TIN, invoice number, payment.method, payment.form_of_payment, payment.card_last4, payment.card_type
+- "סליקת אשראי" / "סליקה" / EMV / Contactless must stay credit, never cash
 - If VAT amount seems wrong (e.g. larger than vatable sales), fix it
 - If merchant name has typos compared to the image, fix it
 - Return ONLY the corrected/verified JSON, no explanation`;
@@ -265,31 +368,29 @@ RULES:
           { type: "text", text: "Verify this extracted invoice data against the image:" },
           imageContent,
         ]},
-      ], 1024);
-      finalData = parseJson(scan2Raw);
+      ], 2048);
+      finalData = normalizeInvoiceData(parseJson(scan2Raw));
       console.log("Verification scan completed successfully");
     } catch (verifyErr) {
-      // If verification fails, use scan 1 data
       console.error("Verification scan failed, using scan 1 data:", verifyErr);
     }
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         data: finalData,
-        rawResponse: scan1Raw! 
+        rawResponse: scan1Raw!,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
     console.error("Error analyzing invoice:", error);
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error instanceof Error ? error.message : "Unknown error" 
+      JSON.stringify({
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error"
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
-

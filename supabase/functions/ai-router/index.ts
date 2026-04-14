@@ -178,14 +178,21 @@ serve(async (req) => {
         if (d.amounts?.service_charge_amount != null && d.amounts.service_charge_amount > 0) lines.push(`💵 Service Charge: ${d.amounts.service_charge_amount} ${cur}`);
         if (d.amounts?.tax_amount != null) lines.push(`🧾 VAT/Tax: ${d.amounts.tax_amount} ${cur}`);
         if (d.payment?.method) lines.push(`💳 Payment: ${d.payment.method}`);
-        // Form of payment details
-        const fop = d.payment?.form_of_payment;
-        if (fop === "credit") {
+        // Form of payment details with fallback inference from payment.method
+        const paymentText = `${d.payment?.form_of_payment ?? ""} ${d.payment?.method ?? ""}`.toLowerCase();
+        const inferredFop = paymentText.includes("credit") || paymentText.includes("debit") || paymentText.includes("card") || paymentText.includes("visa") || paymentText.includes("master") || paymentText.includes("amex") || paymentText.includes("diners") || paymentText.includes("isracard") || paymentText.includes("ישראכרט") || paymentText.includes("אשראי") || paymentText.includes("כרטיס") || paymentText.includes("סליקה") || paymentText.includes("סליקת") || paymentText.includes("emv") || paymentText.includes("contactless")
+          ? "credit"
+          : paymentText.includes("bank") || paymentText.includes("transfer") || paymentText.includes("העברה")
+            ? "bank"
+            : paymentText.includes("cash") || paymentText.includes("מזומן")
+              ? "cash"
+              : "cash";
+        if (inferredFop === "credit") {
           let creditInfo = "💳 Form of Payment: Credit Card";
           if (d.payment?.card_type) creditInfo += ` (${d.payment.card_type.charAt(0).toUpperCase() + d.payment.card_type.slice(1)})`;
           if (d.payment?.card_last4) creditInfo += ` ****${d.payment.card_last4}`;
           lines.push(creditInfo);
-        } else if (fop === "bank") {
+        } else if (inferredFop === "bank") {
           lines.push("🏦 Form of Payment: Bank Transfer");
         } else {
           lines.push("💵 Form of Payment: Cash");
