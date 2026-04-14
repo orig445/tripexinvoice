@@ -369,6 +369,42 @@ public class InvoiceService
             fields.PaymentMethod = GetStringProp(pay, "method");
             var paidVal = GetDecimalProp(pay, "amount_paid");
             if (paidVal.HasValue) fields.AmountPaid = paidVal.Value.ToString("F2");
+
+            // Form of payment (credit/cash/bank)
+            var formOfPayment = GetStringProp(pay, "form_of_payment")?.ToLowerInvariant()?.Trim();
+            if (formOfPayment == "credit" || formOfPayment == "cash" || formOfPayment == "bank")
+                fields.FormOfPayment = formOfPayment;
+            else
+            {
+                // Infer from method field
+                var method = (fields.PaymentMethod ?? "").ToLowerInvariant();
+                if (method.Contains("credit") || method.Contains("card") || method.Contains("visa") || method.Contains("master") ||
+                    method.Contains("amex") || method.Contains("emv") || method.Contains("contactless") || method.Contains("אשראי") || method.Contains("כרטיס"))
+                    fields.FormOfPayment = "credit";
+                else if (method.Contains("bank") || method.Contains("transfer") || method.Contains("העברה"))
+                    fields.FormOfPayment = "bank";
+                else
+                    fields.FormOfPayment = "cash"; // default
+            }
+
+            // Card details (only relevant for credit)
+            if (fields.FormOfPayment == "credit")
+            {
+                fields.CardLast4 = GetStringProp(pay, "card_last4");
+                fields.CardType = GetStringProp(pay, "card_type")?.ToLowerInvariant();
+
+                // Try to extract last 4 from method string if not found
+                if (string.IsNullOrEmpty(fields.CardLast4) && !string.IsNullOrEmpty(fields.PaymentMethod))
+                {
+                    var match = Regex.Match(fields.PaymentMethod, @"(\d{4})\s*$");
+                    if (!match.Success) match = Regex.Match(fields.PaymentMethod, @"[*xX]+[-\s]?(\d{4})");
+                    if (match.Success) fields.CardLast4 = match.Groups[1].Value;
+                }
+            }
+        }
+        else
+        {
+            fields.FormOfPayment = "cash"; // default when no payment info
         }
 
         // Extra Details — full raw JSON
