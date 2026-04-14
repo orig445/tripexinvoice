@@ -379,7 +379,8 @@ public class InvoiceService
                 // Infer from method field
                 var method = (fields.PaymentMethod ?? "").ToLowerInvariant();
                 if (method.Contains("credit") || method.Contains("card") || method.Contains("visa") || method.Contains("master") ||
-                    method.Contains("amex") || method.Contains("emv") || method.Contains("contactless") || method.Contains("אשראי") || method.Contains("כרטיס"))
+                    method.Contains("amex") || method.Contains("emv") || method.Contains("contactless") || 
+                    method.Contains("אשראי") || method.Contains("כרטיס") || method.Contains("סליקה") || method.Contains("סליקת"))
                     fields.FormOfPayment = "credit";
                 else if (method.Contains("bank") || method.Contains("transfer") || method.Contains("העברה"))
                     fields.FormOfPayment = "bank";
