@@ -20,6 +20,8 @@ public class TripExDbContext : DbContext
     public DbSet<UserRole> UserRoles => Set<UserRole>();
     public DbSet<UserCredential> UserCredentials => Set<UserCredential>();
     public DbSet<InvoiceScanLog> InvoiceScanLogs => Set<InvoiceScanLog>();
+    public DbSet<OcrTrainingSample> OcrTrainingSamples => Set<OcrTrainingSample>();
+    public DbSet<OcrTrainingPattern> OcrTrainingPatterns => Set<OcrTrainingPattern>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -35,6 +37,8 @@ public class TripExDbContext : DbContext
         modelBuilder.Entity<UserRole>().ToTable("user_roles");
         modelBuilder.Entity<UserCredential>().ToTable("user_credentials");
         modelBuilder.Entity<InvoiceScanLog>().ToTable("InvoiceScanLogs");
+        modelBuilder.Entity<OcrTrainingSample>().ToTable("OcrTrainingSamples");
+        modelBuilder.Entity<OcrTrainingPattern>().ToTable("OcrTrainingPatterns");
 
         modelBuilder.Entity<UserCredential>()
             .HasIndex(c => c.Email)
@@ -202,4 +206,40 @@ public class InvoiceScanLog
     [Column("CountryHint")] public string? CountryHint { get; set; }
     [Column("Status")] public string? Status { get; set; }
     [Column("CreatedAt")] public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+/// <summary>
+/// Stores verified OCR extraction results for pattern learning
+/// </summary>
+[Table("OcrTrainingSamples")]
+public class OcrTrainingSample
+{
+    [Key, Column("Id")] public Guid Id { get; set; } = Guid.NewGuid();
+    [Column("VendorName")] public string? VendorName { get; set; }
+    [Column("Country")] public string? Country { get; set; }
+    [Column("Currency")] public string? Currency { get; set; }
+    [Column("DocumentType")] public string? DocumentType { get; set; }
+    [Column("ExtractedFields", TypeName = "nvarchar(max)")] public string? ExtractedFields { get; set; }
+    [Column("FieldPositions", TypeName = "nvarchar(max)")] public string? FieldPositions { get; set; }
+    [Column("Corrections", TypeName = "nvarchar(max)")] public string? Corrections { get; set; }
+    [Column("IsVerified")] public bool IsVerified { get; set; } = false;
+    [Column("IsRejected")] public bool IsRejected { get; set; } = false;
+    [Column("CreatedAt")] public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+/// <summary>
+/// Stores learned structural patterns injected into OCR prompt
+/// </summary>
+[Table("OcrTrainingPatterns")]
+public class OcrTrainingPattern
+{
+    [Key, Column("Id")] public Guid Id { get; set; } = Guid.NewGuid();
+    [Column("FieldName")] public string FieldName { get; set; } = "";
+    [Column("PatternRule")] public string PatternRule { get; set; } = "";
+    [Column("Country")] public string? Country { get; set; }
+    [Column("Currency")] public string? Currency { get; set; }
+    [Column("Confidence")] public double Confidence { get; set; } = 0;
+    [Column("SourceCount")] public int SourceCount { get; set; } = 0;
+    [Column("CreatedAt")] public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    [Column("UpdatedAt")] public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
