@@ -338,6 +338,78 @@ export type Database = {
         }
         Relationships: []
       }
+      ocr_training_patterns: {
+        Row: {
+          confidence: number
+          country: string | null
+          created_at: string
+          field_name: string
+          id: string
+          pattern_rule: string
+          source_count: number
+          updated_at: string
+        }
+        Insert: {
+          confidence?: number
+          country?: string | null
+          created_at?: string
+          field_name: string
+          id?: string
+          pattern_rule: string
+          source_count?: number
+          updated_at?: string
+        }
+        Update: {
+          confidence?: number
+          country?: string | null
+          created_at?: string
+          field_name?: string
+          id?: string
+          pattern_rule?: string
+          source_count?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ocr_training_samples: {
+        Row: {
+          corrections: Json | null
+          country: string | null
+          created_at: string
+          extracted_data: Json
+          id: string
+          image_hash: string | null
+          is_correct: boolean | null
+          is_verified: boolean | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          corrections?: Json | null
+          country?: string | null
+          created_at?: string
+          extracted_data?: Json
+          id?: string
+          image_hash?: string | null
+          is_correct?: boolean | null
+          is_verified?: boolean | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          corrections?: Json | null
+          country?: string | null
+          created_at?: string
+          extracted_data?: Json
+          id?: string
+          image_hash?: string | null
+          is_correct?: boolean | null
+          is_verified?: boolean | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
