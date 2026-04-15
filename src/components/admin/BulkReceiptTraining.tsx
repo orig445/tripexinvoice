@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { bulkTrainInvoice, verifyTrainingSample, rebuildOcrPatterns, getTrainingStats, isExternalBackend } from "@/lib/api-service";
+import { bulkTrainInvoice, verifyTrainingSample, rebuildOcrPatterns, getTrainingStats } from "@/lib/api-service";
 import { useAuth } from "@/hooks/useAuth";
 import { pdfPageToImage } from "@/lib/pdf-utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -58,7 +58,6 @@ export function BulkReceiptTraining() {
   }, []);
 
   const loadStats = async () => {
-    if (!isExternalBackend) return;
     try {
       const { data } = await getTrainingStats();
       if (data) setStats(data);
