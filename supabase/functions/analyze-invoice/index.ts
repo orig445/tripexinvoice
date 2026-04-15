@@ -323,8 +323,21 @@ Return ONLY the JSON. No explanation, no markdown.${correctionsContext}`;
         }
         if (endIdx !== -1) cleaned = cleaned.substring(startIdx, endIdx + 1);
       }
-      cleaned = cleaned.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]").replace(/[\x00-\x1F\x7F]/g, "");
-      return JSON.parse(cleaned);
+      cleaned = cleaned.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
+      // Remove control chars only OUTSIDE of quoted strings to avoid breaking them
+      let sanitized = "";
+      let inString = false;
+      let escaped = false;
+      for (let i = 0; i < cleaned.length; i++) {
+        const c = cleaned[i];
+        if (escaped) { sanitized += c; escaped = false; continue; }
+        if (c === "\\") { sanitized += c; escaped = true; continue; }
+        if (c === '"') { inString = !inString; sanitized += c; continue; }
+        if (!inString && c.charCodeAt(0) < 32) continue; // skip control chars outside strings
+        if (inString && c.charCodeAt(0) < 32) { sanitized += " "; continue; } // replace with space inside strings
+        sanitized += c;
+      }
+      return JSON.parse(sanitized);
     };
 
     let scan1Raw: string;
