@@ -3,8 +3,9 @@ import { ChatbotSettings } from "@/components/admin/ChatbotSettings";
 import { ChatbotLogs } from "@/components/admin/ChatbotLogs";
 import { ChatbotSessions } from "@/components/admin/ChatbotSessions";
 import { KnowledgeBase } from "@/components/admin/KnowledgeBase";
+import { BulkReceiptTraining } from "@/components/admin/BulkReceiptTraining";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, ScrollText, MessageSquare, Brain } from "lucide-react";
+import { Settings, ScrollText, MessageSquare, Brain, Zap } from "lucide-react";
 import { ChatbotWidget } from "@/components/chatbot/ChatbotWidget";
 
 const AdminChatbot = () => {
@@ -18,7 +19,7 @@ const AdminChatbot = () => {
         </div>
 
         <Tabs defaultValue="settings" className="space-y-6">
-          <TabsList className="grid w-full max-w-lg grid-cols-4">
+          <TabsList className="grid w-full max-w-2xl grid-cols-5">
             <TabsTrigger value="settings" className="gap-1.5">
               <Settings className="h-4 w-4" />
               הגדרות
@@ -26,6 +27,10 @@ const AdminChatbot = () => {
             <TabsTrigger value="knowledge" className="gap-1.5">
               <Brain className="h-4 w-4" />
               בסיס ידע
+            </TabsTrigger>
+            <TabsTrigger value="bulk" className="gap-1.5">
+              <Zap className="h-4 w-4" />
+              אימון מאסיבי
             </TabsTrigger>
             <TabsTrigger value="sessions" className="gap-1.5">
               <MessageSquare className="h-4 w-4" />
@@ -42,6 +47,9 @@ const AdminChatbot = () => {
           </TabsContent>
           <TabsContent value="knowledge">
             <KnowledgeBase />
+          </TabsContent>
+          <TabsContent value="bulk">
+            <BulkReceiptTraining />
           </TabsContent>
           <TabsContent value="sessions">
             <ChatbotSessions />
