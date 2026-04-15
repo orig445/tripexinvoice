@@ -172,6 +172,38 @@ CREATE TABLE [dbo].[InvoiceScanLogs] (
 );
 GO
 
+-- ── 13. OCR Training Samples ──
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'OcrTrainingSamples')
+CREATE TABLE [dbo].[OcrTrainingSamples] (
+    [Id] UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    [VendorName] NVARCHAR(255) NULL,
+    [Country] NVARCHAR(10) NULL,
+    [Currency] NVARCHAR(10) NULL,
+    [DocumentType] NVARCHAR(100) NULL,
+    [ExtractedFields] NVARCHAR(MAX) NULL,
+    [FieldPositions] NVARCHAR(MAX) NULL,
+    [Corrections] NVARCHAR(MAX) NULL,
+    [IsVerified] BIT NOT NULL DEFAULT 0,
+    [IsRejected] BIT NOT NULL DEFAULT 0,
+    [CreatedAt] DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET()
+);
+GO
+
+-- ── 14. OCR Training Patterns ──
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'OcrTrainingPatterns')
+CREATE TABLE [dbo].[OcrTrainingPatterns] (
+    [Id] UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    [FieldName] NVARCHAR(100) NOT NULL DEFAULT '',
+    [PatternRule] NVARCHAR(MAX) NOT NULL DEFAULT '',
+    [Country] NVARCHAR(10) NULL,
+    [Currency] NVARCHAR(10) NULL,
+    [Confidence] FLOAT NOT NULL DEFAULT 0,
+    [SourceCount] INT NOT NULL DEFAULT 0,
+    [CreatedAt] DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET(),
+    [UpdatedAt] DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET()
+);
+GO
+
 -- ═══════════════════════════════════════════════════════════
 -- Indexes
 -- ═══════════════════════════════════════════════════════════
@@ -208,6 +240,12 @@ IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_InvoiceScanLogs_UserId
 
 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_InvoiceScanLogs_CreatedAt')
     CREATE INDEX IX_InvoiceScanLogs_CreatedAt ON [InvoiceScanLogs]([CreatedAt] DESC);
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_OcrTrainingSamples_Country')
+    CREATE INDEX IX_OcrTrainingSamples_Country ON [OcrTrainingSamples]([Country], [IsVerified]);
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_OcrTrainingPatterns_Country')
+    CREATE INDEX IX_OcrTrainingPatterns_Country ON [OcrTrainingPatterns]([Country], [FieldName]);
 GO
 
 -- ═══════════════════════════════════════════════════════════
