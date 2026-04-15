@@ -115,6 +115,44 @@ export async function analyzeInvoice(imageBase64: string) {
   return callSupabaseFunction("analyze-invoice", { imageBase64 });
 }
 
+/** Bulk train: scan receipt and save as training sample */
+export async function bulkTrainInvoice(imageBase64: string, country?: string) {
+  if (isExternalBackend) {
+    return callExternalAPI("/api/invoice/bulk-train", { imageBase64, country });
+  }
+  // Fallback to regular analyze if no external backend
+  return callSupabaseFunction("analyze-invoice", { imageBase64 });
+}
+
+/** Verify or reject a training sample */
+export async function verifyTrainingSample(sampleId: string, isCorrect: boolean, corrections?: Record<string, string>) {
+  if (isExternalBackend) {
+    return callExternalAPI("/api/invoice/verify-sample", { sampleId, isCorrect, corrections });
+  }
+  return { data: { success: false }, error: new Error("Training requires C# backend") };
+}
+
+/** Rebuild OCR patterns from verified samples */
+export async function rebuildOcrPatterns() {
+  if (isExternalBackend) {
+    return callExternalAPI("/api/invoice/rebuild-patterns", {});
+  }
+  return { data: { success: false }, error: new Error("Training requires C# backend") };
+}
+
+/** Get OCR training statistics */
+export async function getTrainingStats() {
+  if (isExternalBackend) {
+    const token = await getAuthToken();
+    const res = await fetch(`${API_BASE_URL}/api/invoice/training-stats`, {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
+    const data = await res.json();
+    return { data, error: null };
+  }
+  return { data: null, error: new Error("Training requires C# backend") };
+}
+
 /** Trigger knowledge document processing */
 export async function processKnowledgeDocument(documentId: string) {
   if (isExternalBackend) {

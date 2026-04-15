@@ -1,5 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.EntityFrameworkCore;
+using TripEx.Api.Data;
 using TripEx.Api.Models;
 
 namespace TripEx.Api.Services;
@@ -14,10 +16,12 @@ public class OracleAiService
     private readonly string _endpoint;
     private readonly string _model;
     private readonly string? _compartmentId;
+    private readonly TripExDbContext _db;
 
-    public OracleAiService(IHttpClientFactory httpClientFactory, IConfiguration config)
+    public OracleAiService(IHttpClientFactory httpClientFactory, IConfiguration config, TripExDbContext db)
     {
         _httpClient = httpClientFactory.CreateClient();
+        _db = db;
         _apiKey = config["Oracle:ApiKey"]
             ?? Environment.GetEnvironmentVariable("ORACLE_API_KEY")
             ?? throw new InvalidOperationException("Oracle API key not configured");
@@ -47,7 +51,7 @@ public class OracleAiService
         if (string.IsNullOrWhiteSpace(base64Part) || base64Part.Length < 100)
             throw new ArgumentException("Image data is too small or empty — likely corrupted");
 
-        var prompt = PrepareSystemPrompt(countryHint);
+        var prompt = await PrepareSystemPromptAsync(countryHint);
 
         var messages = new List<OracleMessage>
         {
@@ -184,9 +188,9 @@ public class OracleAiService
     }
 
     /// <summary>
-    /// Prepare system prompt based on country hint
+    /// Prepare system prompt based on country hint + learned patterns from DB
     /// </summary>
-    private string PrepareSystemPrompt(string? countryHint)
+    private async Task<string> PrepareSystemPromptAsync(string? countryHint)
     {
         string locale = countryHint?.ToUpperInvariant() switch
         {
@@ -196,6 +200,33 @@ public class OracleAiService
             "TH" => "Thailand (DD/MM/YYYY, THB ฿)",
             _ => "Unknown locale"
         };
+
+        // ── Load learned patterns from DB ──
+        string learnedPatternsSection = "";
+        try
+        {
+            var patterns = await _db.OcrTrainingPatterns
+                .Where(p => p.Country == null || p.Country == "" || p.Country == (countryHint ?? "").ToUpper())
+                .OrderByDescending(p => p.Confidence)
+                .Take(20)
+                .ToListAsync();
+
+            if (patterns.Count > 0)
+            {
+                var lines = patterns.Select(p =>
+                    $"- {p.FieldName.ToUpper()}: {p.PatternRule} ({p.Confidence:F0}% confidence, from {p.SourceCount} receipts)");
+                learnedPatternsSection = $@"
+
+LEARNED PATTERNS (from analyzed receipts — use these to improve accuracy):
+{string.Join("\n", lines)}
+";
+                Console.WriteLine($"[OCI] Injected {patterns.Count} learned patterns into prompt");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[OCI] Warning: Could not load training patterns: {ex.Message}");
+        }
 
         return $@"You are an expert invoice/receipt OCR analyzer. Extract data for {locale}.
 Return STRICT JSON only — no markdown, no explanation.
@@ -214,7 +245,7 @@ EXTRACTION RULES:
 6. CATEGORY: Must be one of: business_meal, vehicle, entertainment, hotel, internet, parking, meal, taxi, other.
 
 CURRENCY: ₱=PHP, ₪=ILS, ฿=THB, $=USD (unless context says otherwise).
-
+{learnedPatternsSection}
 OUTPUT FORMAT:
 {{
   ""document_type"": ""string"",
@@ -236,7 +267,6 @@ PAYMENT FORM RULES:
 - card_last4: If credit card, extract last 4 digits (look for ****1234, XXXX-1234, etc.)
 - card_type: Identify card network from text or BIN:
   Visa (starts with 4), Mastercard (starts with 5), Amex (starts with 3), Isracard/Isracart, Diners, etc.";
-    }
 
     /// <summary>
     /// Parse JSON from AI response (handles markdown wrappers, brace counting, truncation repair)

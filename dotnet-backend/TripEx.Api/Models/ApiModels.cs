@@ -199,3 +199,54 @@ public class GeoInfo
     public string Timezone { get; set; } = "";
     public string LocalTime { get; set; } = "";
 }
+
+// ═══════════════════════════════════════
+// OCR Training Models
+// ═══════════════════════════════════════
+
+public class BulkTrainRequest
+{
+    public string? ImageBase64 { get; set; }
+    public string? Country { get; set; }
+}
+
+public class BulkTrainResponse
+{
+    public bool Success { get; set; }
+    public Guid? SampleId { get; set; }
+    public InvoiceFields? Fields { get; set; }
+    public string? Error { get; set; }
+}
+
+public class VerifyTrainingSampleRequest
+{
+    public Guid SampleId { get; set; }
+    public bool IsCorrect { get; set; }
+    public Dictionary<string, string>? Corrections { get; set; }
+}
+
+public class RebuildPatternsResponse
+{
+    public bool Success { get; set; }
+    public int PatternsCreated { get; set; }
+    public int SamplesAnalyzed { get; set; }
+    public string? Error { get; set; }
+}
+
+public class TrainingStatsResponse
+{
+    public int TotalSamples { get; set; }
+    public int VerifiedSamples { get; set; }
+    public int RejectedSamples { get; set; }
+    public int PatternsLearned { get; set; }
+    public List<PatternInfo> Patterns { get; set; } = new();
+}
+
+public class PatternInfo
+{
+    public string FieldName { get; set; } = "";
+    public string Rule { get; set; } = "";
+    public string? Country { get; set; }
+    public double Confidence { get; set; }
+    public int SourceCount { get; set; }
+}
