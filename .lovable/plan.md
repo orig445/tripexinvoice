@@ -1,48 +1,80 @@
 
-# Sharpen Invoice Scanner (Keep Oracle)
 
-## What We'll Do
-Keep the same Oracle Llama 4 Maverick model but make two improvements:
+# תוכנית: אימון OCR מבוסס למידת דפוסים (Pattern Learning)
 
-1. **Sharpen the prompt** - Make the extraction instructions much more explicit with step-by-step logic so the model doesn't confuse VAT with subtotal
-2. **Add math validation** - After the AI returns results, automatically verify and fix the numbers using simple arithmetic
+## הרעיון
+במקום להזריק נתוני קבלות אמיתיים לפרומפט, המערכת תלמד **דפוסים מבניים** מהקבלות שמועלות — איפה מופיע התאריך, איפה הסכום, איפה שם הספק, וכו'. התובנות יתורגמו ל**כללים דינמיים** שנוספים לפרומפט של `OracleAiService`.
 
-## Changes
-
-### File: `supabase/functions/analyze-invoice/index.ts`
-
-### 1. Improved Prompt
-- Add a clear step-by-step process the model must follow:
-  - Step 1: Find the LARGEST amount on the document - that is likely the total
-  - Step 2: Find the SMALLEST tax-related amount - that is VAT/tax
-  - Step 3: The remaining middle amount is the subtotal
-- Add explicit rule: **VAT/tax is ALWAYS smaller than subtotal**
-- Add explicit rule: **subtotal + tax = total** (approximately)
-- Add negative examples: "Do NOT put the subtotal value in tax_amount" and "Do NOT put the tax value in subtotal"
-
-### 2. Post-Processing Math Validation
-After parsing the AI response, add validation logic:
+## איך זה עובד
 
 ```text
-IF total, subtotal, and tax all exist:
-    IF tax > subtotal --> they are swapped, fix it
-    IF subtotal + tax != total (within 5% tolerance):
-        Recalculate tax = total - subtotal
-IF only total and one other value exist:
-    Calculate the missing value
-IF only total exists:
-    Leave subtotal and tax as null
+קבלות נסרקות → תוצאות נשמרות → המערכת מנתחת דפוסים → כללים חדשים נכתבים לפרומפט
 ```
 
-This catches the most common error (VAT and subtotal being swapped) and auto-corrects it without needing to re-call the model.
+**דוגמה:** אם ב-80% מהקבלות הישראליות התאריך מופיע בראש המסמך, ובטרמינלים של Maya התאריך מופיע בתחתית — הכלל הזה נכנס לפרומפט אוטומטית.
 
----
+## שינויים טכניים
 
-## Technical Details
+### 1. טבלת SQL Server חדשה — `OcrTrainingPatterns`
+שומרת דפוסים שנלמדו (לא נתוני קבלות):
+- `field_name` — איזה שדה (date, amount, vendor, payment_method...)
+- `pattern_rule` — הכלל שנלמד ("Israeli receipts: date usually at top-right")
+- `country` / `currency` — הקשר
+- `confidence` — כמה פעמים הדפוס חזר על עצמו
+- `source_count` — מכמה קבלות נלמד
 
-Single file change: `supabase/functions/analyze-invoice/index.ts`
+### 2. טבלת SQL Server — `OcrTrainingSamples`
+שומרת תוצאות סריקה מאומתות (בלי תמונות, רק metadata):
+- `vendor_name`, `country`, `currency`, `document_type`
+- `field_positions` (JSON) — מיפוי: איפה כל שדה נמצא ("date: top", "amount: bottom-right")
+- `extraction_success` (bool) — האם החילוץ היה מדויק
+- `corrections` (JSON) — מה תוקן ידנית
 
-- Enhanced `systemPrompt` with stricter extraction rules and negative examples
-- New `validateAndFixAmounts()` function that runs after JSON parsing
-- No new dependencies or API keys needed
-- Edge function will be redeployed automatically
+### 3. עדכון `OracleAiService.PrepareSystemPrompt`
+- טעינת דפוסים רלוונטיים מ-`OcrTrainingPatterns` לפי country/currency
+- הזרקה לפרומפט כסעיף "LEARNED PATTERNS":
+  ```
+  LEARNED PATTERNS (from {N} analyzed receipts):
+  - DATE: In Israeli receipts, date is usually at top-right corner (85% confidence)
+  - AMOUNT: Terminal receipts show total after "SALE AMOUNT" label (92%)
+  - PAYMENT: "סליקת אשראי" always means credit card payment (100%)
+  ```
+
+### 4. Endpoint חדש — `POST /api/invoice/bulk-train`
+- מקבל תמונה base64
+- סורק עם `OracleAiService.CallGeminiFlashAsync`
+- שומר תוצאה ב-`OcrTrainingSamples`
+- מחזיר תוצאה ללקוח לאישור/דחייה
+
+### 5. Endpoint — `POST /api/invoice/rebuild-patterns`
+- עובר על כל ה-`OcrTrainingSamples` המאומתים
+- מנתח דפוסים חוזרים (היכן שדות מופיעים, מה הפורמטים הנפוצים)
+- כותב/מעדכן כללים ב-`OcrTrainingPatterns`
+- פרומפט הבא שייטען ישתמש בכללים החדשים
+
+### 6. עדכון `BulkReceiptTraining.tsx`
+- קריאה ל-C# backend (`/api/invoice/bulk-train`) במקום Edge Function
+- הסרת שמירה ל-knowledge_documents (לא רלוונטי)
+- הוספת כפתורי ✅ אישור / ❌ דחייה לכל קבלה מעובדת
+- הוספת כפתור "בנה דפוסים מחדש" שקורא ל-rebuild-patterns
+- הצגת סטטיסטיקות: כמה דפוסים נלמדו, כמה קבלות מאומתות
+
+### 7. עדכון `ApiModels.cs`
+- מודלים חדשים: `OcrTrainingSample`, `OcrTrainingPattern`, `BulkTrainRequest/Response`
+
+### 8. עדכון `TripExDbContext.cs` + `init-db.sql`
+- הוספת Entity classes ו-SQL ליצירת הטבלאות
+
+## קבצים שישתנו
+- `dotnet-backend/TripEx.Api/Services/OracleAiService.cs` — פרומפט דינמי עם דפוסים
+- `dotnet-backend/TripEx.Api/Services/InvoiceService.cs` — לוגיקת אימון ובניית דפוסים
+- `dotnet-backend/TripEx.Api/Controllers/InvoiceController.cs` — endpoints חדשים
+- `dotnet-backend/TripEx.Api/Models/ApiModels.cs` — מודלים חדשים
+- `dotnet-backend/TripEx.Api/Data/TripExDbContext.cs` — טבלאות חדשות
+- `dotnet-backend/TripEx.Api/Data/init-db.sql` — SQL ליצירת טבלאות
+- `src/components/admin/BulkReceiptTraining.tsx` — חיבור ל-C# + אישור/דחייה
+- `src/lib/api-service.ts` — endpoints חדשים
+
+## תוצאה
+ככל שמעלים יותר קבלות ומאשרים תוצאות ← המערכת מזהה דפוסים חוזרים ← הפרומפט מתעדכן עם כללים מדויקים יותר ← הדיוק עולה, בלי לחשוף מידע רגיש בין סריקות.
+
