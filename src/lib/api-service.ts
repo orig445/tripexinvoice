@@ -120,8 +120,31 @@ export async function bulkTrainInvoice(imageBase64: string, country?: string) {
   if (isExternalBackend) {
     return callExternalAPI("/api/invoice/bulk-train", { imageBase64, country });
   }
-  // Fallback to regular analyze if no external backend
-  return callSupabaseFunction("analyze-invoice", { imageBase64 });
+  // Step 1: Scan via analyze-invoice
+  const scanResult = await callSupabaseFunction("analyze-invoice", { imageBase64 });
+  if (scanResult.error || !scanResult.data?.success) {
+    return scanResult;
+  }
+  // Step 2: Save as training sample via ocr-training
+  const { data: { user } } = await supabase.auth.getUser();
+  const saveResult = await callSupabaseFunction("ocr-training", {
+    action: "bulk-train",
+    extractedData: scanResult.data.data,
+    country: country || "IL",
+    userId: user?.id || null,
+  });
+  if (saveResult.error) {
+    return saveResult;
+  }
+  // Return combined result
+  return {
+    data: {
+      success: true,
+      fields: scanResult.data.data,
+      sampleId: saveResult.data?.sampleId,
+    },
+    error: null,
+  };
 }
 
 /** Verify or reject a training sample */
@@ -129,7 +152,7 @@ export async function verifyTrainingSample(sampleId: string, isCorrect: boolean,
   if (isExternalBackend) {
     return callExternalAPI("/api/invoice/verify-sample", { sampleId, isCorrect, corrections });
   }
-  return { data: { success: false }, error: new Error("Training requires C# backend") };
+  return callSupabaseFunction("ocr-training", { action: "verify-sample", sampleId, isCorrect, corrections });
 }
 
 /** Rebuild OCR patterns from verified samples */
@@ -137,7 +160,7 @@ export async function rebuildOcrPatterns() {
   if (isExternalBackend) {
     return callExternalAPI("/api/invoice/rebuild-patterns", {});
   }
-  return { data: { success: false }, error: new Error("Training requires C# backend") };
+  return callSupabaseFunction("ocr-training", { action: "rebuild-patterns" });
 }
 
 /** Get OCR training statistics */
@@ -150,7 +173,7 @@ export async function getTrainingStats() {
     const data = await res.json();
     return { data, error: null };
   }
-  return { data: null, error: new Error("Training requires C# backend") };
+  return callSupabaseFunction("ocr-training", { action: "stats" });
 }
 
 /** Trigger knowledge document processing */
