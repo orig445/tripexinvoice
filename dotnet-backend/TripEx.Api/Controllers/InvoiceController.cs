@@ -39,4 +39,57 @@ public class InvoiceController : ControllerBase
             return Ok(new AnalyzeInvoiceResponse { Success = false, Error = ex.Message });
         }
     }
+
+    /// <summary>
+    /// Bulk train: scan a receipt and save as training sample
+    /// </summary>
+    [HttpPost("bulk-train")]
+    public async Task<ActionResult<BulkTrainResponse>> BulkTrain([FromBody] BulkTrainRequest request)
+    {
+        try
+        {
+            Guid? userId = null;
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (Guid.TryParse(userIdClaim, out var uid)) userId = uid;
+
+            var result = await _invoiceService.BulkTrainAsync(request.ImageBase64, request.Country, userId);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Bulk train error: {ex}");
+            return Ok(new BulkTrainResponse { Success = false, Error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Verify or reject a training sample
+    /// </summary>
+    [HttpPost("verify-sample")]
+    public async Task<ActionResult> VerifySample([FromBody] VerifyTrainingSampleRequest request)
+    {
+        var success = await _invoiceService.VerifyTrainingSampleAsync(
+            request.SampleId, request.IsCorrect, request.Corrections);
+        return Ok(new { success });
+    }
+
+    /// <summary>
+    /// Rebuild patterns from verified samples
+    /// </summary>
+    [HttpPost("rebuild-patterns")]
+    public async Task<ActionResult<RebuildPatternsResponse>> RebuildPatterns()
+    {
+        var result = await _invoiceService.RebuildPatternsAsync();
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Get training statistics
+    /// </summary>
+    [HttpGet("training-stats")]
+    public async Task<ActionResult<TrainingStatsResponse>> GetTrainingStats()
+    {
+        var stats = await _invoiceService.GetTrainingStatsAsync();
+        return Ok(stats);
+    }
 }

@@ -432,4 +432,416 @@ public class InvoiceService
         cleaned = Regex.Replace(cleaned, @"\s{2,}", " ");
         return cleaned.Trim();
     }
+
+    // ═══════════════════════════════════════
+    // OCR Training — Bulk Train
+    // ═══════════════════════════════════════
+
+    /// <summary>
+    /// Process a single receipt for training: scan → save as training sample
+    /// </summary>
+    public async Task<BulkTrainResponse> BulkTrainAsync(string? imageBase64, string? country, Guid? userId)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(imageBase64))
+                return new BulkTrainResponse { Success = false, Error = "imageBase64 is required" };
+
+            var countryHint = country?.ToUpperInvariant() ?? "IL";
+
+            // Scan with OCR
+            var rawResponse = await _aiService.CallGeminiFlashAsync(imageBase64, countryHint);
+            var aiJson = OracleAiService.ParseJsonFromAiResponse(rawResponse);
+            aiJson = ValidateAndFixAmounts(aiJson);
+
+            var detectedCurrency = aiJson.TryGetProperty("currency", out var curProp) ? curProp.GetString() : null;
+            aiJson = ValidateDateByCurrency(aiJson, detectedCurrency, country);
+
+            var fields = MapToAlgoTextFields(aiJson);
+
+            // Save as training sample
+            var sample = new OcrTrainingSample
+            {
+                VendorName = fields.MerchantName,
+                Country = countryHint,
+                Currency = fields.Currency,
+                DocumentType = fields.Type,
+                ExtractedFields = JsonSerializer.Serialize(fields),
+                FieldPositions = BuildFieldPositions(aiJson),
+                IsVerified = false,
+                IsRejected = false
+            };
+
+            _db.OcrTrainingSamples.Add(sample);
+            await _db.SaveChangesAsync();
+
+            Console.WriteLine($"[OCR-TRAIN] Sample saved: {sample.Id} | Vendor={fields.MerchantName}");
+
+            return new BulkTrainResponse
+            {
+                Success = true,
+                SampleId = sample.Id,
+                Fields = fields
+            };
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[OCR-TRAIN] Error: {ex.Message}");
+            return new BulkTrainResponse { Success = false, Error = ex.Message };
+        }
+    }
+
+    /// <summary>
+    /// Mark a training sample as verified or rejected
+    /// </summary>
+    public async Task<bool> VerifyTrainingSampleAsync(Guid sampleId, bool isCorrect, Dictionary<string, string>? corrections)
+    {
+        var sample = await _db.OcrTrainingSamples.FindAsync(sampleId);
+        if (sample == null) return false;
+
+        if (isCorrect)
+        {
+            sample.IsVerified = true;
+            sample.IsRejected = false;
+            if (corrections != null && corrections.Count > 0)
+                sample.Corrections = JsonSerializer.Serialize(corrections);
+        }
+        else
+        {
+            sample.IsVerified = false;
+            sample.IsRejected = true;
+        }
+
+        await _db.SaveChangesAsync();
+        Console.WriteLine($"[OCR-TRAIN] Sample {sampleId} → verified={isCorrect}");
+        return true;
+    }
+
+    /// <summary>
+    /// Rebuild patterns from all verified training samples
+    /// </summary>
+    public async Task<RebuildPatternsResponse> RebuildPatternsAsync()
+    {
+        try
+        {
+            var verifiedSamples = await _db.OcrTrainingSamples
+                .Where(s => s.IsVerified && !s.IsRejected)
+                .ToListAsync();
+
+            if (verifiedSamples.Count < 3)
+                return new RebuildPatternsResponse { Success = false, Error = "Need at least 3 verified samples to build patterns" };
+
+            // Group by country to analyze patterns per region
+            var byCountry = verifiedSamples.GroupBy(s => s.Country ?? "UNKNOWN").ToList();
+
+            // Clear existing patterns
+            _db.OcrTrainingPatterns.RemoveRange(_db.OcrTrainingPatterns);
+
+            var patternsCreated = 0;
+
+            foreach (var group in byCountry)
+            {
+                var countryCode = group.Key;
+                var samples = group.ToList();
+                var sampleCount = samples.Count;
+
+                // Analyze payment patterns
+                var paymentPatterns = AnalyzePaymentPatterns(samples);
+                foreach (var pattern in paymentPatterns)
+                {
+                    _db.OcrTrainingPatterns.Add(new OcrTrainingPattern
+                    {
+                        FieldName = "payment",
+                        PatternRule = pattern.Rule,
+                        Country = countryCode == "UNKNOWN" ? null : countryCode,
+                        Confidence = pattern.Confidence,
+                        SourceCount = pattern.Count
+                    });
+                    patternsCreated++;
+                }
+
+                // Analyze date format patterns
+                var datePatterns = AnalyzeDatePatterns(samples);
+                foreach (var pattern in datePatterns)
+                {
+                    _db.OcrTrainingPatterns.Add(new OcrTrainingPattern
+                    {
+                        FieldName = "date",
+                        PatternRule = pattern.Rule,
+                        Country = countryCode == "UNKNOWN" ? null : countryCode,
+                        Confidence = pattern.Confidence,
+                        SourceCount = pattern.Count
+                    });
+                    patternsCreated++;
+                }
+
+                // Analyze amount patterns
+                var amountPatterns = AnalyzeAmountPatterns(samples);
+                foreach (var pattern in amountPatterns)
+                {
+                    _db.OcrTrainingPatterns.Add(new OcrTrainingPattern
+                    {
+                        FieldName = "amount",
+                        PatternRule = pattern.Rule,
+                        Country = countryCode == "UNKNOWN" ? null : countryCode,
+                        Confidence = pattern.Confidence,
+                        SourceCount = pattern.Count
+                    });
+                    patternsCreated++;
+                }
+
+                // Analyze vendor patterns
+                var vendorPatterns = AnalyzeVendorPatterns(samples);
+                foreach (var pattern in vendorPatterns)
+                {
+                    _db.OcrTrainingPatterns.Add(new OcrTrainingPattern
+                    {
+                        FieldName = "vendor",
+                        PatternRule = pattern.Rule,
+                        Country = countryCode == "UNKNOWN" ? null : countryCode,
+                        Confidence = pattern.Confidence,
+                        SourceCount = pattern.Count
+                    });
+                    patternsCreated++;
+                }
+
+                // Analyze currency patterns
+                var currencyPatterns = AnalyzeCurrencyPatterns(samples);
+                foreach (var pattern in currencyPatterns)
+                {
+                    _db.OcrTrainingPatterns.Add(new OcrTrainingPattern
+                    {
+                        FieldName = "currency",
+                        PatternRule = pattern.Rule,
+                        Country = countryCode == "UNKNOWN" ? null : countryCode,
+                        Confidence = pattern.Confidence,
+                        SourceCount = pattern.Count
+                    });
+                    patternsCreated++;
+                }
+            }
+
+            await _db.SaveChangesAsync();
+            Console.WriteLine($"[OCR-TRAIN] Rebuilt {patternsCreated} patterns from {verifiedSamples.Count} samples");
+
+            return new RebuildPatternsResponse
+            {
+                Success = true,
+                PatternsCreated = patternsCreated,
+                SamplesAnalyzed = verifiedSamples.Count
+            };
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[OCR-TRAIN] Rebuild error: {ex.Message}");
+            return new RebuildPatternsResponse { Success = false, Error = ex.Message };
+        }
+    }
+
+    /// <summary>
+    /// Get training statistics
+    /// </summary>
+    public async Task<TrainingStatsResponse> GetTrainingStatsAsync()
+    {
+        var totalSamples = await _db.OcrTrainingSamples.CountAsync();
+        var verifiedSamples = await _db.OcrTrainingSamples.CountAsync(s => s.IsVerified);
+        var rejectedSamples = await _db.OcrTrainingSamples.CountAsync(s => s.IsRejected);
+        var patterns = await _db.OcrTrainingPatterns.ToListAsync();
+
+        return new TrainingStatsResponse
+        {
+            TotalSamples = totalSamples,
+            VerifiedSamples = verifiedSamples,
+            RejectedSamples = rejectedSamples,
+            PatternsLearned = patterns.Count,
+            Patterns = patterns.Select(p => new PatternInfo
+            {
+                FieldName = p.FieldName,
+                Rule = p.PatternRule,
+                Country = p.Country,
+                Confidence = p.Confidence,
+                SourceCount = p.SourceCount
+            }).ToList()
+        };
+    }
+
+    // ═══════════════════════════════════════
+    // Pattern Analysis Helpers
+    // ═══════════════════════════════════════
+
+    private record PatternResult(string Rule, double Confidence, int Count);
+
+    private static List<PatternResult> AnalyzePaymentPatterns(List<OcrTrainingSample> samples)
+    {
+        var results = new List<PatternResult>();
+        var total = samples.Count;
+        if (total == 0) return results;
+
+        foreach (var sample in samples)
+        {
+            if (string.IsNullOrEmpty(sample.ExtractedFields)) continue;
+            try
+            {
+                var fields = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(sample.ExtractedFields);
+                if (fields == null) continue;
+
+                // Check if corrections changed payment method
+                if (!string.IsNullOrEmpty(sample.Corrections))
+                {
+                    var corrections = JsonSerializer.Deserialize<Dictionary<string, string>>(sample.Corrections);
+                    if (corrections?.ContainsKey("FormOfPayment") == true)
+                    {
+                        // Learn: the original was wrong, the corrected is right
+                        var corrected = corrections["FormOfPayment"];
+                        if (fields.TryGetValue("FormOfPayment", out var origEl))
+                        {
+                            var original = origEl.GetString() ?? "";
+                            if (original != corrected)
+                            {
+                                results.Add(new PatternResult(
+                                    $"When AI detects '{original}', verify carefully — users often correct to '{corrected}'",
+                                    80, 1));
+                            }
+                        }
+                    }
+                }
+            }
+            catch { /* skip bad data */ }
+        }
+
+        // Aggregate similar rules
+        return AggregatePatterns(results);
+    }
+
+    private static List<PatternResult> AnalyzeDatePatterns(List<OcrTrainingSample> samples)
+    {
+        var results = new List<PatternResult>();
+        // Count how many have dates at all
+        int withDate = 0;
+        foreach (var s in samples)
+        {
+            if (string.IsNullOrEmpty(s.ExtractedFields)) continue;
+            try
+            {
+                var fields = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(s.ExtractedFields);
+                if (fields?.TryGetValue("InvoiceDate", out var dateEl) == true)
+                {
+                    var dateStr = dateEl.GetString();
+                    if (!string.IsNullOrEmpty(dateStr)) withDate++;
+                }
+            }
+            catch { }
+        }
+
+        if (withDate > 0)
+        {
+            var pct = (double)withDate / samples.Count * 100;
+            results.Add(new PatternResult(
+                $"Date is present in {pct:F0}% of receipts — always look for it carefully",
+                pct, withDate));
+        }
+
+        return results;
+    }
+
+    private static List<PatternResult> AnalyzeAmountPatterns(List<OcrTrainingSample> samples)
+    {
+        var results = new List<PatternResult>();
+        int correctedAmounts = 0;
+
+        foreach (var s in samples)
+        {
+            if (string.IsNullOrEmpty(s.Corrections)) continue;
+            try
+            {
+                var corrections = JsonSerializer.Deserialize<Dictionary<string, string>>(s.Corrections);
+                if (corrections?.ContainsKey("Total") == true || corrections?.ContainsKey("TotalVAT") == true)
+                    correctedAmounts++;
+            }
+            catch { }
+        }
+
+        if (correctedAmounts > 0)
+        {
+            var pct = (double)correctedAmounts / samples.Count * 100;
+            results.Add(new PatternResult(
+                $"Amount extraction was corrected in {pct:F0}% of cases — double-check amounts, especially VAT vs total",
+                Math.Min(95, 50 + pct), correctedAmounts));
+        }
+
+        return results;
+    }
+
+    private static List<PatternResult> AnalyzeVendorPatterns(List<OcrTrainingSample> samples)
+    {
+        var results = new List<PatternResult>();
+        // Find recurring vendor names
+        var vendorCounts = samples
+            .Where(s => !string.IsNullOrEmpty(s.VendorName))
+            .GroupBy(s => s.VendorName!.Trim().ToLowerInvariant())
+            .Where(g => g.Count() >= 2)
+            .OrderByDescending(g => g.Count())
+            .Take(5);
+
+        foreach (var g in vendorCounts)
+        {
+            results.Add(new PatternResult(
+                $"Recurring vendor '{g.First().VendorName}' appears frequently — use exact name match",
+                90, g.Count()));
+        }
+
+        return results;
+    }
+
+    private static List<PatternResult> AnalyzeCurrencyPatterns(List<OcrTrainingSample> samples)
+    {
+        var results = new List<PatternResult>();
+        var currencyCounts = samples
+            .Where(s => !string.IsNullOrEmpty(s.Currency))
+            .GroupBy(s => s.Currency!)
+            .OrderByDescending(g => g.Count());
+
+        foreach (var g in currencyCounts)
+        {
+            var pct = (double)g.Count() / samples.Count * 100;
+            if (pct >= 20)
+            {
+                results.Add(new PatternResult(
+                    $"Currency {g.Key} is used in {pct:F0}% of receipts from this region",
+                    pct, g.Count()));
+            }
+        }
+
+        return results;
+    }
+
+    private static List<PatternResult> AggregatePatterns(List<PatternResult> patterns)
+    {
+        return patterns
+            .GroupBy(p => p.Rule)
+            .Select(g => new PatternResult(g.Key, g.Max(p => p.Confidence), g.Sum(p => p.Count)))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Build field position metadata from AI response
+    /// </summary>
+    private static string BuildFieldPositions(JsonElement aiJson)
+    {
+        var positions = new Dictionary<string, string>();
+
+        // Record which fields were successfully extracted
+        if (aiJson.TryGetProperty("invoice_date", out var d) && d.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(d.GetString()))
+            positions["date"] = "present";
+        if (aiJson.TryGetProperty("invoice_number", out var n) && n.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(n.GetString()))
+            positions["invoice_number"] = "present";
+        if (aiJson.TryGetProperty("merchant", out var m) && m.TryGetProperty("name", out var mn) && !string.IsNullOrEmpty(mn.GetString()))
+            positions["vendor"] = "present";
+        if (aiJson.TryGetProperty("amounts", out var a) && a.TryGetProperty("tax_amount", out var t) && t.ValueKind == JsonValueKind.Number)
+            positions["tax"] = "present";
+        if (aiJson.TryGetProperty("payment", out var p) && p.TryGetProperty("form_of_payment", out var f) && !string.IsNullOrEmpty(f.GetString()))
+            positions["payment"] = f.GetString() ?? "unknown";
+
+        return JsonSerializer.Serialize(positions);
+    }
 }
