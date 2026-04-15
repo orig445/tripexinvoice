@@ -328,9 +328,7 @@ export function BulkReceiptTraining() {
             </div>
           </div>
           <p className="text-sm text-muted-foreground">
-            {isExternalBackend
-              ? "העלה קבלות — המערכת תסרוק, תציג תוצאות לאימות, ותלמד דפוסים מהדוגמאות המאושרות"
-              : "⚠️ אימון OCR דורש חיבור ל-C# backend (VITE_API_BASE_URL)"}
+            העלה קבלות — המערכת תסרוק, תציג תוצאות לאימות, ותלמד דפוסים מהדוגמאות המאושרות
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
