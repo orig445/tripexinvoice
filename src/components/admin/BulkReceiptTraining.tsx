@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
   Upload,
@@ -21,6 +23,12 @@ import {
   ThumbsDown,
   Brain,
   BarChart3,
+  Eye,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Edit3,
+  Save,
 } from "lucide-react";
 
 interface QueueItem {
@@ -29,6 +37,7 @@ interface QueueItem {
   error?: string;
   result?: any;
   sampleId?: string;
+  previewUrl?: string; // base64 image for review
 }
 
 interface TrainingStats {
@@ -45,11 +54,53 @@ interface TrainingStats {
   }>;
 }
 
+// Flatten nested OCR data for display
+function flattenFields(data: any): Array<{ key: string; label: string; value: string }> {
+  if (!data) return [];
+  const fields: Array<{ key: string; label: string; value: string }> = [];
+
+  const add = (key: string, label: string, val: any) => {
+    if (val != null && val !== "") fields.push({ key, label, value: String(val) });
+  };
+
+  add("document_type", "Document Type", data.document_type);
+  add("invoice_number", "Invoice / Receipt #", data.invoice_number);
+  add("invoice_date", "Date", data.invoice_date);
+  add("currency", "Currency", data.currency);
+
+  if (data.merchant) {
+    add("merchant.name", "Merchant Name", data.merchant.name);
+    add("merchant.tin", "TIN", data.merchant.tin);
+    add("merchant.address", "Address", data.merchant.address);
+    add("merchant.city", "City", data.merchant.city);
+  }
+
+  if (data.amounts) {
+    add("amounts.vatable_sales_amount", "Vatable Sales", data.amounts.vatable_sales_amount);
+    add("amounts.non_vatable_sales_amount", "Non-Vatable Sales", data.amounts.non_vatable_sales_amount);
+    add("amounts.service_charge_amount", "Service Charge", data.amounts.service_charge_amount);
+    add("amounts.tax_amount", "Tax / VAT", data.amounts.tax_amount);
+  }
+
+  if (data.payment) {
+    add("payment.method", "Payment Method", data.payment.method);
+    add("payment.form_of_payment", "Form of Payment", data.payment.form_of_payment);
+    add("payment.amount_paid", "Amount Paid", data.payment.amount_paid);
+    add("payment.card_last4", "Card Last 4", data.payment.card_last4);
+    add("payment.card_type", "Card Type", data.payment.card_type);
+  }
+
+  return fields;
+}
+
 export function BulkReceiptTraining() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isRebuilding, setIsRebuilding] = useState(false);
   const [stats, setStats] = useState<TrainingStats | null>(null);
+  const [reviewIndex, setReviewIndex] = useState<number | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [editedFields, setEditedFields] = useState<Record<string, string>>({});
   const inputRef = useRef<HTMLInputElement>(null);
   const { user } = useAuth();
 
@@ -135,7 +186,7 @@ export function BulkReceiptTraining() {
         base64 = result.base64;
       }
 
-      updateItem(index, { status: "analyzing" });
+      updateItem(index, { status: "analyzing", previewUrl: base64 });
       const { data, error } = await bulkTrainInvoice(base64, "IL");
 
       if (error || !data?.success) {
@@ -146,6 +197,7 @@ export function BulkReceiptTraining() {
         status: "done",
         result: data.fields || data.Fields,
         sampleId: data.sampleId || data.SampleId,
+        previewUrl: base64,
       });
     } catch (err: any) {
       console.error(`Error processing ${item.file.name}:`, err);
@@ -176,9 +228,19 @@ export function BulkReceiptTraining() {
     if (!item.sampleId) return;
 
     try {
-      await verifyTrainingSample(item.sampleId, isCorrect);
+      const corrections = !isCorrect && Object.keys(editedFields).length > 0 ? editedFields : undefined;
+      await verifyTrainingSample(item.sampleId, isCorrect, corrections);
       updateItem(index, { status: isCorrect ? "verified" : "rejected" });
       toast.success(isCorrect ? "✅ דוגמה אושרה" : "❌ דוגמה נדחתה");
+      setEditMode(false);
+      setEditedFields({});
+      // Move to next pending review
+      const nextIdx = queue.findIndex((q, i) => i > index && q.status === "done");
+      if (nextIdx !== -1) {
+        setReviewIndex(nextIdx);
+      } else {
+        setReviewIndex(null);
+      }
     } catch (err: any) {
       toast.error(`שגיאה: ${err.message}`);
     }
@@ -200,18 +262,25 @@ export function BulkReceiptTraining() {
     setIsRebuilding(false);
   };
 
-  const clearQueue = () => setQueue([]);
+  const openReview = (index: number) => {
+    setReviewIndex(index);
+    setEditMode(false);
+    setEditedFields({});
+  };
+
+  const clearQueue = () => { setQueue([]); setReviewIndex(null); };
 
   const doneCount = queue.filter((i) => ["done", "verified", "rejected"].includes(i.status)).length;
   const errorCount = queue.filter((i) => i.status === "error").length;
   const progress = queue.length > 0 ? ((doneCount + errorCount) / queue.length) * 100 : 0;
+  const pendingReviewCount = queue.filter((i) => i.status === "done").length;
 
   const getStatusIcon = (status: QueueItem["status"]) => {
     switch (status) {
       case "pending": return <FileImage className="h-4 w-4 text-muted-foreground" />;
       case "uploading":
       case "analyzing": return <Loader2 className="h-4 w-4 animate-spin text-primary" />;
-      case "done": return <CheckCircle2 className="h-4 w-4 text-amber-500" />;
+      case "done": return <Eye className="h-4 w-4 text-amber-500" />;
       case "verified": return <ThumbsUp className="h-4 w-4 text-green-500" />;
       case "rejected": return <ThumbsDown className="h-4 w-4 text-red-500" />;
       case "error": return <XCircle className="h-4 w-4 text-destructive" />;
@@ -223,16 +292,182 @@ export function BulkReceiptTraining() {
       case "pending": return "ממתין";
       case "uploading": return "מעלה...";
       case "analyzing": return "מנתח OCR...";
-      case "done": return "ממתין לאישור";
+      case "done": return "ממתין לבדיקה";
       case "verified": return "אושר ✅";
       case "rejected": return "נדחה ❌";
       case "error": return "שגיאה";
     }
   };
 
+  // Review panel for a single item
+  const reviewItem = reviewIndex !== null ? queue[reviewIndex] : null;
+  const reviewFields = reviewItem?.result ? flattenFields(reviewItem.result) : [];
+
+  // Navigation between reviewable items
+  const reviewableIndexes = queue
+    .map((item, i) => (item.status === "done" ? i : -1))
+    .filter((i) => i !== -1);
+  const currentReviewPos = reviewIndex !== null ? reviewableIndexes.indexOf(reviewIndex) : -1;
+
   return (
     <div className="space-y-4">
-      {/* Stats Card */}
+      {/* ═══ Review Panel (overlay) ═══ */}
+      {reviewItem && reviewIndex !== null && (
+        <Card className="border-primary/50 shadow-lg">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Eye className="h-5 w-5 text-primary" />
+                <CardTitle className="text-lg">בדיקת קבלה — {reviewItem.file.name}</CardTitle>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* Navigation */}
+                {reviewableIndexes.length > 1 && (
+                  <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                    <Button
+                      size="sm" variant="ghost" className="h-7 w-7 p-0"
+                      disabled={currentReviewPos <= 0}
+                      onClick={() => setReviewIndex(reviewableIndexes[currentReviewPos - 1])}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <span>{currentReviewPos + 1}/{reviewableIndexes.length}</span>
+                    <Button
+                      size="sm" variant="ghost" className="h-7 w-7 p-0"
+                      disabled={currentReviewPos >= reviewableIndexes.length - 1}
+                      onClick={() => setReviewIndex(reviewableIndexes[currentReviewPos + 1])}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setReviewIndex(null)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Left: Receipt Image */}
+              <div className="border rounded-lg overflow-hidden bg-muted/30">
+                {reviewItem.previewUrl ? (
+                  <img
+                    src={reviewItem.previewUrl}
+                    alt="Receipt"
+                    className="w-full h-auto max-h-[500px] object-contain"
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-64 text-muted-foreground">
+                    <FileImage className="h-12 w-12" />
+                  </div>
+                )}
+              </div>
+
+              {/* Right: Extracted Data */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-sm">נתונים שחולצו</h3>
+                  <Button
+                    size="sm" variant="outline" className="gap-1 h-7 text-xs"
+                    onClick={() => {
+                      if (editMode) {
+                        setEditMode(false);
+                        setEditedFields({});
+                      } else {
+                        setEditMode(true);
+                        // Pre-fill with current values
+                        const initial: Record<string, string> = {};
+                        reviewFields.forEach(f => { initial[f.key] = f.value; });
+                        setEditedFields(initial);
+                      }
+                    }}
+                  >
+                    {editMode ? <X className="h-3 w-3" /> : <Edit3 className="h-3 w-3" />}
+                    {editMode ? "בטל עריכה" : "ערוך תיקונים"}
+                  </Button>
+                </div>
+
+                <div className="space-y-1.5 max-h-[400px] overflow-y-auto">
+                  {reviewFields.length === 0 && (
+                    <p className="text-sm text-muted-foreground">לא חולצו נתונים</p>
+                  )}
+                  {reviewFields.map((field) => (
+                    <div key={field.key} className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground min-w-[120px] text-xs font-medium">
+                        {field.label}:
+                      </span>
+                      {editMode ? (
+                        <Input
+                          value={editedFields[field.key] ?? field.value}
+                          onChange={(e) => setEditedFields(prev => ({ ...prev, [field.key]: e.target.value }))}
+                          className="h-7 text-xs"
+                        />
+                      ) : (
+                        <span className="font-mono text-xs bg-muted/50 px-1.5 py-0.5 rounded">
+                          {field.value}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex gap-2 pt-3 border-t">
+                  <Button
+                    className="flex-1 gap-1.5 bg-green-600 hover:bg-green-700"
+                    onClick={() => handleVerify(reviewIndex, true)}
+                  >
+                    <ThumbsUp className="h-4 w-4" />
+                    {editMode ? "אשר עם תיקונים" : "אשר — הנתונים נכונים"}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    className="flex-1 gap-1.5"
+                    onClick={() => handleVerify(reviewIndex, false)}
+                  >
+                    <ThumbsDown className="h-4 w-4" />
+                    דחה — נתונים שגויים
+                  </Button>
+                </div>
+                {editMode && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    ✏️ תקן את השדות השגויים ולחץ "אשר עם תיקונים" — המערכת תלמד מהתיקונים
+                  </p>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ═══ Pending review alert ═══ */}
+      {!isProcessing && pendingReviewCount > 0 && reviewIndex === null && (
+        <Card className="border-amber-500/50 bg-amber-500/5">
+          <CardContent className="py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Eye className="h-5 w-5 text-amber-500" />
+              <span className="font-medium text-sm">
+                {pendingReviewCount} קבלות ממתינות לבדיקה ואישור
+              </span>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1"
+              onClick={() => {
+                const firstPending = queue.findIndex(q => q.status === "done");
+                if (firstPending !== -1) openReview(firstPending);
+              }}
+            >
+              <Eye className="h-4 w-4" />
+              התחל בדיקה
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ═══ Stats Card ═══ */}
       {stats && (
         <Card>
           <CardHeader className="pb-3">
@@ -294,7 +529,7 @@ export function BulkReceiptTraining() {
         </Card>
       )}
 
-      {/* Upload & Process Card */}
+      {/* ═══ Upload & Process Card ═══ */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -378,45 +613,35 @@ export function BulkReceiptTraining() {
                 {queue.map((item, i) => (
                   <div
                     key={i}
-                    className="flex items-center justify-between p-2.5 rounded-lg border bg-card text-sm"
+                    className={`flex items-center justify-between p-2.5 rounded-lg border bg-card text-sm cursor-pointer hover:bg-muted/30 transition-colors ${reviewIndex === i ? "ring-2 ring-primary" : ""}`}
+                    onClick={() => item.status === "done" && openReview(i)}
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       {getStatusIcon(item.status)}
+                      {/* Thumbnail */}
+                      {item.previewUrl && (
+                        <img src={item.previewUrl} alt="" className="h-8 w-8 rounded object-cover border" />
+                      )}
                       <span className="truncate max-w-[180px]">{item.file.name}</span>
                       <span className="text-xs text-muted-foreground">
                         ({(item.file.size / 1024).toFixed(0)} KB)
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      {item.result?.merchantName && (
+                      {item.result?.merchant?.name && (
                         <span className="text-xs text-muted-foreground hidden sm:inline">
-                          {item.result.merchantName || item.result.MerchantName}
-                          {(item.result.total || item.result.Total) && ` | ${item.result.total || item.result.Total}`}
+                          {item.result.merchant.name}
                         </span>
                       )}
 
-                      {/* Verify/Reject buttons for completed items */}
-                      {item.status === "done" && item.sampleId && (
-                        <div className="flex gap-1">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
-                            onClick={() => handleVerify(i, true)}
-                            title="אשר - התוצאה נכונה"
-                          >
-                            <ThumbsUp className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={() => handleVerify(i, false)}
-                            title="דחה - התוצאה שגויה"
-                          >
-                            <ThumbsDown className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
+                      {item.status === "done" && (
+                        <Button
+                          size="sm" variant="outline" className="h-7 gap-1 text-xs"
+                          onClick={(e) => { e.stopPropagation(); openReview(i); }}
+                        >
+                          <Eye className="h-3 w-3" />
+                          בדוק
+                        </Button>
                       )}
 
                       <Badge
