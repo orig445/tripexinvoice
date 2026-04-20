@@ -337,7 +337,33 @@ Return ONLY the JSON. No explanation, no markdown.${correctionsContext}`;
         if (inString && c.charCodeAt(0) < 32) { sanitized += " "; continue; } // replace with space inside strings
         sanitized += c;
       }
-      return JSON.parse(sanitized);
+      try {
+        return JSON.parse(sanitized);
+      } catch (e) {
+        // Recovery: response was truncated. Close any open string and braces.
+        let repaired = sanitized;
+        let inStr = false, esc = false, depth = 0;
+        for (let i = 0; i < repaired.length; i++) {
+          const c = repaired[i];
+          if (esc) { esc = false; continue; }
+          if (c === "\\") { esc = true; continue; }
+          if (c === '"') { inStr = !inStr; continue; }
+          if (inStr) continue;
+          if (c === "{") depth++;
+          else if (c === "}") depth--;
+        }
+        // Trim trailing escape backslash that would orphan the next char
+        if (repaired.endsWith("\\")) repaired = repaired.slice(0, -1);
+        // Close unterminated string
+        if (inStr) repaired += '"';
+        // Remove trailing comma / colon / partial key
+        repaired = repaired.replace(/,\s*"[^"]*$/, "");
+        repaired = repaired.replace(/:\s*$/, ": null");
+        repaired = repaired.replace(/,\s*$/, "");
+        // Close unbalanced braces
+        while (depth-- > 0) repaired += "}";
+        return JSON.parse(repaired);
+      }
     };
 
     let scan1Raw: string;
