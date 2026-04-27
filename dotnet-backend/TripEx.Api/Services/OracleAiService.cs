@@ -127,19 +127,41 @@ public class OracleAiService
             System.Text.Encoding.UTF8,
             "application/json");
 
-        Console.WriteLine($"[OCI] Sending request to: {_endpoint}");
+        // ── Throttle: wait for an OCI slot (max 3 concurrent process-wide) ──
+        var throttleStart = DateTime.UtcNow;
+        await _ociThrottle.WaitAsync();
+        var waitedMs = (DateTime.UtcNow - throttleStart).TotalMilliseconds;
+        if (waitedMs > 100)
+            Console.WriteLine($"[OCI] Throttle wait: {waitedMs:F0}ms (queue depth)");
 
         HttpResponseMessage response;
+        string responseBody;
         try
         {
-            response = await _httpClient.SendAsync(request);
-        }
-        catch (Exception ex)
-        {
-            throw new HttpRequestException($"Failed to connect to OCI endpoint: {ex.Message}", ex);
-        }
+            Console.WriteLine($"[OCI] Sending request to: {_endpoint}");
+            try
+            {
+                response = await _httpClient.SendAsync(request);
+            }
+            catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException || !ex.CancellationToken.IsCancellationRequested)
+            {
+                // HttpClient.Timeout reached — surface as 504 so retry layer treats it as transient
+                throw new OciApiException(
+                    $"OCI request timed out after {_httpClient.Timeout.TotalSeconds}s",
+                    504, null);
+            }
+            catch (HttpRequestException) { throw; }
+            catch (Exception ex)
+            {
+                throw new HttpRequestException($"Failed to connect to OCI endpoint: {ex.Message}", ex);
+            }
 
-        var responseBody = await response.Content.ReadAsStringAsync();
+            responseBody = await response.Content.ReadAsStringAsync();
+        }
+        finally
+        {
+            _ociThrottle.Release();
+        }
 
         if (!response.IsSuccessStatusCode)
         {
