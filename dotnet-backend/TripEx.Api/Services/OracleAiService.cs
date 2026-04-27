@@ -18,9 +18,19 @@ public class OracleAiService
     private readonly string? _compartmentId;
     private readonly TripExDbContext _db;
 
+    // ── Concurrency throttle: max 3 simultaneous OCI calls process-wide ──
+    // Prevents overwhelming OCI when user uploads many receipts at once.
+    private static readonly SemaphoreSlim _ociThrottle = new(3, 3);
+
+    // ── Image size limits (raw base64 length) ──
+    // 10MB raw bytes ≈ 13.3MB base64 chars
+    private const int MaxImageBase64Length = 14_000_000;
+    private const int MinImageBase64Length = 100;
+
     public OracleAiService(IHttpClientFactory httpClientFactory, IConfiguration config, TripExDbContext db)
     {
         _httpClient = httpClientFactory.CreateClient();
+        _httpClient.Timeout = TimeSpan.FromSeconds(60); // hard cap — never hang on OCI
         _db = db;
         _apiKey = config["Oracle:ApiKey"]
             ?? Environment.GetEnvironmentVariable("ORACLE_API_KEY")
