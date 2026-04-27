@@ -346,7 +346,8 @@ PAYMENT FORM RULES:
 
         try
         {
-            return JsonDocument.Parse(cleaned).RootElement.Clone();
+            using var doc = JsonDocument.Parse(cleaned);
+            return doc.RootElement.Clone();
         }
         catch (JsonException ex)
         {

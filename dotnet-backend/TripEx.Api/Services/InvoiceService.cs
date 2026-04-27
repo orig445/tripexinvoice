@@ -101,6 +101,12 @@ public class InvoiceService
     {
         try
         {
+            var tracked = _db.ChangeTracker.Entries()
+                .Where(e => e.State != EntityState.Detached)
+                .ToList();
+            foreach (var entry in tracked)
+                entry.State = EntityState.Detached;
+
             var log = new InvoiceScanLog
             {
                 UserId = userId ?? Guid.Empty,
@@ -146,7 +152,8 @@ public class InvoiceService
                 amountsDict["tax_amount"] = vatableSales.Value;
                 dict["amounts"] = amountsDict;
                 var rebuilt = JsonSerializer.SerializeToUtf8Bytes(dict);
-                return JsonDocument.Parse(rebuilt).RootElement.Clone();
+                using var doc1 = JsonDocument.Parse(rebuilt);
+                return doc1.RootElement.Clone();
             }
         }
 
@@ -169,7 +176,8 @@ public class InvoiceService
                         amountsDict["tax_amount"] = correctedTax;
                         dict["amounts"] = amountsDict;
                         var rebuilt = JsonSerializer.SerializeToUtf8Bytes(dict);
-                        return JsonDocument.Parse(rebuilt).RootElement.Clone();
+                        using var doc2 = JsonDocument.Parse(rebuilt);
+                        return doc2.RootElement.Clone();
                     }
                 }
             }
@@ -216,7 +224,8 @@ public class InvoiceService
             var dict = JsonSerializer.Deserialize<Dictionary<string, object>>(json.GetRawText()) ?? new();
             dict["invoice_date"] = normalizedDate;
             var rebuilt = JsonSerializer.SerializeToUtf8Bytes(dict);
-            return JsonDocument.Parse(rebuilt).RootElement.Clone();
+            using var doc = JsonDocument.Parse(rebuilt);
+            return doc.RootElement.Clone();
         }
 
         return json;
