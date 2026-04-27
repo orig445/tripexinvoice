@@ -172,6 +172,25 @@ CREATE TABLE [dbo].[InvoiceScanLogs] (
 );
 GO
 
+-- ── 12b. InvoiceScanLogs — additive diagnostic columns (idempotent) ──
+IF COL_LENGTH('dbo.InvoiceScanLogs', 'DurationMs') IS NULL
+    ALTER TABLE [dbo].[InvoiceScanLogs] ADD [DurationMs] BIGINT NULL;
+IF COL_LENGTH('dbo.InvoiceScanLogs', 'HttpStatusCode') IS NULL
+    ALTER TABLE [dbo].[InvoiceScanLogs] ADD [HttpStatusCode] INT NULL;
+IF COL_LENGTH('dbo.InvoiceScanLogs', 'ErrorMessage') IS NULL
+    ALTER TABLE [dbo].[InvoiceScanLogs] ADD [ErrorMessage] NVARCHAR(MAX) NULL;
+IF COL_LENGTH('dbo.InvoiceScanLogs', 'ErrorType') IS NULL
+    ALTER TABLE [dbo].[InvoiceScanLogs] ADD [ErrorType] NVARCHAR(100) NULL;
+IF COL_LENGTH('dbo.InvoiceScanLogs', 'OciResponseBody') IS NULL
+    ALTER TABLE [dbo].[InvoiceScanLogs] ADD [OciResponseBody] NVARCHAR(MAX) NULL;
+IF COL_LENGTH('dbo.InvoiceScanLogs', 'ImageSizeBytes') IS NULL
+    ALTER TABLE [dbo].[InvoiceScanLogs] ADD [ImageSizeBytes] INT NULL;
+IF COL_LENGTH('dbo.InvoiceScanLogs', 'Source') IS NULL
+    ALTER TABLE [dbo].[InvoiceScanLogs] ADD [Source] NVARCHAR(50) NULL;
+IF COL_LENGTH('dbo.InvoiceScanLogs', 'AttemptNumber') IS NULL
+    ALTER TABLE [dbo].[InvoiceScanLogs] ADD [AttemptNumber] INT NULL;
+GO
+
 -- ── 13. OCR Training Samples ──
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'OcrTrainingSamples')
 CREATE TABLE [dbo].[OcrTrainingSamples] (

@@ -33,91 +33,133 @@ public class InvoiceService
     /// </summary>
     public async Task<AnalyzeInvoiceResponse> AnalyzeAsync(string? imageBase64, string? imageUrl, string? country, Guid? userId = null)
     {
+        return await AnalyzeInternalAsync(imageBase64, imageUrl, country, userId, source: "analyze");
+    }
+
+    /// <summary>
+    /// Internal scan with retry + detailed logging. Used by both AnalyzeAsync and BulkTrainAsync.
+    /// </summary>
+    private async Task<AnalyzeInvoiceResponse> AnalyzeInternalAsync(
+        string? imageBase64, string? imageUrl, string? country, Guid? userId, string source)
+    {
         if (string.IsNullOrEmpty(imageBase64) && string.IsNullOrEmpty(imageUrl))
             return new AnalyzeInvoiceResponse { Success = false, Error = "Either imageBase64 or imageUrl must be provided" };
 
         var stopwatch = Stopwatch.StartNew();
         string? rawResponse = null;
-        string status = "Failed";
+        var countryHint = country?.ToUpperInvariant() ?? "PH";
+        var imageSize = imageBase64?.Length ?? 0;
 
-        try
+        const int maxAttempts = 3;
+        Exception? lastError = null;
+        int? lastHttpStatus = null;
+        string? lastOciBody = null;
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            // Prepare image content
-            var imageContent = imageBase64 ?? imageUrl!;
-            if (!string.IsNullOrEmpty(imageBase64) && !imageBase64.StartsWith("data:"))
-                imageContent = imageBase64;
-
-            var countryHint = country?.ToUpperInvariant() ?? "PH";
-
-            // ── Single Gemini call ──
-            Console.WriteLine($"[OCR] Calling Gemini 3 Flash (country={countryHint})...");
-            rawResponse = await _aiService.CallGeminiFlashAsync(imageContent, countryHint);
-            Console.WriteLine($"[OCR] Raw response length: {rawResponse?.Length ?? 0}");
-
-            // ── Parse AI JSON response ──
-            var aiJson = OracleAiService.ParseJsonFromAiResponse(rawResponse);
-
-            // ── Post-processing: validate amounts ──
-            aiJson = ValidateAndFixAmounts(aiJson);
-
-            // ── Post-processing: validate date by currency/country ──
-            var detectedCurrency = aiJson.TryGetProperty("currency", out var curProp) ? curProp.GetString() : null;
-            aiJson = ValidateDateByCurrency(aiJson, detectedCurrency, country);
-
-            // ── Map to AlgoText-compatible flat fields ──
-            var fields = MapToAlgoTextFields(aiJson);
-
-            stopwatch.Stop();
-            status = "Success";
-            Console.WriteLine($"[OCR] Done in {stopwatch.ElapsedMilliseconds}ms | Total={fields.Total}, Currency={fields.Currency}, ExpenseType={fields.ExpenseType}, Merchant={fields.MerchantName}");
-
-            // ── Save log ──
-            await SaveScanLog(userId, rawResponse, countryHint, status);
-
-            return new AnalyzeInvoiceResponse
+            try
             {
-                Success = true,
-                Fields = fields,
-                RawResponse = rawResponse
-            };
+                var imageContent = imageBase64 ?? imageUrl!;
+
+                Console.WriteLine($"[OCR][{source}] Attempt {attempt}/{maxAttempts} | country={countryHint} | imgSize={imageSize}");
+                rawResponse = await _aiService.CallGeminiFlashAsync(imageContent, countryHint);
+                Console.WriteLine($"[OCR][{source}] Raw response length: {rawResponse?.Length ?? 0}");
+
+                var aiJson = OracleAiService.ParseJsonFromAiResponse(rawResponse!);
+                aiJson = ValidateAndFixAmounts(aiJson);
+                var detectedCurrency = aiJson.TryGetProperty("currency", out var curProp) ? curProp.GetString() : null;
+                aiJson = ValidateDateByCurrency(aiJson, detectedCurrency, country);
+                var fields = MapToAlgoTextFields(aiJson);
+
+                stopwatch.Stop();
+                Console.WriteLine($"[OCR][{source}] OK in {stopwatch.ElapsedMilliseconds}ms | attempt={attempt} | Total={fields.Total} {fields.Currency} | Merchant={fields.MerchantName}");
+
+                await SaveScanLog(new InvoiceScanLog
+                {
+                    UserId = userId ?? Guid.Empty,
+                    RawAiResponse = rawResponse,
+                    CountryHint = countryHint,
+                    Status = "Success",
+                    DurationMs = stopwatch.ElapsedMilliseconds,
+                    HttpStatusCode = 200,
+                    Source = source,
+                    AttemptNumber = attempt,
+                    ImageSizeBytes = imageSize
+                });
+
+                return new AnalyzeInvoiceResponse { Success = true, Fields = fields, RawResponse = rawResponse };
+            }
+            catch (OciApiException ex)
+            {
+                lastError = ex;
+                lastHttpStatus = ex.StatusCode;
+                lastOciBody = ex.ResponseBody;
+                Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt} OCI error {ex.StatusCode}: {ex.Message}");
+
+                // Retry only on rate-limit (429) or 5xx
+                bool retriable = ex.StatusCode == 429 || ex.StatusCode >= 500;
+                if (!retriable || attempt == maxAttempts) break;
+
+                int delayMs = (int)Math.Pow(2, attempt) * 500; // 1s, 2s, 4s
+                Console.WriteLine($"[OCR][{source}] Retriable, waiting {delayMs}ms before retry...");
+                await Task.Delay(delayMs);
+            }
+            catch (HttpRequestException ex)
+            {
+                lastError = ex;
+                Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt} network error: {ex.Message}");
+                if (attempt == maxAttempts) break;
+                await Task.Delay((int)Math.Pow(2, attempt) * 500);
+            }
+            catch (Exception ex)
+            {
+                // Non-retriable (parse error, validation, etc.) — fail immediately
+                lastError = ex;
+                Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt} non-retriable error: {ex.GetType().Name}: {ex.Message}");
+                break;
+            }
         }
-        catch (Exception ex)
+
+        stopwatch.Stop();
+        var errMsg = lastError?.Message ?? "Unknown error";
+        Console.Error.WriteLine($"[OCR][{source}] FAILED after retries in {stopwatch.ElapsedMilliseconds}ms: {errMsg}");
+
+        await SaveScanLog(new InvoiceScanLog
         {
-            stopwatch.Stop();
-            Console.WriteLine($"[OCR] FATAL ERROR: {ex.Message}");
+            UserId = userId ?? Guid.Empty,
+            RawAiResponse = rawResponse,
+            CountryHint = countryHint,
+            Status = "Failed",
+            DurationMs = stopwatch.ElapsedMilliseconds,
+            HttpStatusCode = lastHttpStatus,
+            ErrorMessage = errMsg,
+            ErrorType = lastError?.GetType().Name,
+            OciResponseBody = lastOciBody,
+            Source = source,
+            AttemptNumber = maxAttempts,
+            ImageSizeBytes = imageSize
+        });
 
-            // Log even failed scans
-            await SaveScanLog(userId, rawResponse, country, "Failed");
-
-            return new AnalyzeInvoiceResponse { Success = false, Error = ex.Message };
-        }
+        return new AnalyzeInvoiceResponse { Success = false, Error = errMsg };
     }
 
     // ═══════════════════════════════════════
     // Logging — InvoiceScanLogs
     // ═══════════════════════════════════════
 
-    private async Task SaveScanLog(Guid? userId, string? rawResponse, string? countryHint, string status)
+    private async Task SaveScanLog(InvoiceScanLog log)
     {
         try
         {
-            var log = new InvoiceScanLog
-            {
-                UserId = userId ?? Guid.Empty,
-                RawAiResponse = rawResponse,
-                CountryHint = countryHint,
-                Status = status
-            };
             _db.InvoiceScanLogs.Add(log);
             await _db.SaveChangesAsync();
-            Console.WriteLine($"[OCR] Log saved: {log.Id}");
+            Console.WriteLine($"[OCR-LOG] Saved {log.Id} | status={log.Status} | http={log.HttpStatusCode} | duration={log.DurationMs}ms | source={log.Source}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[OCR] Failed to save log: {ex.Message}");
+            Console.Error.WriteLine($"[OCR-LOG] Failed to save log: {ex.Message}");
         }
     }
-
     // ═══════════════════════════════════════
     // Amount Validation
     // ═══════════════════════════════════════
@@ -449,17 +491,19 @@ public class InvoiceService
 
             var countryHint = country?.ToUpperInvariant() ?? "IL";
 
-            // Scan with OCR
-            var rawResponse = await _aiService.CallGeminiFlashAsync(imageBase64, countryHint);
-            var aiJson = OracleAiService.ParseJsonFromAiResponse(rawResponse);
-            aiJson = ValidateAndFixAmounts(aiJson);
+            // Reuse main scan path (with retry + logging)
+            var scanResult = await AnalyzeInternalAsync(imageBase64, null, country, userId, source: "bulk-train");
+            if (!scanResult.Success || scanResult.Fields == null)
+            {
+                Console.Error.WriteLine($"[OCR-TRAIN] Scan failed: {scanResult.Error}");
+                return new BulkTrainResponse { Success = false, Error = scanResult.Error };
+            }
 
-            var detectedCurrency = aiJson.TryGetProperty("currency", out var curProp) ? curProp.GetString() : null;
-            aiJson = ValidateDateByCurrency(aiJson, detectedCurrency, country);
+            var fields = scanResult.Fields;
+            JsonElement aiJson;
+            try { aiJson = JsonDocument.Parse(scanResult.RawResponse ?? "{}").RootElement; }
+            catch { aiJson = JsonDocument.Parse("{}").RootElement; }
 
-            var fields = MapToAlgoTextFields(aiJson);
-
-            // Save as training sample
             var sample = new OcrTrainingSample
             {
                 VendorName = fields.MerchantName,
@@ -477,18 +521,27 @@ public class InvoiceService
 
             Console.WriteLine($"[OCR-TRAIN] Sample saved: {sample.Id} | Vendor={fields.MerchantName}");
 
-            return new BulkTrainResponse
-            {
-                Success = true,
-                SampleId = sample.Id,
-                Fields = fields
-            };
+            return new BulkTrainResponse { Success = true, SampleId = sample.Id, Fields = fields };
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[OCR-TRAIN] Error: {ex.Message}");
+            Console.Error.WriteLine($"[OCR-TRAIN] Error: {ex.GetType().Name}: {ex.Message}");
             return new BulkTrainResponse { Success = false, Error = ex.Message };
         }
+    }
+
+    /// <summary>
+    /// Get most recent scan logs (for debugging/admin UI)
+    /// </summary>
+    public async Task<List<InvoiceScanLog>> GetRecentLogsAsync(int limit = 50, Guid? userId = null)
+    {
+        var query = _db.InvoiceScanLogs.AsQueryable();
+        if (userId.HasValue && userId.Value != Guid.Empty)
+            query = query.Where(l => l.UserId == userId.Value);
+        return await query
+            .OrderByDescending(l => l.CreatedAt)
+            .Take(Math.Clamp(limit, 1, 200))
+            .ToListAsync();
     }
 
     /// <summary>

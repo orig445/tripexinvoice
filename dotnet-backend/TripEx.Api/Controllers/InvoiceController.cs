@@ -92,4 +92,45 @@ public class InvoiceController : ControllerBase
         var stats = await _invoiceService.GetTrainingStatsAsync();
         return Ok(stats);
     }
+
+    /// <summary>
+    /// Get recent OCR scan logs (admin/debug). Pass ?limit=N&onlyMine=true.
+    /// </summary>
+    [HttpGet("logs")]
+    public async Task<ActionResult> GetRecentLogs([FromQuery] int limit = 50, [FromQuery] bool onlyMine = false)
+    {
+        Guid? userId = null;
+        if (onlyMine)
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (Guid.TryParse(userIdClaim, out var uid)) userId = uid;
+        }
+        var logs = await _invoiceService.GetRecentLogsAsync(limit, userId);
+        return Ok(new
+        {
+            success = true,
+            count = logs.Count,
+            logs = logs.Select(l => new
+            {
+                l.Id,
+                l.CreatedAt,
+                l.UserId,
+                l.Source,
+                l.Status,
+                l.HttpStatusCode,
+                l.DurationMs,
+                l.AttemptNumber,
+                l.CountryHint,
+                l.ImageSizeBytes,
+                l.ErrorType,
+                l.ErrorMessage,
+                OciResponseBodyPreview = l.OciResponseBody?.Length > 500
+                    ? l.OciResponseBody.Substring(0, 500) + "..."
+                    : l.OciResponseBody,
+                RawAiResponsePreview = l.RawAiResponse?.Length > 500
+                    ? l.RawAiResponse.Substring(0, 500) + "..."
+                    : l.RawAiResponse
+            })
+        });
+    }
 }

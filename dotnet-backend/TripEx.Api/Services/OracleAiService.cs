@@ -131,10 +131,10 @@ public class OracleAiService
         if (!response.IsSuccessStatusCode)
         {
             Console.Error.WriteLine($"[OCI] Error {(int)response.StatusCode}: {responseBody}");
-            throw new HttpRequestException(
+            throw new OciApiException(
                 $"Oracle AI error: {(int)response.StatusCode} - {responseBody}",
-                null,
-                response.StatusCode);
+                (int)response.StatusCode,
+                responseBody);
         }
 
         // ── Validate response is valid JSON ──
@@ -365,5 +365,20 @@ PAYMENT FORM RULES:
     {
         return Regex.Replace(str, @"\\u([0-9a-fA-F]{4})", m =>
             ((char)Convert.ToInt32(m.Groups[1].Value, 16)).ToString());
+    }
+}
+
+/// <summary>
+/// Exception carrying OCI HTTP status + raw response body for diagnostics.
+/// </summary>
+public class OciApiException : Exception
+{
+    public int StatusCode { get; }
+    public string? ResponseBody { get; }
+
+    public OciApiException(string message, int statusCode, string? responseBody) : base(message)
+    {
+        StatusCode = statusCode;
+        ResponseBody = responseBody;
     }
 }
