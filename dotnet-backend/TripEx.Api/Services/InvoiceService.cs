@@ -72,6 +72,35 @@ public class InvoiceService
                 var fields = MapToAlgoTextFields(aiJson);
 
                 stopwatch.Stop();
+
+                // ── Sanity check: detect "empty result" (the classic 0-amount bug) ──
+                bool isEmptyResult = (string.IsNullOrEmpty(fields.Total) || fields.Total == "0.00" || fields.Total == "0")
+                                     && string.IsNullOrEmpty(fields.MerchantName)
+                                     && string.IsNullOrEmpty(fields.InvoiceNumber);
+
+                if (isEmptyResult && attempt < maxAttempts)
+                {
+                    // OCI returned 200 but Gemini gave us garbage — retry once
+                    Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt}: OCI 200 but EMPTY result (Total=0, no merchant). Retrying...");
+                    await SaveScanLog(new InvoiceScanLog
+                    {
+                        UserId = userId ?? Guid.Empty,
+                        RawAiResponse = rawResponse,
+                        CountryHint = countryHint,
+                        Status = "EmptyResult",
+                        DurationMs = stopwatch.ElapsedMilliseconds,
+                        HttpStatusCode = 200,
+                        ErrorMessage = "OCI returned success but extracted no data (Total=0, no merchant)",
+                        ErrorType = "EmptyExtraction",
+                        Source = source,
+                        AttemptNumber = attempt,
+                        ImageSizeBytes = imageSize
+                    });
+                    await Task.Delay(500);
+                    stopwatch.Restart();
+                    continue;
+                }
+
                 Console.WriteLine($"[OCR][{source}] OK in {stopwatch.ElapsedMilliseconds}ms | attempt={attempt} | Total={fields.Total} {fields.Currency} | Merchant={fields.MerchantName}");
 
                 await SaveScanLog(new InvoiceScanLog
@@ -79,9 +108,10 @@ public class InvoiceService
                     UserId = userId ?? Guid.Empty,
                     RawAiResponse = rawResponse,
                     CountryHint = countryHint,
-                    Status = "Success",
+                    Status = isEmptyResult ? "SuccessButEmpty" : "Success",
                     DurationMs = stopwatch.ElapsedMilliseconds,
                     HttpStatusCode = 200,
+                    ErrorMessage = isEmptyResult ? "Returned empty result after retries" : null,
                     Source = source,
                     AttemptNumber = attempt,
                     ImageSizeBytes = imageSize
