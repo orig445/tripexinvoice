@@ -1,0 +1,7 @@
+/dev-server/dotnet-backend/TripEx.Api/obj/Debug/net8.0/TripEx.Api.csproj.AssemblyReference.cache
+/dev-server/dotnet-backend/TripEx.Api/obj/Debug/net8.0/TripEx.Api.GeneratedMSBuildEditorConfig.editorconfig
+/dev-server/dotnet-backend/TripEx.Api/obj/Debug/net8.0/TripEx.Api.AssemblyInfoInputs.cache
+/dev-server/dotnet-backend/TripEx.Api/obj/Debug/net8.0/TripEx.Api.AssemblyInfo.cs
+/dev-server/dotnet-backend/TripEx.Api/obj/Debug/net8.0/TripEx.Api.csproj.CoreCompileInputs.cache
+/dev-server/dotnet-backend/TripEx.Api/obj/Debug/net8.0/TripEx.Api.MvcApplicationPartsAssemblyInfo.cs
+/dev-server/dotnet-backend/TripEx.Api/obj/Debug/net8.0/TripEx.Api.MvcApplicationPartsAssemblyInfo.cache
