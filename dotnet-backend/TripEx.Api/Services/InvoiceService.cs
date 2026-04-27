@@ -535,7 +535,7 @@ public class InvoiceService
     /// </summary>
     public async Task<List<InvoiceScanLog>> GetRecentLogsAsync(int limit = 50, Guid? userId = null)
     {
-        var query = _db.InvoiceScanLogs.AsQueryable();
+        var query = _db.InvoiceScanLogs.AsNoTracking().AsQueryable();
         if (userId.HasValue && userId.Value != Guid.Empty)
             query = query.Where(l => l.UserId == userId.Value);
         return await query

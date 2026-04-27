@@ -18,9 +18,19 @@ public class OracleAiService
     private readonly string? _compartmentId;
     private readonly TripExDbContext _db;
 
+    // ── Concurrency throttle: max 3 simultaneous OCI calls process-wide ──
+    // Prevents overwhelming OCI when user uploads many receipts at once.
+    private static readonly SemaphoreSlim _ociThrottle = new(3, 3);
+
+    // ── Image size limits (raw base64 length) ──
+    // 10MB raw bytes ≈ 13.3MB base64 chars
+    private const int MaxImageBase64Length = 14_000_000;
+    private const int MinImageBase64Length = 100;
+
     public OracleAiService(IHttpClientFactory httpClientFactory, IConfiguration config, TripExDbContext db)
     {
         _httpClient = httpClientFactory.CreateClient();
+        _httpClient.Timeout = TimeSpan.FromSeconds(60); // hard cap — never hang on OCI
         _db = db;
         _apiKey = config["Oracle:ApiKey"]
             ?? Environment.GetEnvironmentVariable("ORACLE_API_KEY")
@@ -48,8 +58,11 @@ public class OracleAiService
 
         // Validate base64 content (strip prefix and check)
         var base64Part = imageUrl.Contains(",") ? imageUrl[(imageUrl.IndexOf(',') + 1)..] : imageUrl;
-        if (string.IsNullOrWhiteSpace(base64Part) || base64Part.Length < 100)
+        if (string.IsNullOrWhiteSpace(base64Part) || base64Part.Length < MinImageBase64Length)
             throw new ArgumentException("Image data is too small or empty — likely corrupted");
+        if (base64Part.Length > MaxImageBase64Length)
+            throw new ArgumentException(
+                $"Image too large ({base64Part.Length / 1_000_000}MB base64). Max ~10MB. Please compress on the client side.");
 
         var prompt = await PrepareSystemPromptAsync(countryHint);
 
@@ -114,19 +127,41 @@ public class OracleAiService
             System.Text.Encoding.UTF8,
             "application/json");
 
-        Console.WriteLine($"[OCI] Sending request to: {_endpoint}");
+        // ── Throttle: wait for an OCI slot (max 3 concurrent process-wide) ──
+        var throttleStart = DateTime.UtcNow;
+        await _ociThrottle.WaitAsync();
+        var waitedMs = (DateTime.UtcNow - throttleStart).TotalMilliseconds;
+        if (waitedMs > 100)
+            Console.WriteLine($"[OCI] Throttle wait: {waitedMs:F0}ms (queue depth)");
 
         HttpResponseMessage response;
+        string responseBody;
         try
         {
-            response = await _httpClient.SendAsync(request);
-        }
-        catch (Exception ex)
-        {
-            throw new HttpRequestException($"Failed to connect to OCI endpoint: {ex.Message}", ex);
-        }
+            Console.WriteLine($"[OCI] Sending request to: {_endpoint}");
+            try
+            {
+                response = await _httpClient.SendAsync(request);
+            }
+            catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException || !ex.CancellationToken.IsCancellationRequested)
+            {
+                // HttpClient.Timeout reached — surface as 504 so retry layer treats it as transient
+                throw new OciApiException(
+                    $"OCI request timed out after {_httpClient.Timeout.TotalSeconds}s",
+                    504, null);
+            }
+            catch (HttpRequestException) { throw; }
+            catch (Exception ex)
+            {
+                throw new HttpRequestException($"Failed to connect to OCI endpoint: {ex.Message}", ex);
+            }
 
-        var responseBody = await response.Content.ReadAsStringAsync();
+            responseBody = await response.Content.ReadAsStringAsync();
+        }
+        finally
+        {
+            _ociThrottle.Release();
+        }
 
         if (!response.IsSuccessStatusCode)
         {
