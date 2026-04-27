@@ -367,3 +367,18 @@ PAYMENT FORM RULES:
             ((char)Convert.ToInt32(m.Groups[1].Value, 16)).ToString());
     }
 }
+
+/// <summary>
+/// Exception carrying OCI HTTP status + raw response body for diagnostics.
+/// </summary>
+public class OciApiException : Exception
+{
+    public int StatusCode { get; }
+    public string? ResponseBody { get; }
+
+    public OciApiException(string message, int statusCode, string? responseBody) : base(message)
+    {
+        StatusCode = statusCode;
+        ResponseBody = responseBody;
+    }
+}
