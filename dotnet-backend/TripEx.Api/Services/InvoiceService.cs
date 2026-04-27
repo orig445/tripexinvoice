@@ -491,17 +491,19 @@ public class InvoiceService
 
             var countryHint = country?.ToUpperInvariant() ?? "IL";
 
-            // Scan with OCR
-            var rawResponse = await _aiService.CallGeminiFlashAsync(imageBase64, countryHint);
-            var aiJson = OracleAiService.ParseJsonFromAiResponse(rawResponse);
-            aiJson = ValidateAndFixAmounts(aiJson);
+            // Reuse main scan path (with retry + logging)
+            var scanResult = await AnalyzeInternalAsync(imageBase64, null, country, userId, source: "bulk-train");
+            if (!scanResult.Success || scanResult.Fields == null)
+            {
+                Console.Error.WriteLine($"[OCR-TRAIN] Scan failed: {scanResult.Error}");
+                return new BulkTrainResponse { Success = false, Error = scanResult.Error };
+            }
 
-            var detectedCurrency = aiJson.TryGetProperty("currency", out var curProp) ? curProp.GetString() : null;
-            aiJson = ValidateDateByCurrency(aiJson, detectedCurrency, country);
+            var fields = scanResult.Fields;
+            JsonElement aiJson;
+            try { aiJson = JsonDocument.Parse(scanResult.RawResponse ?? "{}").RootElement; }
+            catch { aiJson = JsonDocument.Parse("{}").RootElement; }
 
-            var fields = MapToAlgoTextFields(aiJson);
-
-            // Save as training sample
             var sample = new OcrTrainingSample
             {
                 VendorName = fields.MerchantName,
@@ -519,18 +521,27 @@ public class InvoiceService
 
             Console.WriteLine($"[OCR-TRAIN] Sample saved: {sample.Id} | Vendor={fields.MerchantName}");
 
-            return new BulkTrainResponse
-            {
-                Success = true,
-                SampleId = sample.Id,
-                Fields = fields
-            };
+            return new BulkTrainResponse { Success = true, SampleId = sample.Id, Fields = fields };
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[OCR-TRAIN] Error: {ex.Message}");
+            Console.Error.WriteLine($"[OCR-TRAIN] Error: {ex.GetType().Name}: {ex.Message}");
             return new BulkTrainResponse { Success = false, Error = ex.Message };
         }
+    }
+
+    /// <summary>
+    /// Get most recent scan logs (for debugging/admin UI)
+    /// </summary>
+    public async Task<List<InvoiceScanLog>> GetRecentLogsAsync(int limit = 50, Guid? userId = null)
+    {
+        var query = _db.InvoiceScanLogs.AsQueryable();
+        if (userId.HasValue && userId.Value != Guid.Empty)
+            query = query.Where(l => l.UserId == userId.Value);
+        return await query
+            .OrderByDescending(l => l.CreatedAt)
+            .Take(Math.Clamp(limit, 1, 200))
+            .ToListAsync();
     }
 
     /// <summary>
