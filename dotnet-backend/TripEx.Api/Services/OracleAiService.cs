@@ -58,8 +58,11 @@ public class OracleAiService
 
         // Validate base64 content (strip prefix and check)
         var base64Part = imageUrl.Contains(",") ? imageUrl[(imageUrl.IndexOf(',') + 1)..] : imageUrl;
-        if (string.IsNullOrWhiteSpace(base64Part) || base64Part.Length < 100)
+        if (string.IsNullOrWhiteSpace(base64Part) || base64Part.Length < MinImageBase64Length)
             throw new ArgumentException("Image data is too small or empty — likely corrupted");
+        if (base64Part.Length > MaxImageBase64Length)
+            throw new ArgumentException(
+                $"Image too large ({base64Part.Length / 1_000_000}MB base64). Max ~10MB. Please compress on the client side.");
 
         var prompt = await PrepareSystemPromptAsync(countryHint);
 
