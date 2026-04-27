@@ -131,10 +131,10 @@ public class OracleAiService
         if (!response.IsSuccessStatusCode)
         {
             Console.Error.WriteLine($"[OCI] Error {(int)response.StatusCode}: {responseBody}");
-            throw new HttpRequestException(
+            throw new OciApiException(
                 $"Oracle AI error: {(int)response.StatusCode} - {responseBody}",
-                null,
-                response.StatusCode);
+                (int)response.StatusCode,
+                responseBody);
         }
 
         // ── Validate response is valid JSON ──
