@@ -267,6 +267,7 @@ PAYMENT FORM RULES:
 - card_last4: If credit card, extract last 4 digits (look for ****1234, XXXX-1234, etc.)
 - card_type: Identify card network from text or BIN:
   Visa (starts with 4), Mastercard (starts with 5), Amex (starts with 3), Isracard/Isracart, Diners, etc.";
+    }
 
     /// <summary>
     /// Parse JSON from AI response (handles markdown wrappers, brace counting, truncation repair)
