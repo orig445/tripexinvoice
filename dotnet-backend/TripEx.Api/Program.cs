@@ -9,6 +9,12 @@ using TripEx.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ── Request body size limit: 20MB to cover OCR base64 image payloads (~14MB max) ──
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.Limits.MaxRequestBodySize = 20_971_520; // 20MB
+});
+
 // ── Configuration ──
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

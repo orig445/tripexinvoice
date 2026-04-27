@@ -24,15 +24,13 @@ public class AuthService
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
     {
-        // Check if email already exists
-        var existing = await _db.Profiles.FirstOrDefaultAsync(p => p.Email == request.Email);
-        if (existing != null)
+        // Check against UserCredentials (has UNIQUE index) — prevents false-clear on race condition
+        if (await _db.UserCredentials.AnyAsync(c => c.Email == request.Email))
             return new AuthResponse { Success = false, Error = "Email already registered" };
 
         var userId = Guid.NewGuid();
         var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
-        // Create user credential
         _db.UserCredentials.Add(new UserCredential
         {
             UserId = userId,
@@ -40,7 +38,6 @@ public class AuthService
             PasswordHash = passwordHash
         });
 
-        // Create profile
         _db.Profiles.Add(new Profile
         {
             UserId = userId,
@@ -48,14 +45,23 @@ public class AuthService
             DisplayName = request.DisplayName ?? request.Email.Split('@')[0]
         });
 
-        // Assign default role
         _db.UserRoles.Add(new UserRole
         {
             UserId = userId,
             Role = "user"
         });
 
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (
+            ex.InnerException?.Message.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase) == true ||
+            ex.InnerException?.Message.Contains("duplicate", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            // Concurrent registration with same email — the UNIQUE constraint on UserCredentials caught it
+            return new AuthResponse { Success = false, Error = "Email already registered" };
+        }
 
         var token = GenerateToken(userId, request.Email, "user");
 

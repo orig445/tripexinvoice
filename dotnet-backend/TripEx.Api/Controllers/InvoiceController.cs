@@ -94,17 +94,15 @@ public class InvoiceController : ControllerBase
     }
 
     /// <summary>
-    /// Get recent OCR scan logs (admin/debug). Pass ?limit=N&onlyMine=true.
+    /// Get recent OCR scan logs for the authenticated user. Pass ?limit=N.
     /// </summary>
     [HttpGet("logs")]
-    public async Task<ActionResult> GetRecentLogs([FromQuery] int limit = 50, [FromQuery] bool onlyMine = false)
+    public async Task<ActionResult> GetRecentLogs([FromQuery] int limit = 50)
     {
+        // Always scope to the authenticated user — never expose other users' scan data
         Guid? userId = null;
-        if (onlyMine)
-        {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (Guid.TryParse(userIdClaim, out var uid)) userId = uid;
-        }
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (Guid.TryParse(userIdClaim, out var uid)) userId = uid;
         var logs = await _invoiceService.GetRecentLogsAsync(limit, userId);
         return Ok(new
         {

@@ -48,14 +48,13 @@ public class ChatService
         Guid sessionId;
         if (!string.IsNullOrEmpty(request.SessionToken) && Guid.TryParse(request.SessionToken, out var existingId))
         {
-            sessionId = existingId;
+            // Verify ownership — reject foreign session tokens to prevent session hijacking
+            var owned = await _db.ChatSessions.AnyAsync(s => s.Id == existingId && s.UserId == userId);
+            sessionId = owned ? existingId : await CreateSessionAsync(userId, request.Source);
         }
         else
         {
-            var session = new ChatSession { UserId = userId, Source = request.Source };
-            _db.ChatSessions.Add(session);
-            await _db.SaveChangesAsync();
-            sessionId = session.Id;
+            sessionId = await CreateSessionAsync(userId, request.Source);
         }
 
         // ── Image flow ──
@@ -163,6 +162,14 @@ public class ChatService
             RedirectPage = mapping.RedirectPage ?? "",
             SessionId = sessionId.ToString()
         };
+    }
+
+    private async Task<Guid> CreateSessionAsync(Guid userId, string source)
+    {
+        var session = new ChatSession { UserId = userId, Source = source };
+        _db.ChatSessions.Add(session);
+        await _db.SaveChangesAsync();
+        return session.Id;
     }
 
     private async Task<ChatResponse> HandleImageAsync(ChatRequest request, Guid sessionId, Guid userId)

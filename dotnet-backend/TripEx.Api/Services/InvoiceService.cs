@@ -227,7 +227,8 @@ public class InvoiceService
                 amountsDict["tax_amount"] = vatableSales.Value;
                 dict["amounts"] = amountsDict;
                 var rebuilt = JsonSerializer.SerializeToUtf8Bytes(dict);
-                return JsonDocument.Parse(rebuilt).RootElement.Clone();
+                using var doc1 = JsonDocument.Parse(rebuilt);
+                return doc1.RootElement.Clone();
             }
         }
 
@@ -250,7 +251,8 @@ public class InvoiceService
                         amountsDict["tax_amount"] = correctedTax;
                         dict["amounts"] = amountsDict;
                         var rebuilt = JsonSerializer.SerializeToUtf8Bytes(dict);
-                        return JsonDocument.Parse(rebuilt).RootElement.Clone();
+                        using var doc2 = JsonDocument.Parse(rebuilt);
+                        return doc2.RootElement.Clone();
                     }
                 }
             }
@@ -297,7 +299,8 @@ public class InvoiceService
             var dict = JsonSerializer.Deserialize<Dictionary<string, object>>(json.GetRawText()) ?? new();
             dict["invoice_date"] = normalizedDate;
             var rebuilt = JsonSerializer.SerializeToUtf8Bytes(dict);
-            return JsonDocument.Parse(rebuilt).RootElement.Clone();
+            using var doc3 = JsonDocument.Parse(rebuilt);
+            return doc3.RootElement.Clone();
         }
 
         return json;
@@ -540,8 +543,16 @@ public class InvoiceService
 
             var fields = scanResult.Fields;
             JsonElement aiJson;
-            try { aiJson = JsonDocument.Parse(scanResult.RawResponse ?? "{}").RootElement; }
-            catch { aiJson = JsonDocument.Parse("{}").RootElement; }
+            try
+            {
+                using var rawDoc = JsonDocument.Parse(scanResult.RawResponse ?? "{}");
+                aiJson = rawDoc.RootElement.Clone();
+            }
+            catch
+            {
+                using var emptyDoc = JsonDocument.Parse("{}");
+                aiJson = emptyDoc.RootElement.Clone();
+            }
 
             var sample = new OcrTrainingSample
             {
@@ -626,8 +637,8 @@ public class InvoiceService
             // Group by country to analyze patterns per region
             var byCountry = verifiedSamples.GroupBy(s => s.Country ?? "UNKNOWN").ToList();
 
-            // Clear existing patterns
-            _db.OcrTrainingPatterns.RemoveRange(_db.OcrTrainingPatterns);
+            // Clear existing patterns — ExecuteDeleteAsync issues a single DELETE without loading into memory
+            await _db.OcrTrainingPatterns.ExecuteDeleteAsync();
 
             var patternsCreated = 0;
 

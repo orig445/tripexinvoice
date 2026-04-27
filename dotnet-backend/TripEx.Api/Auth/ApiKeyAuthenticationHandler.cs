@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
@@ -30,7 +32,10 @@ public class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAuthentic
         if (string.IsNullOrEmpty(providedKey))
             return Task.FromResult(AuthenticateResult.NoResult());
 
-        if (providedKey != Options.ApiKey)
+        // Constant-time comparison via SHA-256 hashing — prevents timing attacks
+        var providedHash = SHA256.HashData(Encoding.UTF8.GetBytes(providedKey));
+        var expectedHash = SHA256.HashData(Encoding.UTF8.GetBytes(Options.ApiKey));
+        if (!CryptographicOperations.FixedTimeEquals(providedHash, expectedHash))
             return Task.FromResult(AuthenticateResult.Fail("Invalid API key"));
 
         var claims = new[]
