@@ -78,27 +78,35 @@ public class InvoiceService
                                      && string.IsNullOrEmpty(fields.MerchantName)
                                      && string.IsNullOrEmpty(fields.InvoiceNumber);
 
-                if (isEmptyResult && attempt < maxAttempts)
+                if (isEmptyResult)
                 {
-                    // OCI returned 200 but Gemini gave us garbage — retry once
-                    Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt}: OCI 200 but EMPTY result (Total=0, no merchant). Retrying...");
-                    await SaveScanLog(new InvoiceScanLog
+                    if (attempt < maxAttempts)
                     {
-                        UserId = userId ?? Guid.Empty,
-                        RawAiResponse = rawResponse,
-                        CountryHint = countryHint,
-                        Status = "EmptyResult",
-                        DurationMs = stopwatch.ElapsedMilliseconds,
-                        HttpStatusCode = 200,
-                        ErrorMessage = "OCI returned success but extracted no data (Total=0, no merchant)",
-                        ErrorType = "EmptyExtraction",
-                        Source = source,
-                        AttemptNumber = attempt,
-                        ImageSizeBytes = imageSize
-                    });
-                    await Task.Delay(500);
-                    stopwatch.Restart();
-                    continue;
+                        // OCI returned 200 but Gemini gave us garbage — retry
+                        Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt}: OCI 200 but EMPTY result (Total=0, no merchant). Retrying...");
+                        await SaveScanLog(new InvoiceScanLog
+                        {
+                            UserId = userId ?? Guid.Empty,
+                            RawAiResponse = rawResponse,
+                            CountryHint = countryHint,
+                            Status = "EmptyResult",
+                            DurationMs = stopwatch.ElapsedMilliseconds,
+                            HttpStatusCode = 200,
+                            ErrorMessage = "OCI returned success but extracted no data (Total=0, no merchant)",
+                            ErrorType = "EmptyExtraction",
+                            Source = source,
+                            AttemptNumber = attempt,
+                            ImageSizeBytes = imageSize
+                        });
+                        await Task.Delay(500);
+                        stopwatch.Restart();
+                        continue;
+                    }
+                    // All retries exhausted — hard failure, never return null fields silently
+                    lastError = new InvalidOperationException(
+                        $"OCR extracted no data after {maxAttempts} attempts (Total=0, no merchant, no invoice number). Image may be unreadable or unsupported.");
+                    lastHttpStatus = 200;
+                    break;
                 }
 
                 Console.WriteLine($"[OCR][{source}] OK in {stopwatch.ElapsedMilliseconds}ms | attempt={attempt} | Total={fields.Total} {fields.Currency} | Merchant={fields.MerchantName}");
@@ -108,10 +116,9 @@ public class InvoiceService
                     UserId = userId ?? Guid.Empty,
                     RawAiResponse = rawResponse,
                     CountryHint = countryHint,
-                    Status = isEmptyResult ? "SuccessButEmpty" : "Success",
+                    Status = "Success",
                     DurationMs = stopwatch.ElapsedMilliseconds,
                     HttpStatusCode = 200,
-                    ErrorMessage = isEmptyResult ? "Returned empty result after retries" : null,
                     Source = source,
                     AttemptNumber = attempt,
                     ImageSizeBytes = imageSize
@@ -130,9 +137,10 @@ public class InvoiceService
                 bool retriable = ex.StatusCode == 429 || ex.StatusCode >= 500;
                 if (!retriable || attempt == maxAttempts) break;
 
-                int delayMs = (int)Math.Pow(2, attempt) * 500; // 1s, 2s, 4s
+                int delayMs = (int)Math.Pow(2, attempt) * 500; // 1s, 2s
                 Console.WriteLine($"[OCR][{source}] Retriable, waiting {delayMs}ms before retry...");
                 await Task.Delay(delayMs);
+                stopwatch.Restart();
             }
             catch (HttpRequestException ex)
             {
@@ -140,6 +148,7 @@ public class InvoiceService
                 Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt} network error: {ex.Message}");
                 if (attempt == maxAttempts) break;
                 await Task.Delay((int)Math.Pow(2, attempt) * 500);
+                stopwatch.Restart();
             }
             catch (Exception ex)
             {
