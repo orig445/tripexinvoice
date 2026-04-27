@@ -206,6 +206,16 @@ public class InvoiceScanLog
     [Column("CountryHint")] public string? CountryHint { get; set; }
     [Column("Status")] public string? Status { get; set; }
     [Column("CreatedAt")] public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+
+    // ── Detailed diagnostics (added for bulk-train debugging) ──
+    [Column("DurationMs")] public long? DurationMs { get; set; }
+    [Column("HttpStatusCode")] public int? HttpStatusCode { get; set; }
+    [Column("ErrorMessage", TypeName = "nvarchar(max)")] public string? ErrorMessage { get; set; }
+    [Column("ErrorType")] public string? ErrorType { get; set; }
+    [Column("OciResponseBody", TypeName = "nvarchar(max)")] public string? OciResponseBody { get; set; }
+    [Column("ImageSizeBytes")] public int? ImageSizeBytes { get; set; }
+    [Column("Source")] public string? Source { get; set; }      // "analyze" | "bulk-train" | "chat"
+    [Column("AttemptNumber")] public int? AttemptNumber { get; set; }
 }
 
 /// <summary>
