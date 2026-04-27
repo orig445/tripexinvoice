@@ -19,10 +19,10 @@ public class ProductionHardeningTests
     }
 
     [Fact]
-    public void ParseJsonFromAiResponse_RejectsControlCharsButRecovers()
+    public void ParseJsonFromAiResponse_StripsControlCharsAndRecovers()
     {
-        // Control chars (other than tab/newline) should be stripped, parse should still succeed
-        var raw = "{\"foo\":\"bar\x01baz\"}";
+        // Control char \x01 between valid chars — stripped, parse succeeds
+        var raw = "{\"foo\":\"bar" + (char)0x01 + "baz\"}";
         var parsed = OracleAiService.ParseJsonFromAiResponse(raw);
         Assert.Equal("barbaz", parsed.GetProperty("foo").GetString());
     }
