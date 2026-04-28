@@ -32,7 +32,9 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
     setIsDragging(false);
   }, []);
 
-  const compressToJpeg = (file: File, maxWidth = 1600, quality = 0.8): Promise<{ base64: string; blob: Blob }> => {
+  // Compress aggressively: target ~800KB JPEG so OCI Gemini doesn't time out on QA.
+  // Iteratively lowers quality if the result is still too large (e.g. iPhone HEIC->JPEG ~5MB).
+  const compressToJpeg = (file: File, maxWidth = 1400, initialQuality = 0.75, targetBytes = 800_000): Promise<{ base64: string; blob: Blob }> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
       const url = URL.createObjectURL(file);
@@ -40,20 +42,29 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
         URL.revokeObjectURL(url);
         const scale = Math.min(1, maxWidth / img.width);
         const canvas = document.createElement("canvas");
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
         const ctx = canvas.getContext("2d");
         if (!ctx) return reject(new Error("Canvas not supported"));
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        const base64 = canvas.toDataURL("image/jpeg", quality);
-        canvas.toBlob(
-          (blob) => {
-            if (blob) resolve({ base64, blob });
-            else reject(new Error("Failed to compress"));
-          },
-          "image/jpeg",
-          quality
-        );
+
+        const tryQuality = (q: number) => {
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) return reject(new Error("Failed to compress"));
+              // If still too big and we can lower quality further, retry.
+              if (blob.size > targetBytes && q > 0.4) {
+                return tryQuality(Math.max(0.4, q - 0.1));
+              }
+              const base64 = canvas.toDataURL("image/jpeg", q);
+              console.log(`[InvoiceUploader] Compressed to ${(blob.size / 1024).toFixed(0)}KB @ q=${q.toFixed(2)}, ${canvas.width}x${canvas.height}`);
+              resolve({ base64, blob });
+            },
+            "image/jpeg",
+            q
+          );
+        };
+        tryQuality(initialQuality);
       };
       img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Failed to load image")); };
       img.src = url;
