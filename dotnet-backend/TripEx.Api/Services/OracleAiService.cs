@@ -266,7 +266,13 @@ LEARNED PATTERNS (from analyzed receipts — use these to improve accuracy):
         return $@"You are an expert invoice/receipt OCR analyzer. Extract data for {locale}.
 Return STRICT JSON only — no markdown, no explanation.
 
-GOLDEN RULE: If you cannot clearly read a value, return null. Wrong data is worse than no data.
+🔴 MANDATORY FIELDS (combtas client REQUIRES these — try HARD to extract every one):
+   1. payment.amount_paid → the FINAL TOTAL the customer paid (including tax). MUST be > 0 if any total is visible.
+   2. invoice_date → the transaction date (YYYY-MM-DD). If only partial date visible, infer year from current year.
+   3. invoice_number → ANY identifier: receipt #, transaction ID, order #, ref #, document #, slip #. Use ANY number labeled as receipt/transaction/order/ref/slip.
+   4. currency → ALWAYS detect from symbol/code/country context. Defaults by country: PH=PHP, IL=ILS, US=USD, KR=KRW, JP=JPY, EU=EUR, GB=GBP.
+
+GOLDEN RULE: Only return null after CAREFUL inspection. Wrong data is worse than no data — but giving up too early is also bad. TRY HARD on the 4 mandatory fields above.
 
 DOCUMENT TYPES to recognize:
 - Standard invoice/receipt, Payment terminal (Maya, GCash, BPI), Digital receipt, Handwritten receipt
