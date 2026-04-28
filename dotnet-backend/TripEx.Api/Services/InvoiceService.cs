@@ -120,6 +120,15 @@ public class InvoiceService
                     ImageSizeBytes = imageSize
                 });
 
+                if (missingTotal)
+                    return new AnalyzeInvoiceResponse
+                    {
+                        Success = false,
+                        Fields = fields,
+                        RawResponse = rawResponse,
+                        Error = "OCR failed to extract a valid total amount after all retries."
+                    };
+
                 return new AnalyzeInvoiceResponse { Success = true, Fields = fields, RawResponse = rawResponse };
             }
             catch (OciApiException ex)
