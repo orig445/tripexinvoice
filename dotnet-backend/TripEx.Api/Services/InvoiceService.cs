@@ -417,48 +417,99 @@ public class InvoiceService
         decimal? totalValue = null;
 
         if (json.TryGetProperty("payment", out var payment))
-            totalValue = GetDecimalProp(payment, "amount_paid");
+            totalValue = GetDecimalProp(payment, "amount_paid")
+                      ?? GetDecimalProp(payment, "total")
+                      ?? GetDecimalProp(payment, "amount")
+                      ?? GetDecimalProp(payment, "paid");
 
         // Fallback: calculate from amounts
         if (!totalValue.HasValue || totalValue.Value == 0)
         {
             if (json.TryGetProperty("amounts", out var amounts))
             {
-                decimal total = 0;
-                foreach (var prop in new[] { "vatable_sales_amount", "non_vatable_sales_amount", "service_charge_amount", "tax_amount" })
+                // Try direct total fields first (some AIs include them)
+                totalValue = GetDecimalProp(amounts, "total")
+                          ?? GetDecimalProp(amounts, "total_amount")
+                          ?? GetDecimalProp(amounts, "grand_total");
+
+                if (!totalValue.HasValue || totalValue.Value == 0)
                 {
-                    var val = GetDecimalProp(amounts, prop);
-                    if (val.HasValue) total += val.Value;
+                    decimal total = 0;
+                    foreach (var prop in new[] { "vatable_sales_amount", "non_vatable_sales_amount", "service_charge_amount", "tax_amount" })
+                    {
+                        var val = GetDecimalProp(amounts, prop);
+                        if (val.HasValue) total += val.Value;
+                    }
+                    if (total > 0) totalValue = total;
                 }
-                if (total > 0) totalValue = total;
             }
         }
 
-        // Fallback: top-level total
+        // Fallback: top-level total (many naming variations)
         if (!totalValue.HasValue || totalValue.Value == 0)
-            totalValue = GetDecimalProp(json, "total") ?? GetDecimalProp(json, "total_amount") ?? GetDecimalProp(json, "amount");
+            totalValue = GetDecimalProp(json, "total")
+                      ?? GetDecimalProp(json, "total_amount")
+                      ?? GetDecimalProp(json, "totalAmount")
+                      ?? GetDecimalProp(json, "amount")
+                      ?? GetDecimalProp(json, "grand_total")
+                      ?? GetDecimalProp(json, "grandTotal");
 
         if (totalValue.HasValue)
         {
-            fields.Total = totalValue.Value.ToString("F2");
-            fields.TotalAmount = totalValue.Value.ToString("F2");
+            fields.Total = totalValue.Value.ToString("F2", CultureInfo.InvariantCulture);
+            fields.TotalAmount = totalValue.Value.ToString("F2", CultureInfo.InvariantCulture);
         }
 
-        // VAT
+        // VAT — check amounts object AND top-level (multiple naming conventions)
+        decimal? taxValue = null;
+        decimal? vatableValue = null;
         if (json.TryGetProperty("amounts", out var amt))
         {
-            var taxVal = GetDecimalProp(amt, "tax_amount");
-            if (taxVal.HasValue) fields.TotalVAT = taxVal.Value.ToString("F2");
-
-            var vatableVal = GetDecimalProp(amt, "vatable_sales_amount");
-            if (vatableVal.HasValue) fields.SubCategory = vatableVal.Value.ToString("F2");
+            taxValue = GetDecimalProp(amt, "tax_amount")
+                    ?? GetDecimalProp(amt, "vat_amount")
+                    ?? GetDecimalProp(amt, "vat")
+                    ?? GetDecimalProp(amt, "tax");
+            vatableValue = GetDecimalProp(amt, "vatable_sales_amount")
+                        ?? GetDecimalProp(amt, "subtotal")
+                        ?? GetDecimalProp(amt, "net_amount")
+                        ?? GetDecimalProp(amt, "sub_total");
         }
+        // Top-level fallbacks for VAT
+        taxValue ??= GetDecimalProp(json, "tax_amount")
+                  ?? GetDecimalProp(json, "vat_amount")
+                  ?? GetDecimalProp(json, "vat")
+                  ?? GetDecimalProp(json, "tax")
+                  ?? GetDecimalProp(json, "totalVAT")
+                  ?? GetDecimalProp(json, "total_vat");
+        vatableValue ??= GetDecimalProp(json, "subtotal")
+                      ?? GetDecimalProp(json, "sub_total")
+                      ?? GetDecimalProp(json, "net_amount");
 
-        // Direct fields
-        fields.Currency = GetStringProp(json, "currency");
-        fields.InvoiceNumber = GetStringProp(json, "invoice_number");
-        fields.InvoiceDate = GetStringProp(json, "invoice_date");
-        fields.Type = GetStringProp(json, "document_type");
+        if (taxValue.HasValue) fields.TotalVAT = taxValue.Value.ToString("F2", CultureInfo.InvariantCulture);
+        if (vatableValue.HasValue) fields.SubCategory = vatableValue.Value.ToString("F2", CultureInfo.InvariantCulture);
+
+        // Direct fields (with multiple naming fallbacks)
+        fields.Currency = GetStringProp(json, "currency")
+                       ?? GetStringProp(json, "currency_code")
+                       ?? GetStringProp(json, "currencyCode");
+        fields.InvoiceNumber = GetStringProp(json, "invoice_number")
+                            ?? GetStringProp(json, "invoiceNumber")
+                            ?? GetStringProp(json, "receipt_number")
+                            ?? GetStringProp(json, "receiptNumber")
+                            ?? GetStringProp(json, "transaction_id")
+                            ?? GetStringProp(json, "transactionId")
+                            ?? GetStringProp(json, "document_number")
+                            ?? GetStringProp(json, "doc_number")
+                            ?? GetStringProp(json, "ref_number")
+                            ?? GetStringProp(json, "reference");
+        fields.InvoiceDate = GetStringProp(json, "invoice_date")
+                          ?? GetStringProp(json, "invoiceDate")
+                          ?? GetStringProp(json, "date")
+                          ?? GetStringProp(json, "transaction_date")
+                          ?? GetStringProp(json, "receipt_date");
+        fields.Type = GetStringProp(json, "document_type")
+                   ?? GetStringProp(json, "documentType")
+                   ?? GetStringProp(json, "type");
 
         // Expense Type
         var expType = GetStringProp(json, "expense_type") ?? GetStringProp(json, "category") ?? "other";
