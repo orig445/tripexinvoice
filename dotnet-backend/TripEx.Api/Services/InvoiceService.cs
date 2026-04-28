@@ -47,7 +47,7 @@ public class InvoiceService
 
         var stopwatch = Stopwatch.StartNew();
         string? rawResponse = null;
-        var countryHint = country?.ToUpperInvariant() ?? "PH";
+        var countryHint = country?.ToUpperInvariant() ?? "";
         var imageSize = imageBase64?.Length ?? 0;
 
         const int maxAttempts = 3;
@@ -73,15 +73,14 @@ public class InvoiceService
 
                 stopwatch.Stop();
 
-                // ── Sanity check: detect "empty result" (the classic 0-amount bug) ──
+                // ── Sanity check: detect "empty result" ──
                 bool isEmptyResult = (string.IsNullOrEmpty(fields.Total) || fields.Total == "0.00" || fields.Total == "0")
                                      && string.IsNullOrEmpty(fields.MerchantName)
                                      && string.IsNullOrEmpty(fields.InvoiceNumber);
 
                 if (isEmptyResult && attempt < maxAttempts)
                 {
-                    // OCI returned 200 but Gemini gave us garbage — retry once
-                    Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt}: OCI 200 but EMPTY result (Total=0, no merchant). Retrying...");
+                    Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt}: empty result — retrying with explicit prompt...");
                     await SaveScanLog(new InvoiceScanLog
                     {
                         UserId = userId ?? Guid.Empty,
@@ -90,13 +89,13 @@ public class InvoiceService
                         Status = "EmptyResult",
                         DurationMs = stopwatch.ElapsedMilliseconds,
                         HttpStatusCode = 200,
-                        ErrorMessage = "OCI returned success but extracted no data (Total=0, no merchant)",
+                        ErrorMessage = "Empty result on attempt " + attempt,
                         ErrorType = "EmptyExtraction",
                         Source = source,
                         AttemptNumber = attempt,
                         ImageSizeBytes = imageSize
                     });
-                    await Task.Delay(500);
+                    await Task.Delay(800);
                     stopwatch.Restart();
                     continue;
                 }
@@ -130,8 +129,11 @@ public class InvoiceService
                 bool retriable = ex.StatusCode == 429 || ex.StatusCode >= 500;
                 if (!retriable || attempt == maxAttempts) break;
 
-                int delayMs = (int)Math.Pow(2, attempt) * 500; // 1s, 2s, 4s
-                Console.WriteLine($"[OCR][{source}] Retriable, waiting {delayMs}ms before retry...");
+                // 429 rate-limit: wait longer (10s, 20s) to let Oracle recover
+                int delayMs = ex.StatusCode == 429
+                    ? attempt * 10_000          // 10s, 20s
+                    : (int)Math.Pow(2, attempt) * 500; // 5xx: 1s, 2s
+                Console.WriteLine($"[OCR][{source}] Retriable ({ex.StatusCode}), waiting {delayMs}ms...");
                 await Task.Delay(delayMs);
             }
             catch (HttpRequestException ex)
