@@ -51,6 +51,10 @@ public class InvoiceService
         var imageSize = imageBase64?.Length ?? 0;
 
         const int maxAttempts = 3;
+        // Overall budget — must stay below host (IIS/Nginx/LB) request timeout (~120s in QA).
+        // A single OCI call can take up to 60s, so we allow 1 full attempt + 1 retry safely.
+        const int overallBudgetMs = 100_000;
+        var overallStopwatch = Stopwatch.StartNew();
         Exception? lastError = null;
         int? lastHttpStatus = null;
         string? lastOciBody = null;
