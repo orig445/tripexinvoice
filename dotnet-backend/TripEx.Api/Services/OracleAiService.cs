@@ -84,6 +84,77 @@ public class OracleAiService
     }
 
     /// <summary>
+    /// FALLBACK: Focused single-purpose call — extract ONLY the final total amount.
+    /// Used when the main scan returns 0/missing total. Aggressive prompt + higher temp for variation.
+    /// Returns plain decimal string (e.g. "123.45") or empty if truly nothing found.
+    /// </summary>
+    public async Task<string> CallGeminiTotalOnlyAsync(string imageBase64, string countryHint, int retryRound = 1)
+    {
+        if (string.IsNullOrWhiteSpace(imageBase64))
+            throw new ArgumentException("imageBase64 cannot be empty");
+
+        var imageUrl = imageBase64.StartsWith("data:")
+            ? imageBase64
+            : $"data:image/jpeg;base64,{imageBase64}";
+
+        // Round-specific instructions to force different reasoning paths
+        var roundHint = retryRound switch
+        {
+            1 => "Look at the BOTTOM of the receipt for the FINAL grand total (the largest number, usually labeled Total, Sum, סה\"כ, Итого, 合計, 总计, 합계, 总额, Suma, Gesamt, Totale, Total à payer, รวม, Kabuuan).",
+            2 => "Find the LARGEST monetary number on the receipt — that is almost always the final amount paid. Ignore subtotals, item prices, change, tip, and tax-only lines.",
+            _ => "Scan EVERY number on this receipt. Output the highest monetary value that represents what the customer paid. If there are multiple candidates, pick the one closest to a 'TOTAL' or 'PAID' label in any language."
+        };
+
+        var prompt = $@"You are an OCR expert. Your ONLY job is to extract the FINAL TOTAL AMOUNT from this receipt/invoice.
+{roundHint}
+
+Country hint: {countryHint}
+
+CRITICAL RULES:
+- Output ONLY a JSON object: {{""total"": ""<number>"", ""currency"": ""<3-letter code>""}}
+- The number must be a positive decimal (e.g. ""123.45"" or ""1234"").
+- NEVER output 0, null, or empty. If you cannot see a clear total, output the largest monetary number visible.
+- Do NOT include currency symbols in the total field — only digits and one decimal point.
+- No explanations, no markdown, no extra fields.";
+
+        var messages = new List<OracleMessage>
+        {
+            new() { Role = "system", Content = prompt },
+            new()
+            {
+                Role = "user",
+                Content = new object[]
+                {
+                    new { type = "image_url", image_url = new { url = imageUrl } },
+                    new { type = "text", text = "Extract the final total amount only." }
+                }
+            }
+        };
+
+        // Higher temperature on later rounds to break out of stuck patterns
+        double temp = retryRound switch { 1 => 0.2, 2 => 0.4, _ => 0.6 };
+        var raw = await ChatAsync(messages, 256, temp);
+
+        // Parse the focused JSON response
+        try
+        {
+            var json = ParseJsonFromAiResponse(raw);
+            if (json.TryGetProperty("total", out var totalProp))
+            {
+                var totalStr = totalProp.ValueKind == JsonValueKind.Number
+                    ? totalProp.GetRawText()
+                    : (totalProp.GetString() ?? "");
+                return totalStr.Trim();
+            }
+        }
+        catch { /* fall through to regex */ }
+
+        // Last resort: regex-extract first decimal from raw response
+        var m = Regex.Match(raw ?? "", @"(\d{1,3}(?:[,\.\s]\d{3})*(?:[\.,]\d{1,2})?|\d+(?:[\.,]\d{1,2})?)");
+        return m.Success ? m.Value.Replace(",", "").Replace(" ", "") : "";
+    }
+
+    /// <summary>
     /// General-purpose chat (used by ChatService and others)
     /// </summary>
     public async Task<string> ChatAsync(
