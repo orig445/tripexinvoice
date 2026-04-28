@@ -75,7 +75,7 @@ public class InvoiceService
 
                 // ── Sanity check: detect missing critical fields ──
                 // combtas REQUIRES Total, Date, InvoiceNumber, Currency. Retry if Total=0 OR both Date+InvoiceNum missing.
-                bool missingTotal = string.IsNullOrEmpty(fields.Total) || fields.Total == "0.00" || fields.Total == "0";
+                bool missingTotal = IsMissingOrZeroAmount(fields.Total ?? fields.TotalAmount);
                 bool missingDate = string.IsNullOrEmpty(fields.InvoiceDate);
                 bool missingInvoiceNum = string.IsNullOrEmpty(fields.InvoiceNumber);
                 bool isEmptyResult = missingTotal && string.IsNullOrEmpty(fields.MerchantName) && missingInvoiceNum;
@@ -111,14 +111,23 @@ public class InvoiceService
                     UserId = userId ?? Guid.Empty,
                     RawAiResponse = rawResponse,
                     CountryHint = countryHint,
-                    Status = isEmptyResult ? "SuccessButEmpty" : "Success",
+                    Status = missingTotal ? "FailedMissingTotal" : (isEmptyResult ? "SuccessButEmpty" : "Success"),
                     DurationMs = stopwatch.ElapsedMilliseconds,
                     HttpStatusCode = 200,
-                    ErrorMessage = isEmptyResult ? "Returned empty result after retries" : null,
+                    ErrorMessage = missingTotal ? "Returned no valid total after retries" : (isEmptyResult ? "Returned empty result after retries" : null),
                     Source = source,
                     AttemptNumber = attempt,
                     ImageSizeBytes = imageSize
                 });
+
+                if (missingTotal)
+                    return new AnalyzeInvoiceResponse
+                    {
+                        Success = false,
+                        Fields = fields,
+                        RawResponse = rawResponse,
+                        Error = "OCR failed to extract a valid total amount after all retries."
+                    };
 
                 return new AnalyzeInvoiceResponse { Success = true, Fields = fields, RawResponse = rawResponse };
             }
@@ -195,6 +204,13 @@ public class InvoiceService
         FormOfPayment = "cash",
         ExtraDetails = "{}"
     };
+
+    private static bool IsMissingOrZeroAmount(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return true;
+        var normalized = value.Replace(",", "").Trim();
+        return !decimal.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount) || amount <= 0;
+    }
 
     private static string DefaultCurrencyForCountry(string? country) => country?.ToUpperInvariant() switch
     {
