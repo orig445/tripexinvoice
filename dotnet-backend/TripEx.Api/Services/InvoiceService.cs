@@ -298,6 +298,12 @@ public class InvoiceService
     {
         dateStr = dateStr.Trim();
 
+        // East Asian currencies use YY/MM/DD or YYYY/MM/DD format
+        bool isEastAsian = currency == "KRW" || currency == "JPY" || currency == "CNY" || currency == "TWD"
+                           || country == "KR" || country == "JP" || country == "CN" || country == "TW";
+        // US uses MM/DD/YY
+        bool isUS = currency == "USD" && (country == "US" || country == null);
+
         // YYYY-MM-DD or YYYY/MM/DD
         var matchYMD = Regex.Match(dateStr, @"^(\d{4})[-/](\d{1,2})[-/](\d{1,2})");
         if (matchYMD.Success)
@@ -305,6 +311,25 @@ public class InvoiceService
             int year = int.Parse(matchYMD.Groups[1].Value);
             int g2 = int.Parse(matchYMD.Groups[2].Value);
             int g3 = int.Parse(matchYMD.Groups[3].Value);
+
+            // 🩹 SAFETY NET: AI may have parsed Korean "26/02/13" as "2013-02-26".
+            // If currency is East Asian and the year looks suspiciously old (>5 years ago),
+            // and the day-part (g3) looks like a plausible 2-digit year (e.g. 26 = 2026),
+            // flip it: treat YYYY as DD, day as YY.
+            if (isEastAsian && year < DateTime.UtcNow.Year - 5 && g3 <= 31 && g3 >= 13)
+            {
+                int flippedYear = 2000 + g3;
+                int flippedDay = year % 100; // last 2 digits of misread year become day
+                if (g2 <= 12 && flippedDay >= 1 && flippedDay <= 31 && flippedYear <= DateTime.UtcNow.Year + 1)
+                {
+                    var flipped = TryBuildDate(flippedYear, g2, flippedDay);
+                    if (flipped != null)
+                    {
+                        Console.WriteLine($"[DateNorm] East Asian flip: '{dateStr}' → '{flipped}' (currency={currency})");
+                        return flipped;
+                    }
+                }
+            }
 
             if (g2 <= 12 && g3 >= 1 && g3 <= 31)
             {
@@ -336,7 +361,7 @@ public class InvoiceService
             // Ambiguous — use country hint
             if (g1 <= 12 && g2 <= 12)
             {
-                bool useDDMM = currency == "ILS" || country == "IL";
+                bool useDDMM = currency == "ILS" || country == "IL" || (!isUS && !isEastAsian);
                 if (useDDMM)
                     return TryBuildDate(year, g2, g1); // DD/MM
                 else
@@ -344,12 +369,29 @@ public class InvoiceService
             }
         }
 
-        // DD/MM/YY or MM/DD/YY
+        // YY/MM/DD (East Asian) or DD/MM/YY / MM/DD/YY
         var matchShort = Regex.Match(dateStr, @"^(\d{1,2})[-/](\d{1,2})[-/](\d{2})$");
         if (matchShort.Success)
         {
-            int year = 2000 + int.Parse(matchShort.Groups[3].Value);
-            return TryNormalizeDate($"{matchShort.Groups[1].Value}/{matchShort.Groups[2].Value}/{year}", currency, country);
+            int p1 = int.Parse(matchShort.Groups[1].Value);
+            int p2 = int.Parse(matchShort.Groups[2].Value);
+            int p3 = int.Parse(matchShort.Groups[3].Value);
+
+            // East Asian: first part is year (YY/MM/DD)
+            if (isEastAsian && p2 >= 1 && p2 <= 12 && p3 >= 1 && p3 <= 31)
+            {
+                int year = (p1 < 50 ? 2000 : 1900) + p1;
+                var built = TryBuildDate(year, p2, p3);
+                if (built != null)
+                {
+                    Console.WriteLine($"[DateNorm] East Asian YY/MM/DD: '{dateStr}' → '{built}' (currency={currency})");
+                    return built;
+                }
+            }
+
+            // Default: treat last part as year
+            int fullYear = 2000 + p3;
+            return TryNormalizeDate($"{p1}/{p2}/{fullYear}", currency, country);
         }
 
         return null;
