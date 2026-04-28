@@ -189,7 +189,14 @@ public class InvoiceService
                 bool retriable = ex.StatusCode == 429 || ex.StatusCode >= 500;
                 if (!retriable || attempt == maxAttempts) break;
 
+                // ── Budget guard: don't start a retry that would push us past host timeout ──
                 int delayMs = (int)Math.Pow(2, attempt) * 500; // 1s, 2s, 4s
+                int projectedMs = (int)overallStopwatch.ElapsedMilliseconds + delayMs + 60_000;
+                if (projectedMs > overallBudgetMs)
+                {
+                    Console.Error.WriteLine($"[OCR][{source}] Budget exhausted ({overallStopwatch.ElapsedMilliseconds}ms used). Skipping retry to avoid host Thread Abort.");
+                    break;
+                }
                 Console.WriteLine($"[OCR][{source}] Retriable, waiting {delayMs}ms before retry...");
                 await Task.Delay(delayMs);
             }
@@ -198,7 +205,27 @@ public class InvoiceService
                 lastError = ex;
                 Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt} network error: {ex.Message}");
                 if (attempt == maxAttempts) break;
-                await Task.Delay((int)Math.Pow(2, attempt) * 500);
+                int delayMs = (int)Math.Pow(2, attempt) * 500;
+                if (overallStopwatch.ElapsedMilliseconds + delayMs + 60_000 > overallBudgetMs)
+                {
+                    Console.Error.WriteLine($"[OCR][{source}] Budget exhausted on network retry. Aborting.");
+                    break;
+                }
+                await Task.Delay(delayMs);
+            }
+            catch (TaskCanceledException ex)
+            {
+                // HttpClient timeout (60s) — treat as 504 and respect budget
+                lastError = ex;
+                lastHttpStatus = 504;
+                Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt} timed out after 60s: {ex.Message}");
+                if (attempt == maxAttempts) break;
+                if (overallStopwatch.ElapsedMilliseconds + 60_000 > overallBudgetMs)
+                {
+                    Console.Error.WriteLine($"[OCR][{source}] Budget exhausted after timeout. Aborting before host kills us.");
+                    break;
+                }
+                await Task.Delay(500);
             }
             catch (Exception ex)
             {
