@@ -83,6 +83,72 @@ function inferCardLast4(method: unknown, currentValue: unknown): string | null {
   return null;
 }
 
+function normalizeInvoiceDate(dateStr: string | null | undefined, currency: string | null | undefined): string | null {
+  if (!dateStr || typeof dateStr !== "string") return dateStr ?? null;
+  const s = dateStr.trim();
+  const isEastAsian = currency === "KRW" || currency === "JPY" || currency === "CNY" || currency === "TWD";
+  const isUS = currency === "USD";
+  const currentYear = new Date().getUTCFullYear();
+
+  const buildDate = (y: number, m: number, d: number): string | null => {
+    if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+    return `${y.toString().padStart(4, "0")}-${m.toString().padStart(2, "0")}-${d.toString().padStart(2, "0")}`;
+  };
+
+  // YYYY-MM-DD or YYYY/MM/DD
+  const ymd = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (ymd) {
+    const y = parseInt(ymd[1]), g2 = parseInt(ymd[2]), g3 = parseInt(ymd[3]);
+
+    // 🩹 East Asian flip: AI parsed "26/02/13" (KRW) as "2013-02-26" — restore to 2026-02-13
+    if (isEastAsian && y < currentYear - 5 && g3 >= 13 && g3 <= 31 && g2 >= 1 && g2 <= 12) {
+      const flippedYear = 2000 + g3;
+      const flippedDay = y % 100;
+      if (flippedDay >= 1 && flippedDay <= 31 && flippedYear <= currentYear + 1) {
+        const flipped = buildDate(flippedYear, g2, flippedDay);
+        if (flipped) {
+          console.log(`[DateNorm] East Asian flip: '${s}' → '${flipped}' (currency=${currency})`);
+          return flipped;
+        }
+      }
+    }
+    if (g2 <= 12 && g3 <= 31) return buildDate(y, g2, g3);
+    if (g2 > 12 && g3 <= 12) return buildDate(y, g3, g2);
+  }
+
+  // Short YY/MM/DD or DD/MM/YY or MM/DD/YY
+  const short = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2})$/);
+  if (short) {
+    const p1 = parseInt(short[1]), p2 = parseInt(short[2]), p3 = parseInt(short[3]);
+    if (isEastAsian && p2 >= 1 && p2 <= 12 && p3 >= 1 && p3 <= 31) {
+      const year = (p1 < 50 ? 2000 : 1900) + p1;
+      const built = buildDate(year, p2, p3);
+      if (built) {
+        console.log(`[DateNorm] East Asian YY/MM/DD: '${s}' → '${built}'`);
+        return built;
+      }
+    }
+    const fullYear = (p3 < 50 ? 2000 : 1900) + p3;
+    if (isUS && p1 <= 12 && p2 <= 31) return buildDate(fullYear, p1, p2);
+    if (p1 <= 31 && p2 <= 12) return buildDate(fullYear, p2, p1);
+    if (p1 <= 12 && p2 <= 31) return buildDate(fullYear, p1, p2);
+  }
+
+  // Full DD/MM/YYYY or MM/DD/YYYY
+  const dmy = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (dmy) {
+    const g1 = parseInt(dmy[1]), g2 = parseInt(dmy[2]), y = parseInt(dmy[3]);
+    if (g1 > 12 && g2 <= 12) return buildDate(y, g2, g1);
+    if (g2 > 12 && g1 <= 12) return buildDate(y, g1, g2);
+    if (isUS) return buildDate(y, g1, g2);
+    return buildDate(y, g2, g1);
+  }
+
+  return s;
+}
+
 function normalizeInvoiceData(data: any) {
   if (!data || typeof data !== "object") return data;
 
@@ -102,6 +168,12 @@ function normalizeInvoiceData(data: any) {
   }
 
   normalized.payment = payment;
+
+  // Normalize date based on currency
+  if (normalized.invoice_date) {
+    normalized.invoice_date = normalizeInvoiceDate(normalized.invoice_date, normalized.currency);
+  }
+
   return normalized;
 }
 
