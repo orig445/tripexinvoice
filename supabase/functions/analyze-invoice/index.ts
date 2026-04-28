@@ -474,12 +474,25 @@ Return ONLY the JSON. No explanation, no markdown.${correctionsContext}`;
       ], 2048);
       scan1Data = normalizeInvoiceData(parseJson(scan1Raw));
     } catch (err: any) {
-      if (err.code === 429 || err.code === 402) {
-        return new Response(JSON.stringify({ error: err.msg }), {
-          status: err.code, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      const errCode = err.code ?? err.status ?? 500;
+      const errMsg = err.msg ?? err.message ?? String(err);
+      console.error(`[OCR] scan1 failed — code=${errCode} msg=${errMsg}`);
+      if (errCode === 429) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Oracle rate limit — נסה שוב בעוד 10 שניות (429)" }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
-      throw err;
+      if (errCode === 402) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Oracle billing error (402)" }),
+          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      return new Response(
+        JSON.stringify({ success: false, error: `OCR scan failed: ${errMsg}` }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     let finalData = scan1Data;
@@ -519,12 +532,10 @@ RULES:
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("Error analyzing invoice:", error);
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("[OCR] unhandled error:", msg);
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error"
-      }),
+      JSON.stringify({ success: false, error: `OCR error: ${msg}` }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
