@@ -454,7 +454,8 @@ public class InvoiceService
                       ?? GetDecimalProp(json, "grand_total")
                       ?? GetDecimalProp(json, "grandTotal");
 
-        if (totalValue.HasValue)
+        // Only set Total if > 0 — combtas treats 0 as a valid value, so empty is better than wrong
+        if (totalValue.HasValue && totalValue.Value > 0)
         {
             fields.Total = totalValue.Value.ToString("F2", CultureInfo.InvariantCulture);
             fields.TotalAmount = totalValue.Value.ToString("F2", CultureInfo.InvariantCulture);
@@ -485,8 +486,8 @@ public class InvoiceService
                       ?? GetDecimalProp(json, "sub_total")
                       ?? GetDecimalProp(json, "net_amount");
 
-        if (taxValue.HasValue) fields.TotalVAT = taxValue.Value.ToString("F2", CultureInfo.InvariantCulture);
-        if (vatableValue.HasValue) fields.SubCategory = vatableValue.Value.ToString("F2", CultureInfo.InvariantCulture);
+        if (taxValue.HasValue && taxValue.Value > 0) fields.TotalVAT = taxValue.Value.ToString("F2", CultureInfo.InvariantCulture);
+        if (vatableValue.HasValue && vatableValue.Value > 0) fields.SubCategory = vatableValue.Value.ToString("F2", CultureInfo.InvariantCulture);
 
         // Direct fields (with multiple naming fallbacks)
         fields.Currency = GetStringProp(json, "currency")
