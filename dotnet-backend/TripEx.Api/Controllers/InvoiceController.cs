@@ -156,6 +156,15 @@ public class InvoiceController : ControllerBase
         _ => "EUR"
     };
 
+    private static bool HasPositiveTotal(InvoiceFields? fields)
+    {
+        var raw = fields?.Total ?? fields?.TotalAmount;
+        if (string.IsNullOrWhiteSpace(raw)) return false;
+        var normalized = raw.Replace(",", "").Trim();
+        return decimal.TryParse(normalized, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var amount)
+               && amount > 0;
+    }
+
     /// <summary>
     /// Build a dictionary that contains every field name in multiple casings:
     /// PascalCase + camelCase + snake_case + common AlgoText aliases.
