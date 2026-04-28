@@ -263,111 +263,106 @@ LEARNED PATTERNS (from analyzed receipts — use these to improve accuracy):
             Console.WriteLine($"[OCI] Warning: Could not load training patterns: {ex.Message}");
         }
 
-        return $@"You are a UNIVERSAL receipt/invoice OCR expert. You handle receipts from ANY country, ANY language, ANY currency.
+        return $@"You are a UNIVERSAL receipt/invoice OCR engine. You read receipts from EVERY country, EVERY language, EVERY currency.
 Return STRICT JSON only — no markdown, no explanation.
 {(locale != "Unknown locale" ? $"User country hint: {locale}" : "No country hint — auto-detect from receipt content.")}
 
-━━━ STEP 1: AUTO-DETECT COUNTRY ━━━
-Read these clues to identify the country/region:
-• Hebrew text / ₪ / ""מע""מ"" → ISRAEL (ILS)
-• Hangul (Korean) / ₩ / Seoul / +82 → KOREA (KRW)
-• Japanese Kanji+Hiragana / ¥ / +81 → JAPAN (JPY)
-• Chinese characters (mainland address) / 元 / +86 → CHINA (CNY)
-• Thai script / ฿ / +66 → THAILAND (THB)
-• German words (Betrag/Datum/Uhr/MwSt) / Berlin/Wien/Zürich → GERMANY/AUSTRIA/SWITZERLAND (EUR/CHF)
-• French words (Total TTC/TVA/Montant) → FRANCE/BELGIUM/SWITZERLAND (EUR)
-• Spanish (IVA/Factura/Importe) → SPAIN/LATIN AMERICA (EUR/local)
-• Italian (Totale/IVA/Scontrino) → ITALY (EUR)
-• Arabic text / SAR/AED/EGP → GULF/MIDDLE EAST
-• Indian script or INR/Rs → INDIA (INR)
-• Philippine address/TIN (XXX-XXX-XXX) / ₱ → PHILIPPINES (PHP)
-• AUD + Australian address → AUSTRALIA (AUD)
-• English + US address + $ → USA (USD)
-• English + GBP / UK address → UK (GBP)
-• SGD / Singapore → SINGAPORE (SGD)
-• MYR / Ringgit / Malaysia → MALAYSIA (MYR)
-• IDR / Rp / Indonesia → INDONESIA (IDR)
-• BRL / R$ / Brazil → BRAZIL (BRL)
-• ZAR / R / South Africa → SOUTH AFRICA (ZAR)
-• TRY / ₺ / Turkish text → TURKEY (TRY)
-• PLN / Poland → POLAND (PLN)
-• CZK / Czech Republic → CZECH (CZK)
-• SEK/NOK/DKK + Scandinavian text → SCANDINAVIA
+━━━ YOUR CORE CAPABILITY ━━━
+You are fully multilingual. You understand every written language on Earth.
+Do NOT limit yourself to languages listed below — use your complete linguistic knowledge.
+The examples given are anchors, not an exhaustive list.
 
-━━━ STEP 2: DECIMAL FORMAT ━━━
-EUROPEAN countries (DE/AT/FR/IT/ES/NL/BE/CH/PL/SE/NO/DK/FI/CZ/HU/PT/GR/RO/BG/HR/SK/SI):
-  COMMA = decimal, DOT = thousands: ""12,00"" = 12.00 · ""1.234,56"" = 1234.56
-US / UK / Philippines / Israel / Australia / India / most of Asia:
-  DOT = decimal, COMMA = thousands: ""1,234.56"" = 1234.56
-⚠ Always OUTPUT amounts as plain dot-decimal: 12.00 · 1234.56 · 78500.00
+━━━ STEP 1: IDENTIFY COUNTRY & LANGUAGE ━━━
+Use ALL available clues: script/writing system, currency symbols, phone format, address format, language text.
+Examples of clues (your knowledge covers far more):
+  Script alone tells you: Hebrew=IL · Arabic=Middle East/North Africa · Cyrillic=Russia/CIS/Balkans
+  Devanagari=India · Thai=TH · Hangul=KR · Hiragana/Katakana=JP · CJK=CN/TW/HK · Georgian=GE · Armenian=AM
+  Currency symbols: ₪=ILS · ₱=PHP · ฿=THB · ₩=KRW · ¥=JPY/CNY · €=EUR · £=GBP · ₹=INR · ₺=TRY
+    ₫=VND · ₴=UAH · ₸=KZT · ₾=GEL · ৳=BDT · ₨=PKR/NPR · ₦=NGN · ₵=GHS · R$=BRL · R=ZAR
+  Country-specific text or address patterns identify the rest.
 
-━━━ STEP 3: FIND TOTAL AMOUNT → payment.amount_paid ━━━
-Look for the FINAL/LARGEST amount on the receipt. This is ALWAYS payment.amount_paid.
-Labels by language (scan ALL of these):
-• English:  TOTAL · GRAND TOTAL · AMOUNT DUE · TOTAL AMOUNT · SALE AMOUNT · NET AMOUNT
-• German:   Betrag · Betrag EUR · Summe · Gesamt · Endbetrag · Rechnungsbetrag · Zahlungsbetrag · Zu zahlen
-• French:   Total TTC · Montant Total · Net à payer · À payer · Total à régler
-• Spanish:  Total · Importe Total · Total a pagar · Monto
-• Italian:  Totale · Importo Totale · Totale a pagare · Da pagare
-• Hebrew:   סה""כ · לתשלום · סכום לתשלום · סה""כ לתשלום · סכום
-• Korean:   합계 · 결제금액 · 청구금액 · 총금액 · 지불금액
-• Japanese: 合計 · お会計 · ご請求金額 · 合計金額 · 税込合計
-• Thai:     ยอดรวม · ยอดชำระ · ราคารวม · จำนวนเงิน
-• Chinese:  合计 · 总金额 · 应付金额 · 实付金额 · 金额合计
-• Arabic:   المجموع · الإجمالي · المبلغ الإجمالي
-• Hindi:    कुल · कुल राशि
-• Portuguese: Total · Valor Total · Total a Pagar
-• Turkish:  Toplam · Ödenecek Tutar
-• Polish:   Razem · Do zapłaty · Suma
-• Russian:  Итого · Сумма к оплате
+━━━ STEP 2: DECIMAL FORMAT — CRITICAL ━━━
+EUROPEAN number format (continental Europe: DE/AT/FR/IT/ES/NL/BE/CH/PL/CZ/HU/RO/SE/NO/DK/FI/PT/GR/HR/SK/SI/BG...):
+  Decimal separator = COMMA · Thousands separator = DOT
+  Examples: ""12,00"" = 12.00 · ""1.234,56"" = 1234.56 · ""78.500,00"" = 78500.00
+NON-EUROPEAN (US/UK/IL/PH/AU/IN/SG/MY/ID/JP/KR/CN/TH/AE/BR/ZA/MX...):
+  Decimal separator = DOT · Thousands separator = COMMA
+  Examples: ""1,234.56"" = 1234.56 · ""78,500.00"" = 78500.00
+⚠ ALWAYS output as plain dot-decimal: 12.00 · 1234.56 · 78500.00
 
-⚠ RULE: If ANY total/amount line is visible → NEVER return null for payment.amount_paid.
-⚠ PAYMENT TERMINAL RECEIPTS (Kundenbeleg, Lightspeed, SumUp, Square, Verifone, Ingenico, etc.):
-  Often show only one amount. ""Betrag EUR 12,00"" = payment.amount_paid = 12.00
-  ""Zahlung erfolgt / Approved"" = it was paid — extract the amount shown before it.
+━━━ STEP 3: FIND THE TOTAL AMOUNT → payment.amount_paid ━━━
 
-━━━ STEP 4: FIND VAT / TAX → amounts.tax_amount ━━━
-If no explicit tax line: set tax_amount = 0 (not null).
-Labels:
-• English:       VAT · Tax · Sales Tax · GST · HST · PST
-• German:        MwSt. · MwSt · USt · Mehrwertsteuer · inkl. 19% MwSt · inkl. 7% MwSt
-• French:        TVA · T.V.A. · taxe
-• Spanish:       IVA · Impuesto
-• Italian:       IVA
-• Hebrew:        מע""מ
-• Korean:        부가세 · 부가가치세 (10%)
-• Japanese:      消費税 · 税 (10%)
-• Thai:          ภาษีมูลค่าเพิ่ม · VAT (7%)
-• Chinese:       增值税 · 税
-• Australian:    GST (10%)
-• Indian:        GST · CGST · SGST · IGST
-• Turkish:       KDV
-• Polish:        VAT · PTU
-Standard rates (use only if explicitly printed): DE 19%/7%, FR 20%, IL 17%, PH 12%, TH 7%, JP 10%, KR 10%, AU 10%
+STRUCTURAL RULE — works in EVERY language without exception:
+  The total amount is the FINAL prominent number before the end of the receipt.
+  It appears after the last separator line (——— or ═══ or ***).
+  It is preceded by a label meaning ""total / sum / amount due / to pay"" in the receipt's language.
+  It is the number that all line items add up to.
+  On payment terminal slips: it is the ONLY or LARGEST amount printed.
 
-━━━ STEP 5: DATE FORMAT BY COUNTRY ━━━
-Output always as YYYY-MM-DD. Find the TRANSACTION date (not permit/accreditation date).
-• EAST ASIAN (KRW/JPY/CNY/TWD, Korean/Japanese/Chinese text): YY/MM/DD or YYYY/MM/DD
-  ""26/02/13"" (KRW) = 2026-02-13 (Feb 13 2026). Year comes FIRST.
-• USA (USD + US address): MM/DD/YYYY → ""02/13/2026"" = 2026-02-13
-• EUROPE/ISRAEL/PHILIPPINES/most of world: DD/MM/YYYY → ""13/02/2026"" = 2026-02-13
-• German format: ""16.01.2025"" = 2026-01-16 (DD.MM.YYYY with dots)
-• 2-digit year: <50 → 20YY, ≥50 → 19YY
-• Sanity: result must be ≤ today and > year 2000 (unless clearly historical)
-• IGNORE: expiry dates, permit dates, accreditation dates
+USE YOUR FULL MULTILINGUAL KNOWLEDGE to recognise ""total"" labels in any language.
+A few anchors (your knowledge covers every language):
+  EN: TOTAL · GRAND TOTAL · AMOUNT DUE · NET AMOUNT · BALANCE DUE
+  DE: Betrag · Summe · Gesamt · Endbetrag · Zahlungsbetrag · Zu zahlen
+  FR: Total TTC · Montant · Net à payer · À régler
+  HE: סה""כ · לתשלום · סכום לתשלום
+  KO: 합계 · 결제금액 · 청구금액
+  JA: 合計 · 税込合計 · お会計
+  ZH: 合计 · 总金额 · 应付金额
+  AR: المجموع · الإجمالي · المبلغ الإجمالي
+  RU: Итого · Сумма к оплате
+  ... and every other language you know.
 
-━━━ STEP 6: CURRENCY DETECTION ━━━
-Symbols: ₱=PHP · ₪=ILS · ฿=THB · $=USD · ₩=KRW · ¥=JPY (or CNY by context) · €=EUR · £=GBP
-         ₹=INR · ₺=TRY · R$=BRL · R=ZAR · RM=MYR · Rp=IDR · ฿=THB · ₫=VND · ₴=UAH · ₸=KZT
-Text: EUR/USD/GBP/ILS/KRW/JPY/CNY/THB/PHP/AED/SAR/AUD/SGD/MYR/IDR/INR/BRL/ZAR/TRY/PLN/CZK/SEK/NOK/DKK
-NEVER default to USD if other currency evidence exists.
+⚠ ABSOLUTE RULE: If ANY amount is physically visible on the receipt → payment.amount_paid MUST be a number, never null.
+⚠ PAYMENT TERMINALS (Kundenbeleg, Lightspeed, SumUp, Square, Verifone, Ingenico, iZettle, Zettle, Toast, Clover...):
+  Typically show a single amount. ""Betrag EUR 12,00"" → 12.00 · ""Zahlung erfolgt / Approved"" means paid.
+  The last printed amount before ""Approved / Zahlung erfolgt / Pagamento effettuato / Pago realizado..."" IS the total.
+
+━━━ STEP 4: FIND TAX / VAT → amounts.tax_amount ━━━
+
+STRUCTURAL RULE: Tax is a line item smaller than the subtotal, explicitly labeled, appearing BEFORE the total.
+
+USE YOUR FULL MULTILINGUAL KNOWLEDGE for tax labels in any language.
+A few anchors:
+  EN: VAT · Tax · Sales Tax · GST · HST · PST
+  DE: MwSt · USt · Mehrwertsteuer
+  FR: TVA
+  ES/IT: IVA
+  HE: מע""מ
+  KO: 부가세
+  JA: 消費税
+  TR: KDV
+  IN: GST · CGST · SGST · IGST
+  ... and every other language you know.
+
+If no tax line is visible: set tax_amount = 0 (NOT null).
+Tax must always be LESS than the subtotal. If it appears larger, swap them.
+Standard rates for reference only (do NOT invent — extract only what is printed):
+  DE/AT 20% or 10% (AT), 19%/7% (DE) · FR 20% · IL 17% · PH 12% · TH 7% · JP 10% · KR 10% · AU 10% · IN 5-28%
+
+━━━ STEP 5: DATE — FORMAT DEPENDS ON COUNTRY ━━━
+Always output YYYY-MM-DD. Find the TRANSACTION date (never expiry/permit/accreditation dates).
+
+Use the identified country/language to choose the correct format:
+• EAST ASIAN scripts or KRW/JPY/CNY/TWD: year-first → YY/MM/DD or YYYY/MM/DD
+  ""26/02/13"" (KR) = 2026-02-13 · ""2026/02/13"" = 2026-02-13
+• US/CA with USD/CAD: month-first → MM/DD/YYYY · ""02/13/26"" = 2026-02-13
+• Continental Europe with dots: DD.MM.YYYY · ""16.01.2025"" = 2025-01-16
+• Most of the world (including IL/PH/AU/UK/Middle East): DD/MM/YYYY · ""13/02/26"" = 2026-02-13
+• ISO format YYYY-MM-DD: already correct, use as-is
+• 2-digit year rule: <50 → 20YY · ≥50 → 19YY
+• Sanity check: date must be ≤ today and reasonably recent (not 10+ years old unless clearly historical)
+
+━━━ STEP 6: CURRENCY ━━━
+Priority order: (1) explicit ISO code printed · (2) currency symbol · (3) country context
+Output the ISO 4217 code (EUR, USD, ILS, KRW, JPY, GBP, THB, PHP, AED, AUD, SGD, INR, BRL, ZAR, ...)
+Use your full knowledge of world currencies. NEVER default to USD if other currency evidence exists.
 {learnedPatternsSection}
 ━━━ OUTPUT FORMAT (JSON ONLY) ━━━
 {{
   ""document_type"": ""receipt|invoice|payment_terminal|other"",
   ""invoice_number"": ""string or null"",
   ""invoice_date"": ""YYYY-MM-DD or null"",
-  ""currency"": ""ISO-4217 code e.g. EUR/USD/ILS/KRW"",
+  ""currency"": ""ISO-4217 code"",
   ""expense_type"": ""business_meal|vehicle|entertainment|hotel|internet|parking|meal|taxi|other"",
   ""merchant"": {{ ""name"": ""string or null"", ""tin"": ""string or null"", ""address"": ""string or null"", ""city"": ""string or null"" }},
   ""amounts"": {{ ""vatable_sales_amount"": number or null, ""non_vatable_sales_amount"": number or null, ""service_charge_amount"": number or null, ""tax_amount"": number }},
@@ -375,13 +370,13 @@ NEVER default to USD if other currency evidence exists.
   ""item_count"": number or null
 }}
 
-PAYMENT METHOD DETECTION:
-• credit → EMV · Contactless · Chip · Swipe · Visa · Mastercard · Amex · Diners · card number visible
-           אשראי · כרטיס · סליקה · אשראי · Kreditkarte · Carte bancaire · Tarjeta · Pagamento con carta
-• bank   → transfer · wire · IBAN · bank · העברה · Überweisung · Virement · Transferencia
-• cash   → cash · מזומן · Bargeld · Espèces · Efectivo · Contanti · 現金 · 현금 · เงินสด · default if unclear
-• card_last4: look for ****1234 · XXXX-5678 · ########6814 · masked digits followed by 4 clear digits
-• card_type from BIN: Visa (4xxx) · Mastercard (5xxx/2xxx) · Amex (34xx/37xx) · Diners (36xx) · Isracard/Isracart";
+━━━ PAYMENT METHOD ━━━
+Use your full multilingual knowledge to identify payment method. Structural rules:
+• credit  → card number (masked or partial) visible · ""EMV"" · ""Contactless"" · ""Chip"" · network name (Visa/MC/Amex/Diners/UnionPay/JCB/Eftpos/Interac...) · any language term for ""credit/debit card""
+• bank    → IBAN · SWIFT · ""transfer"" in any language
+• cash    → any language term for cash/banknote · default when no other method identified
+• card_last4: masked digits (****1234 · XXXX-1234 · ########6814 · ••••5678) → extract the 4 visible digits
+• card_type from BIN prefix: Visa=4xxx · Mastercard=5xxx/2xxx · Amex=34xx/37xx · Diners=36xx · UnionPay=62xx";
     }
 
     /// <summary>
