@@ -30,7 +30,7 @@ public class OracleAiService
     public OracleAiService(IHttpClientFactory httpClientFactory, IConfiguration config, TripExDbContext db)
     {
         _httpClient = httpClientFactory.CreateClient();
-        _httpClient.Timeout = TimeSpan.FromSeconds(60); // hard cap — never hang on OCI
+        _httpClient.Timeout = TimeSpan.FromSeconds(25); // keep below combtas/job timeout so caller gets a structured JSON failure
         _db = db;
         _apiKey = config["Oracle:ApiKey"]
             ?? Environment.GetEnvironmentVariable("ORACLE_API_KEY")
