@@ -170,8 +170,42 @@ public class InvoiceService
             ImageSizeBytes = imageSize
         });
 
-        return new AnalyzeInvoiceResponse { Success = false, Error = errMsg };
+        return new AnalyzeInvoiceResponse
+        {
+            Success = false,
+            Error = errMsg,
+            RawResponse = rawResponse ?? "",
+            Fields = CreateFailureFields(countryHint)
+        };
     }
+
+    private static InvoiceFields CreateFailureFields(string countryHint) => new()
+    {
+        Total = "",
+        TotalAmount = "",
+        TotalVAT = "",
+        Currency = DefaultCurrencyForCountry(countryHint),
+        InvoiceNumber = "",
+        InvoiceDate = "",
+        Type = "other",
+        ExpenseType = "other",
+        FormOfPayment = "cash",
+        ExtraDetails = "{}"
+    };
+
+    private static string DefaultCurrencyForCountry(string? country) => country?.ToUpperInvariant() switch
+    {
+        "IL" => "ILS",
+        "PH" => "PHP",
+        "US" => "USD",
+        "TH" => "THB",
+        "KR" => "KRW",
+        "JP" => "JPY",
+        "GB" => "GBP",
+        "UK" => "GBP",
+        "EU" => "EUR",
+        _ => "EUR"
+    };
 
     // ═══════════════════════════════════════
     // Logging — InvoiceScanLogs
