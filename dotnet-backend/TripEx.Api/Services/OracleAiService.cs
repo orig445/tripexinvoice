@@ -304,15 +304,23 @@ A few anchors (your knowledge covers every language):
   EN: TOTAL · GRAND TOTAL · AMOUNT DUE · NET AMOUNT · BALANCE DUE
   DE: Betrag · Summe · Gesamt · Endbetrag · Zahlungsbetrag · Zu zahlen
   FR: Total TTC · Montant · Net à payer · À régler
+  ES: Total · Importe Total · Total a pagar
+  IT: Totale · Importo Totale · Da pagare
+  PL: SUMA · SUMA PLN · Razem · Do zapłaty · Łącznie  ← Polish fiscal receipts use "SUMA PLN"
+  RU/UA: Итого · Сумма к оплате · Разом до сплати
   HE: סה""כ · לתשלום · סכום לתשלום
   KO: 합계 · 결제금액 · 청구금액
   JA: 合計 · 税込合計 · お会計
   ZH: 合计 · 总金额 · 应付金额
   AR: المجموع · الإجمالي · المبلغ الإجمالي
-  RU: Итого · Сумма к оплате
+  TR: Toplam · Ödenecek Tutar
+  NL: Totaal · Te betalen
+  SV/NO/DA: Totalt · Total · Sum
+  PT: Total · Valor Total · Total a Pagar
   ... and every other language you know.
 
 ⚠ ABSOLUTE RULE: If ANY amount is physically visible on the receipt → payment.amount_paid MUST be a number, never null.
+⚠ POLISH FISCAL RECEIPTS: ""PARAGON FISKALNY"" = receipt · ""NIP"" = tax ID · ""PTU"" = VAT · ""SUMA PLN"" = total in PLN
 ⚠ PAYMENT TERMINALS (Kundenbeleg, Lightspeed, SumUp, Square, Verifone, Ingenico, iZettle, Zettle, Toast, Clover...):
   Typically show a single amount. ""Betrag EUR 12,00"" → 12.00 · ""Zahlung erfolgt / Approved"" means paid.
   The last printed amount before ""Approved / Zahlung erfolgt / Pagamento effettuato / Pago realizado..."" IS the total.
@@ -324,14 +332,19 @@ STRUCTURAL RULE: Tax is a line item smaller than the subtotal, explicitly labele
 USE YOUR FULL MULTILINGUAL KNOWLEDGE for tax labels in any language.
 A few anchors:
   EN: VAT · Tax · Sales Tax · GST · HST · PST
-  DE: MwSt · USt · Mehrwertsteuer
-  FR: TVA
+  DE: MwSt · MwSt. · USt · Mehrwertsteuer
+  FR: TVA · T.V.A.
   ES/IT: IVA
+  PL: PTU · Kwota PTU · Podatek VAT · SUMA PTU  ← Polish VAT = PTU (Podatek od Towarów i Usług)
+  RU: НДС
   HE: מע""מ
-  KO: 부가세
-  JA: 消費税
+  KO: 부가세 · 부가가치세
+  JA: 消費税 · 税
   TR: KDV
   IN: GST · CGST · SGST · IGST
+  NL: BTW
+  SV/NO/DA: Moms
+  PT: IVA
   ... and every other language you know.
 
 If no tax line is visible: set tax_amount = 0 (NOT null).
