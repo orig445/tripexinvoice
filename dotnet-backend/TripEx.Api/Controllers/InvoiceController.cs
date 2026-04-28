@@ -33,7 +33,13 @@ public class InvoiceController : ControllerBase
             if (Guid.TryParse(userIdClaim, out var uid)) userId = uid;
 
             var result = await _invoiceService.AnalyzeAsync(request.ImageBase64, request.ImageUrl, request.Country, userId);
+
+            // Ensure currency defaults if AI couldn't detect
+            if (result.Fields != null && string.IsNullOrEmpty(result.Fields.Currency))
+                result.Fields.Currency = DefaultCurrencyForCountry(request.Country);
+
             var fieldsDict = BuildMultiCaseFields(result.Fields);
+            var mindeeDoc = BuildMindeeDocument(result.Fields);
 
             return Ok(new
             {
@@ -43,18 +49,24 @@ public class InvoiceController : ControllerBase
                 Error = result.Error,
                 rawResponse = result.RawResponse,
                 RawResponse = result.RawResponse,
+                // ── algotext format (combtas IL path: $.fields.total) ──
                 fields = fieldsDict,
-                Fields = fieldsDict
+                Fields = fieldsDict,
+                // ── mindee format (combtas non-IL path: $.document.inference.prediction.total_amount.value) ──
+                document = mindeeDoc,
+                Document = mindeeDoc
             });
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Invoice analysis error: {ex}");
-            var fallbackFields = BuildMultiCaseFields(new InvoiceFields
+            var fallback = new InvoiceFields
             {
                 Currency = DefaultCurrencyForCountry(request.Country),
                 Type = "other"
-            });
+            };
+            var fallbackFields = BuildMultiCaseFields(fallback);
+            var fallbackDoc = BuildMindeeDocument(fallback);
 
             return Ok(new
             {
@@ -65,9 +77,64 @@ public class InvoiceController : ControllerBase
                 rawResponse = "",
                 RawResponse = "",
                 fields = fallbackFields,
-                Fields = fallbackFields
+                Fields = fallbackFields,
+                document = fallbackDoc,
+                Document = fallbackDoc
             });
         }
+    }
+
+    /// <summary>
+    /// Build mindee-compatible document structure for combtas non-IL path.
+    /// JsonPath: $.document.inference.prediction.{field}.value
+    /// </summary>
+    private static object BuildMindeeDocument(InvoiceFields? f)
+    {
+        f ??= new InvoiceFields();
+
+        // Strip "0.00" / "0" / empty → return null so combtas treats as "no value" (better than "0")
+        static string? CleanAmount(string? v)
+        {
+            if (string.IsNullOrWhiteSpace(v)) return null;
+            if (v == "0" || v == "0.00" || v == "0.0") return null;
+            return v;
+        }
+        static string? CleanString(string? v) => string.IsNullOrWhiteSpace(v) ? null : v;
+
+        var prediction = new Dictionary<string, object?>
+        {
+            ["total_amount"] = new { value = CleanAmount(f.Total ?? f.TotalAmount), confidence = 1.0 },
+            ["total_net"]    = new { value = CleanAmount(f.SubCategory), confidence = 1.0 },
+            ["total_tax"]    = new { value = CleanAmount(f.TotalVAT), confidence = 1.0 },
+            ["locale"]       = new { currency = CleanString(f.Currency), language = (string?)null },
+            ["invoice_number"] = new { value = CleanString(f.InvoiceNumber), confidence = 1.0 },
+            ["date"]         = new { value = CleanString(f.InvoiceDate), confidence = 1.0 },
+            ["category"]     = new { value = CleanString(f.ExpenseType ?? f.Type), confidence = 1.0 },
+            ["subcategory"]  = new { value = CleanString(f.ExpenseType), confidence = 1.0 },
+            ["document_type"] = new { value = CleanString(f.Type), confidence = 1.0 },
+            ["supplier_name"] = new { value = CleanString(f.MerchantName), confidence = 1.0 },
+            ["supplier_address"] = new { value = CleanString(f.MerchantAddress), confidence = 1.0 },
+            ["supplier_company_registrations"] = new[] { new { value = CleanString(f.MerchantTin), type = "TIN" } },
+            ["supplier_payment_details"] = Array.Empty<object>(),
+            ["customer_name"] = new { value = (string?)null, confidence = 1.0 },
+            ["customer_address"] = new { value = (string?)null, confidence = 1.0 },
+            ["customer_company_registrations"] = Array.Empty<object>(),
+            ["payment_details"] = Array.Empty<object>(),
+            ["taxes"] = !string.IsNullOrEmpty(f.TotalVAT) && f.TotalVAT != "0" && f.TotalVAT != "0.00"
+                ? new[] { new { value = CleanAmount(f.TotalVAT), rate = (double?)null, code = "VAT" } }
+                : Array.Empty<object>(),
+            ["line_items"] = Array.Empty<object>(),
+            ["reference_numbers"] = Array.Empty<object>()
+        };
+
+        return new
+        {
+            inference = new
+            {
+                prediction,
+                pages = new[] { new { prediction } }
+            }
+        };
     }
 
     private static string DefaultCurrencyForCountry(string? country) => country?.ToUpperInvariant() switch
