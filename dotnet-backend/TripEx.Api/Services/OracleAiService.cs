@@ -269,11 +269,22 @@ Return STRICT JSON only — no markdown, no explanation.
 GOLDEN RULE: If you cannot clearly read a value, return null. Wrong data is worse than no data.
 
 DOCUMENT TYPES to recognize:
-- Standard invoice/receipt, Payment terminal (Maya, GCash, BPI), Digital receipt, Handwritten receipt
+- Standard invoice/receipt, Payment terminal (Kundenbeleg, Lightspeed, SumUp, Square, Maya, GCash, BPI, Verifone, Ingenico), Digital receipt, Handwritten receipt
+
+DECIMAL FORMAT — CRITICAL:
+- EUROPEAN receipts (Germany, Austria, France, Italy, Spain, etc.): comma is the decimal separator.
+  ""12,00"" = 12.00 (NOT 1200). ""1.234,56"" = 1234.56.
+- US/UK/Philippines: dot is decimal. ""1,234.56"" = 1234.56.
+- Always output amounts as plain dot-decimal numbers: 12.00, 1234.56.
 
 EXTRACTION RULES:
-1. VENDOR: Largest text at TOP. For terminals: business name, NOT terminal brand.
-2. AMOUNT: Look for ""SALE AMOUNT"", ""TOTAL"", ""סה""כ"". Return as NUMBER (13328.00 not ""13,328.00"").
+1. VENDOR: Largest text at TOP. For terminals: business name (e.g. ""THE WESTIN""), NOT terminal brand.
+2. AMOUNT: Look for these labels → use as payment.amount_paid:
+   • English: ""TOTAL"", ""SALE AMOUNT"", ""AMOUNT DUE"", ""GRAND TOTAL""
+   • German: ""Betrag"", ""Betrag EUR"", ""Summe"", ""Gesamt"", ""Endbetrag"", ""Rechnungsbetrag""
+   • Hebrew: ""סה""כ"", ""לתשלום"", ""סכום""
+   • French: ""Total"", ""Montant"", ""À payer""
+   • If you see ""Betrag EUR 12,00"" → payment.amount_paid = 12.00
 3. TAX: Must be SMALLER than subtotal. If tax > subtotal, they are SWAPPED. If no tax visible, use 0.
 4. DATE: Transaction date only (not permit/accreditation). Output as YYYY-MM-DD.
    ⚠️ CRITICAL — DATE FORMAT BY COUNTRY/CURRENCY (the receipt's printed format depends on origin):
