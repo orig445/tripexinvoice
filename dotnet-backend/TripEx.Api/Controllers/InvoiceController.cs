@@ -19,10 +19,12 @@ public class InvoiceController : ControllerBase
     }
 
     /// <summary>
-    /// Direct invoice analysis (standalone OCR without chat context)
+    /// Direct invoice analysis (standalone OCR without chat context).
+    /// Returns fields with multiple naming conventions (PascalCase + camelCase + snake_case)
+    /// to ensure compatibility with any client mapping (AlgoText / TripEx / QA combtas).
     /// </summary>
     [HttpPost("analyze")]
-    public async Task<ActionResult<AnalyzeInvoiceResponse>> Analyze([FromBody] AnalyzeInvoiceRequest request)
+    public async Task<ActionResult> Analyze([FromBody] AnalyzeInvoiceRequest request)
     {
         try
         {
@@ -31,13 +33,68 @@ public class InvoiceController : ControllerBase
             if (Guid.TryParse(userIdClaim, out var uid)) userId = uid;
 
             var result = await _invoiceService.AnalyzeAsync(request.ImageBase64, request.ImageUrl, request.Country, userId);
-            return Ok(result);
+            var fieldsDict = BuildMultiCaseFields(result.Fields);
+
+            return Ok(new
+            {
+                success = result.Success,
+                Success = result.Success,
+                error = result.Error,
+                Error = result.Error,
+                rawResponse = result.RawResponse,
+                RawResponse = result.RawResponse,
+                fields = fieldsDict,
+                Fields = fieldsDict
+            });
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Invoice analysis error: {ex}");
-            return Ok(new AnalyzeInvoiceResponse { Success = false, Error = ex.Message });
+            return Ok(new { success = false, Success = false, error = ex.Message, Error = ex.Message });
         }
+    }
+
+    /// <summary>
+    /// Build a dictionary that contains every field name in multiple casings:
+    /// PascalCase + camelCase + snake_case + common AlgoText aliases.
+    /// This guarantees the QA client finds the value regardless of naming.
+    /// </summary>
+    private static Dictionary<string, object?> BuildMultiCaseFields(InvoiceFields? f)
+    {
+        var d = new Dictionary<string, object?>(StringComparer.Ordinal);
+        if (f == null) return d;
+
+        void Set(object? value, params string[] keys)
+        {
+            foreach (var k in keys) d[k] = value;
+        }
+
+        Set(f.Total, "Total", "total");
+        Set(f.TotalAmount, "TotalAmount", "totalAmount", "total_amount");
+        Set(f.TotalVAT, "TotalVAT", "totalVAT", "totalVat", "total_vat", "VAT", "vat", "Tax", "tax");
+        Set(f.Currency, "Currency", "currency", "currency_code", "currencyCode");
+        Set(f.InvoiceNumber, "InvoiceNumber", "invoiceNumber", "invoice_number",
+            "ReceiptNumber", "receiptNumber", "receipt_number",
+            "DocumentNumber", "documentNumber", "document_number");
+        Set(f.InvoiceDate, "InvoiceDate", "invoiceDate", "invoice_date", "Date", "date");
+        Set(f.Type, "Type", "type", "DocumentType", "documentType", "document_type");
+        Set(f.SubCategory, "SubCategory", "subCategory", "sub_category", "Subtotal", "subtotal", "sub_total");
+        Set(f.MerchantName, "MerchantName", "merchantName", "merchant_name",
+            "Vendor", "vendor", "VendorName", "vendorName", "vendor_name");
+        Set(f.MerchantTin, "MerchantTin", "merchantTin", "merchant_tin",
+            "TIN", "Tin", "tin", "VendorId", "vendorId", "vendor_id");
+        Set(f.MerchantAddress, "MerchantAddress", "merchantAddress", "merchant_address",
+            "Address", "address", "vendor_address");
+        Set(f.MerchantCity, "MerchantCity", "merchantCity", "merchant_city", "City", "city");
+        Set(f.PaymentMethod, "PaymentMethod", "paymentMethod", "payment_method");
+        Set(f.AmountPaid, "AmountPaid", "amountPaid", "amount_paid");
+        Set(f.ExpenseType, "ExpenseType", "expenseType", "expense_type", "Category", "category");
+        Set(f.FormOfPayment, "FormOfPayment", "formOfPayment", "form_of_payment");
+        Set(f.CardLast4, "CardLast4", "cardLast4", "card_last4");
+        Set(f.CardType, "CardType", "cardType", "card_type");
+        Set(f.ExtraDetails, "ExtraDetails", "extraDetails", "extra_details");
+
+        return d;
     }
 
     /// <summary>
