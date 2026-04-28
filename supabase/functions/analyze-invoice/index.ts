@@ -303,14 +303,30 @@ TIN EXTRACTION
 - For non-Philippine receipts, return null.
 
 ═══════════════════════════════════════
+DECIMAL FORMAT — CRITICAL
+═══════════════════════════════════════
+- EUROPEAN format (Germany, France, Italy, Spain, etc.): comma is decimal separator, dot is thousands.
+  "25,00" = 25.00 (NOT 2500). "1.234,56" = 1234.56.
+- US/UK/Philippines format: dot is decimal, comma is thousands.
+  "1,234.56" = 1234.56.
+- Always return amounts as plain numbers: 25.00, not "25,00" or "€25".
+
+═══════════════════════════════════════
 AMOUNTS (CRITICAL - READ EXACTLY)
 ═══════════════════════════════════════
 Extract these EXACT amounts as printed on the document:
-- vatable_sales_amount: Look for "VATable Sales", "VATable Amount", "Net of VAT"
+- vatable_sales_amount: Look for "VATable Sales", "VATable Amount", "Net of VAT", "Netto", "Subtotal excl. VAT"
 - non_vatable_sales_amount: Look for "Non-VAT", "VAT-Exempt Sales", "Zero Rated Sales"
-- service_charge_amount: Look for "Service Charge", "SC"
-- tax_amount: Look for "VAT Amount", "VAT (12%)", "Tax Amount", "מע"מ"
+- service_charge_amount: Look for "Service Charge", "SC", "Servicegebühr"
+- tax_amount: Look for "VAT Amount", "VAT (12%)", "Tax Amount", "MwSt", "MwSt.", "TVA", "IVA", "מע\"מ", "GST"
 - COMPLETELY IGNORE: "Cash", "Cash Received", "Cash Tendered", "Amount Tendered", "Change", "Change Due"
+
+⚠️ PAYMENT TERMINAL RECEIPTS (Lightspeed, SumUp, Square, iZettle, Ingenico, Verifone, etc.):
+- These often show ONLY a total with no VAT breakdown.
+- Use "TOTAL", "Betrag", "Summe", "Montant", "Importe", "合計", "합계" as payment.amount_paid.
+- Set vatable_sales_amount = null and tax_amount = null if not explicitly shown.
+- The line "Type: € 25,00" or "Betrag: 25,00 EUR" IS the total amount — use it as payment.amount_paid.
+- NEVER leave payment.amount_paid as null if you can see any total/amount line on the receipt.
 
 ═══════════════════════════════════════
 PAYMENT INFO (CRITICAL)

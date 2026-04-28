@@ -259,7 +259,22 @@ public class InvoiceService
             var str = val.GetString();
             if (!string.IsNullOrEmpty(str))
             {
-                str = Regex.Replace(str, @"[₱₪$€£¥,\s]", "");
+                // Strip currency symbols and spaces first
+                str = Regex.Replace(str, @"[₱₪$€£¥\s]", "").Trim();
+
+                // Detect European decimal format: "25,00" or "1.234,56"
+                // Pattern: ends with comma + exactly 2 digits (e.g. "25,00" or "1.234,56")
+                if (Regex.IsMatch(str, @"^\d{1,3}(\.\d{3})*,\d{2}$"))
+                {
+                    // European format: remove thousands dots, replace decimal comma with dot
+                    str = str.Replace(".", "").Replace(",", ".");
+                }
+                else
+                {
+                    // Standard format: remove thousands commas (e.g. "1,234.56" → "1234.56")
+                    str = str.Replace(",", "");
+                }
+
                 if (decimal.TryParse(str, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
                     return parsed;
             }
