@@ -255,6 +255,35 @@ public class InvoiceService
         return !decimal.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount) || amount <= 0;
     }
 
+    /// <summary>
+    /// Last-resort regex extraction: scan raw AI response text for ALL monetary numbers,
+    /// return the LARGEST one (which is overwhelmingly the receipt total).
+    /// Filters out IDs, dates, and unrealistic numbers.
+    /// </summary>
+    private static string? ExtractLargestMonetaryFromText(string? rawText)
+    {
+        if (string.IsNullOrWhiteSpace(rawText)) return null;
+
+        // Match decimal numbers like 1234.56, 1,234.56, 12 345,67, 999, etc.
+        var matches = System.Text.RegularExpressions.Regex.Matches(
+            rawText,
+            @"(?<![\d\.])(\d{1,3}(?:[,\s]\d{3})+(?:\.\d{1,2})?|\d+\.\d{1,2}|\d{2,6})(?![\d])");
+
+        decimal best = 0;
+        foreach (System.Text.RegularExpressions.Match m in matches)
+        {
+            var s = m.Value.Replace(" ", "").Replace(",", "");
+            if (!decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var v)) continue;
+            // Filter unrealistic values (likely IDs, years, phone numbers)
+            if (v <= 0 || v > 10_000_000) continue;
+            // Skip 4-digit integers that look like years (1900-2099)
+            if (!s.Contains('.') && v >= 1900 && v <= 2099) continue;
+            if (v > best) best = v;
+        }
+
+        return best > 0 ? best.ToString("0.##", CultureInfo.InvariantCulture) : null;
+    }
+
     private static string DefaultCurrencyForCountry(string? country) => country?.ToUpperInvariant() switch
     {
         "IL" => "ILS",
