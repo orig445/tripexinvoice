@@ -73,25 +73,28 @@ public class InvoiceService
 
                 stopwatch.Stop();
 
-                // ── Sanity check: detect "empty result" (the classic 0-amount bug) ──
-                bool isEmptyResult = (string.IsNullOrEmpty(fields.Total) || fields.Total == "0.00" || fields.Total == "0")
-                                     && string.IsNullOrEmpty(fields.MerchantName)
-                                     && string.IsNullOrEmpty(fields.InvoiceNumber);
+                // ── Sanity check: detect missing critical fields ──
+                // combtas REQUIRES Total, Date, InvoiceNumber, Currency. Retry if Total=0 OR both Date+InvoiceNum missing.
+                bool missingTotal = string.IsNullOrEmpty(fields.Total) || fields.Total == "0.00" || fields.Total == "0";
+                bool missingDate = string.IsNullOrEmpty(fields.InvoiceDate);
+                bool missingInvoiceNum = string.IsNullOrEmpty(fields.InvoiceNumber);
+                bool isEmptyResult = missingTotal && string.IsNullOrEmpty(fields.MerchantName) && missingInvoiceNum;
+                bool shouldRetry = (missingTotal || (missingDate && missingInvoiceNum)) && attempt < maxAttempts;
 
-                if (isEmptyResult && attempt < maxAttempts)
+                if (shouldRetry)
                 {
-                    // OCI returned 200 but Gemini gave us garbage — retry once
-                    Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt}: OCI 200 but EMPTY result (Total=0, no merchant). Retrying...");
+                    // OCI returned 200 but Gemini missed critical fields — retry with stronger prompt
+                    Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt}: missing critical (Total={fields.Total}, Date={fields.InvoiceDate}, InvNum={fields.InvoiceNumber}). Retrying...");
                     await SaveScanLog(new InvoiceScanLog
                     {
                         UserId = userId ?? Guid.Empty,
                         RawAiResponse = rawResponse,
                         CountryHint = countryHint,
-                        Status = "EmptyResult",
+                        Status = isEmptyResult ? "EmptyResult" : "PartialResult",
                         DurationMs = stopwatch.ElapsedMilliseconds,
                         HttpStatusCode = 200,
-                        ErrorMessage = "OCI returned success but extracted no data (Total=0, no merchant)",
-                        ErrorType = "EmptyExtraction",
+                        ErrorMessage = $"Missing critical — Total:{!missingTotal}, Date:{!missingDate}, InvNum:{!missingInvoiceNum}",
+                        ErrorType = "PartialExtraction",
                         Source = source,
                         AttemptNumber = attempt,
                         ImageSizeBytes = imageSize
@@ -524,7 +527,15 @@ public class InvoiceService
                       ?? GetDecimalProp(json, "grand_total")
                       ?? GetDecimalProp(json, "grandTotal");
 
-        // Always populate Total — combtas requires the field. If AI returned nothing, leave empty (not "0.00")
+        // Always populate Total — combtas requires the field.
+        // If still no total but we have subtotal+tax, calculate it (last resort)
+        if ((!totalValue.HasValue || totalValue.Value == 0) && json.TryGetProperty("amounts", out var amtFinal))
+        {
+            var st = GetDecimalProp(amtFinal, "vatable_sales_amount") ?? GetDecimalProp(amtFinal, "subtotal") ?? 0;
+            var tx = GetDecimalProp(amtFinal, "tax_amount") ?? GetDecimalProp(amtFinal, "vat_amount") ?? 0;
+            if (st + tx > 0) totalValue = st + tx;
+        }
+
         if (totalValue.HasValue && totalValue.Value > 0)
         {
             fields.Total = totalValue.Value.ToString("F2", CultureInfo.InvariantCulture);
