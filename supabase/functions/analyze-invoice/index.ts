@@ -203,8 +203,15 @@ DATE EXTRACTION (CRITICAL)
 ═══════════════════════════════════════
 - Find the transaction/invoice date, usually near the top with a time stamp.
 - READ THE EXACT DIGITS. Do not guess the year.
-- Philippine receipts use MM/DD/YYYY format → output as YYYY-MM-DD
-- Hebrew receipts use DD/MM/YYYY format → output as YYYY-MM-DD
+- ⚠️ DATE FORMAT BY COUNTRY/CURRENCY:
+  • KOREA (KRW, ₩, Seoul, +82, "THE PLAZA", Hangul): format is **YY/MM/DD** (East Asian).
+    Example: "26/02/13" = **2026-02-13** (Feb 13, 2026), NOT 2013-02-26.
+  • JAPAN (JPY, +81), CHINA (CNY, +86), TAIWAN (TWD): also **YY/MM/DD** or **YYYY/MM/DD**.
+  • USA (USD, US merchant): **MM/DD/YYYY**.
+  • PHILIPPINES (PHP): **MM/DD/YYYY**.
+  • ISRAEL (ILS, ₪, Hebrew), EUROPE (EUR), UK (GBP), most of world: **DD/MM/YYYY**.
+- 2-digit year: <50 → 20YY, ≥50 → 19YY.
+- Sanity check: result should be in the past or near-present, NOT 10+ years old unless clearly historical.
 - NEVER use accreditation dates, PTU dates as the invoice date.
 
 ═══════════════════════════════════════
@@ -212,8 +219,9 @@ CURRENCY DETECTION
 ═══════════════════════════════════════
 - Philippine address/TIN/PHP symbol → currency is ALWAYS "PHP"
 - Hebrew text/Israeli address/₪ → currency is ALWAYS "ILS"
+- Korean address/Seoul/₩/+82 → currency is ALWAYS "KRW"
 - Thai text/฿ → "THB"
-- NEVER default to USD for Philippine or Israeli receipts.
+- NEVER default to USD for Philippine, Israeli, or Korean receipts.
 
 ═══════════════════════════════════════
 TIN EXTRACTION
