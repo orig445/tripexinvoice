@@ -527,7 +527,15 @@ public class InvoiceService
                       ?? GetDecimalProp(json, "grand_total")
                       ?? GetDecimalProp(json, "grandTotal");
 
-        // Always populate Total — combtas requires the field. If AI returned nothing, leave empty (not "0.00")
+        // Always populate Total — combtas requires the field.
+        // If still no total but we have subtotal+tax, calculate it (last resort)
+        if ((!totalValue.HasValue || totalValue.Value == 0) && json.TryGetProperty("amounts", out var amtFinal))
+        {
+            var st = GetDecimalProp(amtFinal, "vatable_sales_amount") ?? GetDecimalProp(amtFinal, "subtotal") ?? 0;
+            var tx = GetDecimalProp(amtFinal, "tax_amount") ?? GetDecimalProp(amtFinal, "vat_amount") ?? 0;
+            if (st + tx > 0) totalValue = st + tx;
+        }
+
         if (totalValue.HasValue && totalValue.Value > 0)
         {
             fields.Total = totalValue.Value.ToString("F2", CultureInfo.InvariantCulture);
