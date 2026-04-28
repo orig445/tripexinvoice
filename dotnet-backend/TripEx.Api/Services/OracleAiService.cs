@@ -30,7 +30,10 @@ public class OracleAiService
     public OracleAiService(IHttpClientFactory httpClientFactory, IConfiguration config, TripExDbContext db)
     {
         _httpClient = httpClientFactory.CreateClient();
-        _httpClient.Timeout = TimeSpan.FromSeconds(25); // keep below combtas/job timeout so caller gets a structured JSON failure
+        // Gemini Vision can take 30-50s on heavier images. 25s was too aggressive and caused
+        // 504s in QA → triggering retries → exceeding host (IIS/Nginx) timeout → Thread Abort.
+        // 60s gives the model room to finish on a single attempt for typical receipts.
+        _httpClient.Timeout = TimeSpan.FromSeconds(60);
         _db = db;
         _apiKey = config["Oracle:ApiKey"]
             ?? Environment.GetEnvironmentVariable("ORACLE_API_KEY")
