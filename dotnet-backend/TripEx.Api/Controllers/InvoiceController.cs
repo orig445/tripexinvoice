@@ -62,22 +62,25 @@ public class InvoiceController : ControllerBase
     private static Dictionary<string, object?> BuildMultiCaseFields(InvoiceFields? f)
     {
         var d = new Dictionary<string, object?>(StringComparer.Ordinal);
-        if (f == null) return d;
+        if (f == null) f = new InvoiceFields();
 
         void Set(object? value, params string[] keys)
         {
             foreach (var k in keys) d[k] = value;
         }
 
-        Set(f.Total, "Total", "total");
-        Set(f.TotalAmount, "TotalAmount", "totalAmount", "total_amount");
-        Set(f.TotalVAT, "TotalVAT", "totalVAT", "totalVat", "total_vat", "VAT", "vat", "Tax", "tax");
-        Set(f.Currency, "Currency", "currency", "currency_code", "currencyCode");
-        Set(f.InvoiceNumber, "InvoiceNumber", "invoiceNumber", "invoice_number",
+        // 🔴 MANDATORY combtas fields — ALWAYS present in response (even if empty string), so JsonPath never returns "missing key"
+        Set(f.Total ?? "", "Total", "total");
+        Set(f.TotalAmount ?? f.Total ?? "", "TotalAmount", "totalAmount", "total_amount");
+        Set(f.TotalVAT ?? "", "TotalVAT", "totalVAT", "totalVat", "total_vat", "VAT", "vat", "Tax", "tax");
+        Set(f.Currency ?? "", "Currency", "currency", "currency_code", "currencyCode");
+        Set(f.InvoiceNumber ?? "", "InvoiceNumber", "invoiceNumber", "invoice_number",
             "ReceiptNumber", "receiptNumber", "receipt_number",
             "DocumentNumber", "documentNumber", "document_number");
-        Set(f.InvoiceDate, "InvoiceDate", "invoiceDate", "invoice_date", "Date", "date");
-        Set(f.Type, "Type", "type", "DocumentType", "documentType", "document_type");
+        Set(f.InvoiceDate ?? "", "InvoiceDate", "invoiceDate", "invoice_date", "Date", "date");
+        Set(f.Type ?? "", "Type", "type", "DocumentType", "documentType", "document_type");
+
+        // Optional/secondary fields — null OK
         Set(f.SubCategory, "SubCategory", "subCategory", "sub_category", "Subtotal", "subtotal", "sub_total");
         Set(f.MerchantName, "MerchantName", "merchantName", "merchant_name",
             "Vendor", "vendor", "VendorName", "vendorName", "vendor_name");
