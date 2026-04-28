@@ -50,9 +50,39 @@ public class InvoiceController : ControllerBase
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Invoice analysis error: {ex}");
-            return Ok(new { success = false, Success = false, error = ex.Message, Error = ex.Message });
+            var fallbackFields = BuildMultiCaseFields(new InvoiceFields
+            {
+                Currency = DefaultCurrencyForCountry(request.Country),
+                Type = "other"
+            });
+
+            return Ok(new
+            {
+                success = false,
+                Success = false,
+                error = ex.Message,
+                Error = ex.Message,
+                rawResponse = "",
+                RawResponse = "",
+                fields = fallbackFields,
+                Fields = fallbackFields
+            });
         }
     }
+
+    private static string DefaultCurrencyForCountry(string? country) => country?.ToUpperInvariant() switch
+    {
+        "IL" => "ILS",
+        "PH" => "PHP",
+        "US" => "USD",
+        "TH" => "THB",
+        "KR" => "KRW",
+        "JP" => "JPY",
+        "GB" => "GBP",
+        "UK" => "GBP",
+        "EU" => "EUR",
+        _ => "EUR"
+    };
 
     /// <summary>
     /// Build a dictionary that contains every field name in multiple casings:
