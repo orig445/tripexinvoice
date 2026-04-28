@@ -266,13 +266,34 @@ LEARNED PATTERNS (from analyzed receipts — use these to improve accuracy):
         return $@"You are an expert invoice/receipt OCR analyzer. Extract data for {locale}.
 Return STRICT JSON only — no markdown, no explanation.
 
-🔴 MANDATORY FIELDS (combtas client REQUIRES these — try HARD to extract every one):
-   1. payment.amount_paid → the FINAL TOTAL the customer paid (including tax). MUST be > 0 if any total is visible.
-   2. invoice_date → the transaction date (YYYY-MM-DD). If only partial date visible, infer year from current year.
-   3. invoice_number → ANY identifier: receipt #, transaction ID, order #, ref #, document #, slip #. Use ANY number labeled as receipt/transaction/order/ref/slip.
-   4. currency → ALWAYS detect from symbol/code/country context. Defaults by country: PH=PHP, IL=ILS, US=USD, KR=KRW, JP=JPY, EU=EUR, GB=GBP.
+🔴🔴🔴 ABSOLUTE RULES — VIOLATING THESE IS A CRITICAL FAILURE:
+   1. payment.amount_paid → MUST be a NUMBER > 0. NEVER return 0 or null if ANY total/amount is visible on the receipt.
+      • Look at EVERY visible number on the receipt. The largest meaningful number near words like:
+        Hebrew: ""סה""כ לתשלום"", ""סה""כ"", ""לתשלום"", ""סך הכל"", ""סכום"", ""חשבון""
+        English: ""TOTAL"", ""GRAND TOTAL"", ""AMOUNT DUE"", ""BALANCE"", ""SUBTOTAL""
+        is the amount_paid.
+      • If you see ""סה""כ 120"" or ""TOTAL 120"" → amount_paid = 120
+      • If you see multiple totals, pick the FINAL/LARGEST one (after tax).
+      • DO NOT return 0 unless the receipt is genuinely blank.
 
-GOLDEN RULE: Only return null after CAREFUL inspection. Wrong data is worse than no data — but giving up too early is also bad. TRY HARD on the 4 mandatory fields above.
+   2. invoice_date → REQUIRED. Look for ANY date pattern on the receipt (DD/MM/YYYY, DD/MM/YY, YYYY-MM-DD, ""תאריך"", ""DATE""). If you see ""29/05/2018"" or ""26/05/2018 00:32:36"" — extract it as ""2018-05-29"" or ""2018-05-26"".
+
+   3. invoice_number → REQUIRED. Look for ANY of these (use the FIRST one you find):
+      • Hebrew: ""מספר חשבונית"", ""מספר קבלה"", ""מס' חשבונית"", ""מס' קבלה"", ""מס'"", ""חשבונית מס"", ""הזמנה"", ""W-1"", ""מס. עסקה""
+      • English: ""Invoice #"", ""Receipt #"", ""Order #"", ""Transaction"", ""Ref"", ""Doc #""
+      • Any standalone number near the top of the receipt (e.g. ""83896"", ""78590"")
+      • DO NOT confuse with: TIN, ח.פ., ע.מ., tax-ID, vendor-ID, phone numbers, dates.
+
+   4. currency → ALWAYS detect. ₪/שקל=ILS, $=USD, €=EUR, ₱=PHP, ฿=THB, ₩=KRW, ¥=JPY, £=GBP. Hebrew text → ILS. If unsure, use country default: PH=PHP, IL=ILS, US=USD, KR=KRW, JP=JPY, EU=EUR, GB=GBP.
+
+🔴 CRITICAL FOR ISRAELI RECEIPTS (ILS):
+   • The line ""סה""כ לתשלום"" (literally ""total to pay"") is ALWAYS the final amount → amount_paid.
+   • The line ""מע""מ X%"" or ""מע""מ"" alone is the VAT/tax → tax_amount.
+   • The line ""סה""כ לפני מע""מ"" is the subtotal → vatable_sales_amount.
+   • Receipt number is usually labeled ""מספר חשבונית"", ""מס' חשבונית"" or appears as a standalone large number (4-8 digits).
+   • Hebrew dates are DD/MM/YYYY.
+
+GOLDEN RULE: NEVER return 0 or null for amount_paid, invoice_date, invoice_number, or currency unless the receipt is truly blank or unreadable. Inspect EVERY visible number on the image before giving up.
 
 DOCUMENT TYPES to recognize:
 - Standard invoice/receipt, Payment terminal (Maya, GCash, BPI), Digital receipt, Handwritten receipt
