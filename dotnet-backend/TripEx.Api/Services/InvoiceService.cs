@@ -281,9 +281,37 @@ public class InvoiceService
 
     private static bool IsMissingOrZeroAmount(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value)) return true;
-        var normalized = value.Replace(",", "").Trim();
-        return !decimal.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount) || amount <= 0;
+        var amount = ParseAmountSmart(value);
+        return !amount.HasValue || amount.Value <= 0;
+    }
+
+    /// <summary>
+    /// Locale-aware amount parsing — handles "25,00" (EU), "1,234.56" (US), "1.234,56" (EU thousands),
+    /// currency symbols, and whitespace. Returns null if not a valid positive number.
+    /// </summary>
+    public static decimal? ParseAmountSmart(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var str = Regex.Replace(value, @"[₱₪$€£¥₩\s]", "").Trim();
+        if (string.IsNullOrEmpty(str)) return null;
+
+        int lastDot = str.LastIndexOf('.');
+        int lastComma = str.LastIndexOf(',');
+        string normalized;
+        if (lastDot >= 0 && lastComma >= 0)
+            normalized = lastComma > lastDot
+                ? str.Replace(".", "").Replace(",", ".")  // EU: 1.234,56
+                : str.Replace(",", "");                    // US: 1,234.56
+        else if (lastComma >= 0)
+        {
+            var afterComma = str.Length - lastComma - 1;
+            normalized = (afterComma <= 2 && str.Count(c => c == ',') == 1)
+                ? str.Replace(",", ".")  // "25,00" → "25.00"
+                : str.Replace(",", "");  // thousands
+        }
+        else normalized = str;
+
+        return decimal.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out var p) ? p : null;
     }
 
     /// <summary>
