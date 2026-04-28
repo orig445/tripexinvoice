@@ -152,9 +152,11 @@ CRITICAL RULES:
         }
         catch { /* fall through to regex */ }
 
-        // Last resort: regex-extract first decimal from raw response
+        // Last resort: regex-extract first decimal — use ParseAmountSmart for locale-aware normalization
         var m = Regex.Match(raw ?? "", @"(\d{1,3}(?:[,\.\s]\d{3})*(?:[\.,]\d{1,2})?|\d+(?:[\.,]\d{1,2})?)");
-        return m.Success ? m.Value.Replace(",", "").Replace(" ", "") : "";
+        if (!m.Success) return "";
+        var parsed = InvoiceService.ParseAmountSmart(m.Value);
+        return parsed.HasValue ? parsed.Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) : "";
     }
 
     /// <summary>
