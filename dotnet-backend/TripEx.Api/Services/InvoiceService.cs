@@ -104,6 +104,49 @@ public class InvoiceService
                     continue;
                 }
 
+                // ── FINAL FALLBACK: if total still missing after main retries, do focused total-only extraction ──
+                if (missingTotal && !string.IsNullOrEmpty(imageBase64))
+                {
+                    Console.Error.WriteLine($"[OCR][{source}] Total still missing after attempt {attempt}. Starting AGGRESSIVE total-only fallback (3 rounds)...");
+                    string recoveredTotal = "";
+                    string? recoveredCurrency = null;
+                    for (int round = 1; round <= 3; round++)
+                    {
+                        try
+                        {
+                            var focused = await _aiService.CallGeminiTotalOnlyAsync(imageBase64!, countryHint, round);
+                            Console.WriteLine($"[OCR][{source}] Total-only fallback round {round} returned: '{focused}'");
+                            if (!IsMissingOrZeroAmount(focused))
+                            {
+                                recoveredTotal = focused.Replace(",", "").Trim();
+                                break;
+                            }
+                        }
+                        catch (Exception fx)
+                        {
+                            Console.Error.WriteLine($"[OCR][{source}] Total-only fallback round {round} failed: {fx.Message}");
+                        }
+                    }
+
+                    // Last-resort: regex over the original raw response (search for largest monetary number)
+                    if (IsMissingOrZeroAmount(recoveredTotal))
+                    {
+                        recoveredTotal = ExtractLargestMonetaryFromText(rawResponse) ?? "";
+                        if (!string.IsNullOrEmpty(recoveredTotal))
+                            Console.WriteLine($"[OCR][{source}] Regex fallback recovered total: {recoveredTotal}");
+                    }
+
+                    if (!IsMissingOrZeroAmount(recoveredTotal))
+                    {
+                        fields.Total = recoveredTotal;
+                        fields.TotalAmount = recoveredTotal;
+                        if (string.IsNullOrEmpty(fields.Currency))
+                            fields.Currency = recoveredCurrency ?? DefaultCurrencyForCountry(countryHint);
+                        missingTotal = false;
+                        Console.WriteLine($"[OCR][{source}] ✅ Fallback succeeded — Total={fields.Total} {fields.Currency}");
+                    }
+                }
+
                 Console.WriteLine($"[OCR][{source}] OK in {stopwatch.ElapsedMilliseconds}ms | attempt={attempt} | Total={fields.Total} {fields.Currency} | Merchant={fields.MerchantName}");
 
                 await SaveScanLog(new InvoiceScanLog
@@ -114,7 +157,7 @@ public class InvoiceService
                     Status = missingTotal ? "FailedMissingTotal" : (isEmptyResult ? "SuccessButEmpty" : "Success"),
                     DurationMs = stopwatch.ElapsedMilliseconds,
                     HttpStatusCode = 200,
-                    ErrorMessage = missingTotal ? "Returned no valid total after retries" : (isEmptyResult ? "Returned empty result after retries" : null),
+                    ErrorMessage = missingTotal ? "Returned no valid total after retries + focused fallback" : (isEmptyResult ? "Returned empty result after retries" : null),
                     Source = source,
                     AttemptNumber = attempt,
                     ImageSizeBytes = imageSize
@@ -126,7 +169,7 @@ public class InvoiceService
                         Success = false,
                         Fields = fields,
                         RawResponse = rawResponse,
-                        Error = "OCR failed to extract a valid total amount after all retries."
+                        Error = "OCR failed to extract a valid total amount after all retries and fallbacks."
                     };
 
                 return new AnalyzeInvoiceResponse { Success = true, Fields = fields, RawResponse = rawResponse };
