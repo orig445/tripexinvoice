@@ -205,6 +205,13 @@ public class InvoiceService
         ExtraDetails = "{}"
     };
 
+    private static bool IsMissingOrZeroAmount(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return true;
+        var normalized = value.Replace(",", "").Trim();
+        return !decimal.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount) || amount <= 0;
+    }
+
     private static string DefaultCurrencyForCountry(string? country) => country?.ToUpperInvariant() switch
     {
         "IL" => "ILS",
