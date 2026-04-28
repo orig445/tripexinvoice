@@ -276,10 +276,22 @@ EXTRACTION RULES:
 2. AMOUNT: Look for ""SALE AMOUNT"", ""TOTAL"", ""סה""כ"". Return as NUMBER (13328.00 not ""13,328.00"").
 3. TAX: Must be SMALLER than subtotal. If tax > subtotal, they are SWAPPED. If no tax visible, use 0.
 4. DATE: Transaction date only (not permit/accreditation). Output as YYYY-MM-DD.
+   ⚠️ CRITICAL — DATE FORMAT BY COUNTRY/CURRENCY (the receipt's printed format depends on origin):
+   - KOREA (KRW, ""THE PLAZA"", Seoul, +82, Hangul): format is **YY/MM/DD** (East Asian convention).
+     Example: ""26/02/13"" = **2026-02-13** (Feb 13, 2026), NOT 2013-02-26.
+   - JAPAN (JPY, +81), CHINA (CNY, +86), TAIWAN (TWD): also **YY/MM/DD** or **YYYY/MM/DD**.
+   - USA (USD, English receipts from US merchants): **MM/DD/YY** or **MM/DD/YYYY**.
+     Example: ""02/13/26"" = 2026-02-13.
+   - ISRAEL (ILS, ₪, Hebrew), EUROPE (EUR), PHILIPPINES (PHP), UK (GBP), most of world: **DD/MM/YY** or **DD/MM/YYYY**.
+     Example: ""13/02/26"" = 2026-02-13.
+   - If the year value is ≤ 31 and appears FIRST with two digits, and currency is KRW/JPY/CNY/TWD → it's the YEAR (YY/MM/DD).
+   - If a 2-digit year is < 50 → assume 20YY. If ≥ 50 → assume 19YY.
+   - Sanity check: the resulting date should be in the past or near-present, NOT 10+ years old unless clearly historical.
+   - When uncertain, prefer the format matching the receipt's currency/country over the default DD/MM/YY.
 5. INVOICE NUMBER: Document/transaction number, NOT TIN/tax ID.
 6. CATEGORY: Must be one of: business_meal, vehicle, entertainment, hotel, internet, parking, meal, taxi, other.
 
-CURRENCY: ₱=PHP, ₪=ILS, ฿=THB, $=USD (unless context says otherwise).
+CURRENCY: ₱=PHP, ₪=ILS, ฿=THB, $=USD, ₩=KRW, ¥=JPY/CNY (unless context says otherwise).
 {learnedPatternsSection}
 OUTPUT FORMAT:
 {{
