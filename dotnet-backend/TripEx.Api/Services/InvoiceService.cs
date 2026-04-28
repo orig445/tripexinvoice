@@ -454,7 +454,7 @@ public class InvoiceService
                       ?? GetDecimalProp(json, "grand_total")
                       ?? GetDecimalProp(json, "grandTotal");
 
-        // Only set Total if > 0 — combtas treats 0 as a valid value, so empty is better than wrong
+        // Always populate Total — combtas requires the field. If AI returned nothing, leave empty (not "0.00")
         if (totalValue.HasValue && totalValue.Value > 0)
         {
             fields.Total = totalValue.Value.ToString("F2", CultureInfo.InvariantCulture);
