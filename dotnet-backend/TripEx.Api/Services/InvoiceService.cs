@@ -122,7 +122,8 @@ public class InvoiceService
                             Console.WriteLine($"[OCR][{source}] Total-only fallback round {round} returned: '{focused}'");
                             if (!IsMissingOrZeroAmount(focused))
                             {
-                                recoveredTotal = focused.Replace(",", "").Trim();
+                                var parsed = ParseAmountSmart(focused);
+                                recoveredTotal = parsed.HasValue ? parsed.Value.ToString("0.##", CultureInfo.InvariantCulture) : focused.Trim();
                                 break;
                             }
                         }
