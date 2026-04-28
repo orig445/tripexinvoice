@@ -64,10 +64,6 @@ public class InvoiceController : ControllerBase
         var d = new Dictionary<string, object?>(StringComparer.Ordinal);
         if (f == null) return d;
 
-        void Add(params string[] keys)
-        {
-            // last argument is the value via closure — use Add3 instead
-        }
         void Set(object? value, params string[] keys)
         {
             foreach (var k in keys) d[k] = value;
