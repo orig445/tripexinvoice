@@ -267,33 +267,93 @@ LEARNED PATTERNS (from analyzed receipts — use these to improve accuracy):
 Return STRICT JSON only — no markdown, no explanation.
 
 🔴🔴🔴 ABSOLUTE RULES — VIOLATING THESE IS A CRITICAL FAILURE:
-   1. payment.amount_paid → MUST be a NUMBER > 0. NEVER return 0 or null if ANY total/amount is visible on the receipt.
-      • Look at EVERY visible number on the receipt. The largest meaningful number near words like:
-        Hebrew: ""סה""כ לתשלום"", ""סה""כ"", ""לתשלום"", ""סך הכל"", ""סכום"", ""חשבון""
-        English: ""TOTAL"", ""GRAND TOTAL"", ""AMOUNT DUE"", ""BALANCE"", ""SUBTOTAL""
-        is the amount_paid.
-      • If you see ""סה""כ 120"" or ""TOTAL 120"" → amount_paid = 120
-      • If you see multiple totals, pick the FINAL/LARGEST one (after tax).
-      • DO NOT return 0 unless the receipt is genuinely blank.
 
-   2. invoice_date → REQUIRED. Look for ANY date pattern on the receipt (DD/MM/YYYY, DD/MM/YY, YYYY-MM-DD, ""תאריך"", ""DATE""). If you see ""29/05/2018"" or ""26/05/2018 00:32:36"" — extract it as ""2018-05-29"" or ""2018-05-26"".
+STEP 1 — DETECT first: identify the receipt's LANGUAGE and COUNTRY from the script/text/currency symbol BEFORE extracting fields. This determines which label dictionary to use.
 
-   3. invoice_number → REQUIRED. Look for ANY of these (use the FIRST one you find):
-      • Hebrew: ""מספר חשבונית"", ""מספר קבלה"", ""מס' חשבונית"", ""מס' קבלה"", ""מס'"", ""חשבונית מס"", ""הזמנה"", ""W-1"", ""מס. עסקה""
-      • English: ""Invoice #"", ""Receipt #"", ""Order #"", ""Transaction"", ""Ref"", ""Doc #""
-      • Any standalone number near the top of the receipt (e.g. ""83896"", ""78590"")
-      • DO NOT confuse with: TIN, ח.פ., ע.מ., tax-ID, vendor-ID, phone numbers, dates.
+STEP 2 — Use the matching language dictionary below to find each MANDATORY field.
 
-   4. currency → ALWAYS detect. ₪/שקל=ILS, $=USD, €=EUR, ₱=PHP, ฿=THB, ₩=KRW, ¥=JPY, £=GBP. Hebrew text → ILS. If unsure, use country default: PH=PHP, IL=ILS, US=USD, KR=KRW, JP=JPY, EU=EUR, GB=GBP.
+📋 MULTI-LANGUAGE LABEL DICTIONARY (use the row matching the receipt's language):
 
-🔴 CRITICAL FOR ISRAELI RECEIPTS (ILS):
-   • The line ""סה""כ לתשלום"" (literally ""total to pay"") is ALWAYS the final amount → amount_paid.
-   • The line ""מע""מ X%"" or ""מע""מ"" alone is the VAT/tax → tax_amount.
-   • The line ""סה""כ לפני מע""מ"" is the subtotal → vatable_sales_amount.
-   • Receipt number is usually labeled ""מספר חשבונית"", ""מס' חשבונית"" or appears as a standalone large number (4-8 digits).
-   • Hebrew dates are DD/MM/YYYY.
+═══ TOTAL / AMOUNT PAID labels (the FINAL amount the customer paid, including tax) ═══
+  English:    TOTAL, GRAND TOTAL, AMOUNT DUE, AMOUNT PAID, BALANCE DUE, TOTAL DUE, SALE AMOUNT, NET AMOUNT
+  Hebrew:     סה""כ לתשלום, סה""כ, לתשלום, סך הכל, סכום, סך לתשלום, חשבון
+  Spanish:    TOTAL, IMPORTE TOTAL, TOTAL A PAGAR, MONTO TOTAL, IMPORTE
+  Filipino/Tagalog: KABUUAN, TOTAL, BAYARAN, BAYAD, KABUUANG HALAGA
+  Korean:     합계, 총액, 결제금액, 청구금액, 총합계, 받을금액
+  Japanese:   合計, 総計, 請求金額, お支払い, お支払金額, ご請求額
+  Thai:       รวมทั้งสิ้น, ยอดรวม, จำนวนเงินรวม, ยอดสุทธิ
+  French:     TOTAL, MONTANT TOTAL, NET À PAYER, TOTAL TTC, À PAYER
+  German:     GESAMT, GESAMTBETRAG, SUMME, ZU ZAHLEN, ENDBETRAG
+  Italian:    TOTALE, IMPORTO TOTALE, TOTALE DA PAGARE, NETTO A PAGARE
+  Portuguese: TOTAL, VALOR TOTAL, TOTAL A PAGAR, MONTANTE
+  Arabic:     المجموع, الإجمالي, المبلغ المستحق, الإجمالي الكلي
+  Russian:    ИТОГО, ВСЕГО, СУММА К ОПЛАТЕ, ОБЩАЯ СУММА
+  Chinese:    总计, 合计, 应付金额, 总额, 实付金额
 
-GOLDEN RULE: NEVER return 0 or null for amount_paid, invoice_date, invoice_number, or currency unless the receipt is truly blank or unreadable. Inspect EVERY visible number on the image before giving up.
+═══ TAX / VAT labels ═══
+  English:    VAT, TAX, GST, SALES TAX, HST
+  Hebrew:     מע""מ, מס
+  Spanish:    IVA, IMPUESTO
+  Filipino:   VAT, BUWIS
+  Korean:     부가세, 세금, 부가가치세
+  Japanese:   消費税, 税
+  Thai:       ภาษี, ภาษีมูลค่าเพิ่ม, VAT
+  French:     TVA, TAXE
+  German:     MWST, MEHRWERTSTEUER, STEUER, USt
+  Italian:    IVA, IMPOSTA
+  Portuguese: IVA, IMPOSTO
+  Arabic:     ضريبة, ضريبة القيمة المضافة
+  Russian:    НДС, НАЛОГ
+  Chinese:    税, 增值税
+
+═══ INVOICE / RECEIPT NUMBER labels ═══
+  English:    Invoice #, Receipt #, Order #, Transaction, Ref #, Doc #, Bill No, OR No, SI No
+  Hebrew:     מספר חשבונית, מס' חשבונית, חשבונית מס, מספר קבלה, מס' קבלה, הזמנה, מס. עסקה
+  Spanish:    Factura N°, Recibo N°, Núm. de factura, Folio
+  Filipino:   Resibo Numero, OR No, SI No, Bilang ng resibo
+  Korean:     영수증번호, 거래번호, 청구번호
+  Japanese:   領収書番号, 請求書番号, 取引番号, 伝票番号
+  Thai:       เลขที่ใบเสร็จ, เลขที่ใบกำกับภาษี, เลขที่
+  French:     N° facture, N° reçu, Numéro de facture
+  German:     Rechnungsnr, Belegnr, Quittungsnr, Rechnungsnummer
+  Italian:    N° fattura, N° ricevuta, Numero fattura
+  Portuguese: Nº fatura, Nº recibo, Número da fatura
+  Arabic:     رقم الفاتورة, رقم الإيصال
+  Russian:    Номер счета, Номер чека, Чек №
+  Chinese:    发票号, 收据号, 发票号码, 单据号
+
+═══ DATE labels & formats by country ═══
+  Date labels: DATE, תאריך, FECHA, PETSA, 날짜, 日付, วันที่, DATE, DATUM, DATA, التاريخ, ДАТА, 日期
+  Formats:
+    - Israel/EU/UK/Philippines/most-of-world: DD/MM/YYYY or DD/MM/YY
+    - USA: MM/DD/YYYY or MM/DD/YY
+    - Korea/Japan/China/Taiwan: YYYY/MM/DD or YY/MM/DD (East Asian convention)
+    - ISO (anywhere): YYYY-MM-DD
+
+═══ CURRENCY DETECTION ═══
+  Symbols: ₪=ILS, $=USD (or PHP/AUD/CAD by context), €=EUR, £=GBP, ¥=JPY/CNY, ₩=KRW, ₱=PHP, ฿=THB, ₹=INR, ₽=RUB
+  Country fallback: IL=ILS, US=USD, PH=PHP, GB=GBP, JP=JPY, KR=KRW, TH=THB, EU=EUR, FR=EUR, DE=EUR, IT=EUR, ES=EUR, PT=EUR, CN=CNY, RU=RUB, IN=INR, AU=AUD, CA=CAD
+
+🔴 MANDATORY FIELDS — NEVER return 0 or null unless receipt is genuinely blank:
+   1. payment.amount_paid → MUST be a NUMBER > 0. Use the largest amount near a TOTAL label from the dictionary above.
+      • Pick the FINAL/LARGEST total (after tax), not subtotal.
+      • If multiple totals visible, the FINAL TOTAL is at the bottom of the receipt.
+      • Strip currency symbols, commas, decimals → return as plain number (e.g. 13328.00 not ""$13,328.00"").
+
+   2. invoice_date → REQUIRED. Find ANY date pattern. Convert to YYYY-MM-DD using the country/format rules above.
+
+   3. invoice_number → REQUIRED. Find using the language dictionary above.
+      • DO NOT confuse with: TIN, ח.פ., ע.מ., RUT, NIF, tax-ID, vendor-ID, phone numbers, dates, postal codes.
+      • If multiple candidates, prefer the one explicitly labeled (Invoice/Receipt/Order/Ref).
+
+   4. currency → ALWAYS detect using the currency table above. NEVER return null.
+
+GOLDEN RULE: Inspect EVERY visible number on the image before giving up. NEVER return 0/null on a non-blank receipt.
+
+OUTPUT also include these top-level fields for diagnostics:
+   • detected_language: ""he|en|es|fil|ko|ja|th|fr|de|it|pt|ar|ru|zh|other""
+   • detected_country: ISO-2 code (best guess from receipt content)
+
 
 DOCUMENT TYPES to recognize:
 - Standard invoice/receipt, Payment terminal (Maya, GCash, BPI), Digital receipt, Handwritten receipt
