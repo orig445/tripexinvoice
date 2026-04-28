@@ -257,12 +257,48 @@ public class InvoiceService
         if (val.ValueKind == JsonValueKind.String)
         {
             var str = val.GetString();
-            if (!string.IsNullOrEmpty(str))
+            if (string.IsNullOrEmpty(str)) return null;
+
+            // Strip currency symbols and whitespace (keep digits, commas, dots, minus)
+            str = Regex.Replace(str, @"[₱₪$€£¥₩\s]", "").Trim();
+            if (string.IsNullOrEmpty(str)) return null;
+
+            // Smart number parsing: handle BOTH "1,234.56" (US/UK) and "1.234,56" (EU)
+            // Rule: the LAST separator (',' or '.') is the decimal separator
+            int lastDot = str.LastIndexOf('.');
+            int lastComma = str.LastIndexOf(',');
+
+            string normalized;
+            if (lastDot >= 0 && lastComma >= 0)
             {
-                str = Regex.Replace(str, @"[₱₪$€£¥,\s]", "");
-                if (decimal.TryParse(str, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
-                    return parsed;
+                // Both present → the rightmost is decimal, the other is thousands
+                if (lastComma > lastDot)
+                {
+                    // EU format: "1.234,56" → remove dots, replace comma with dot
+                    normalized = str.Replace(".", "").Replace(",", ".");
+                }
+                else
+                {
+                    // US format: "1,234.56" → remove commas
+                    normalized = str.Replace(",", "");
+                }
             }
+            else if (lastComma >= 0)
+            {
+                // Only comma present. If it looks like decimal (≤2 digits after), treat as decimal
+                var afterComma = str.Length - lastComma - 1;
+                if (afterComma <= 2 && str.Count(c => c == ',') == 1)
+                    normalized = str.Replace(",", ".");
+                else
+                    normalized = str.Replace(",", ""); // thousands separator
+            }
+            else
+            {
+                normalized = str; // only dots or plain number
+            }
+
+            if (decimal.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
+                return parsed;
         }
         return null;
     }
