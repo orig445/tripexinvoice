@@ -38,6 +38,12 @@ public class InvoiceController : ControllerBase
             if (result.Fields != null && string.IsNullOrEmpty(result.Fields.Currency))
                 result.Fields.Currency = DefaultCurrencyForCountry(request.Country);
 
+            if (result.Success && !HasPositiveTotal(result.Fields))
+            {
+                result.Success = false;
+                result.Error = "OCR failed to extract a valid total amount. Please retry with a clearer receipt image.";
+            }
+
             var fieldsDict = BuildMultiCaseFields(result.Fields);
             var mindeeDoc = BuildMindeeDocument(result.Fields);
 
@@ -92,20 +98,19 @@ public class InvoiceController : ControllerBase
     {
         f ??= new InvoiceFields();
 
-        // Strip "0.00" / "0" / empty → return null so combtas treats as "no value" (better than "0")
-        static string? CleanAmount(string? v)
+        // Preserve extracted amounts exactly; never hide a failed zero as null.
+        static string? PreserveAmount(string? v)
         {
             if (string.IsNullOrWhiteSpace(v)) return null;
-            if (v == "0" || v == "0.00" || v == "0.0") return null;
             return v;
         }
         static string? CleanString(string? v) => string.IsNullOrWhiteSpace(v) ? null : v;
 
         var prediction = new Dictionary<string, object?>
         {
-            ["total_amount"] = new { value = CleanAmount(f.Total ?? f.TotalAmount), confidence = 1.0 },
-            ["total_net"]    = new { value = CleanAmount(f.SubCategory), confidence = 1.0 },
-            ["total_tax"]    = new { value = CleanAmount(f.TotalVAT), confidence = 1.0 },
+            ["total_amount"] = new { value = PreserveAmount(f.Total ?? f.TotalAmount), confidence = 1.0 },
+            ["total_net"]    = new { value = PreserveAmount(f.SubCategory), confidence = 1.0 },
+            ["total_tax"]    = new { value = PreserveAmount(f.TotalVAT), confidence = 1.0 },
             ["locale"]       = new { currency = CleanString(f.Currency), language = (string?)null },
             ["invoice_number"] = new { value = CleanString(f.InvoiceNumber), confidence = 1.0 },
             ["date"]         = new { value = CleanString(f.InvoiceDate), confidence = 1.0 },
@@ -121,7 +126,7 @@ public class InvoiceController : ControllerBase
             ["customer_company_registrations"] = Array.Empty<object>(),
             ["payment_details"] = Array.Empty<object>(),
             ["taxes"] = !string.IsNullOrEmpty(f.TotalVAT) && f.TotalVAT != "0" && f.TotalVAT != "0.00"
-                ? new[] { new { value = CleanAmount(f.TotalVAT), rate = (double?)null, code = "VAT" } }
+                ? new[] { new { value = PreserveAmount(f.TotalVAT), rate = (double?)null, code = "VAT" } }
                 : Array.Empty<object>(),
             ["line_items"] = Array.Empty<object>(),
             ["reference_numbers"] = Array.Empty<object>()
