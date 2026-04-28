@@ -18,9 +18,9 @@ public class OracleAiService
     private readonly string? _compartmentId;
     private readonly TripExDbContext _db;
 
-    // ── Concurrency throttle: max 3 simultaneous OCI calls process-wide ──
-    // Prevents overwhelming OCI when user uploads many receipts at once.
-    private static readonly SemaphoreSlim _ociThrottle = new(3, 3);
+    // ── Concurrency throttle: max 10 simultaneous OCI calls process-wide ──
+    // Higher limit prevents request queueing under bursts of bulk uploads.
+    private static readonly SemaphoreSlim _ociThrottle = new(10, 10);
 
     // ── Image size limits (raw base64 length) ──
     // 10MB raw bytes ≈ 13.3MB base64 chars
@@ -152,9 +152,11 @@ CRITICAL RULES:
         }
         catch { /* fall through to regex */ }
 
-        // Last resort: regex-extract first decimal from raw response
+        // Last resort: regex-extract first decimal — use ParseAmountSmart for locale-aware normalization
         var m = Regex.Match(raw ?? "", @"(\d{1,3}(?:[,\.\s]\d{3})*(?:[\.,]\d{1,2})?|\d+(?:[\.,]\d{1,2})?)");
-        return m.Success ? m.Value.Replace(",", "").Replace(" ", "") : "";
+        if (!m.Success) return "";
+        var parsed = InvoiceService.ParseAmountSmart(m.Value);
+        return parsed.HasValue ? parsed.Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) : "";
     }
 
     /// <summary>

@@ -159,10 +159,8 @@ public class InvoiceController : ControllerBase
     private static bool HasPositiveTotal(InvoiceFields? fields)
     {
         var raw = fields?.Total ?? fields?.TotalAmount;
-        if (string.IsNullOrWhiteSpace(raw)) return false;
-        var normalized = raw.Replace(",", "").Trim();
-        return decimal.TryParse(normalized, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var amount)
-               && amount > 0;
+        var amount = TripEx.Api.Services.InvoiceService.ParseAmountSmart(raw);
+        return amount.HasValue && amount.Value > 0;
     }
 
     /// <summary>
