@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
+using TripEx.Api;
 using TripEx.Api.Auth;
 using TripEx.Api.Data;
 using TripEx.Api.Services;
