@@ -3,11 +3,39 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Serilog;
 using TripEx.Api.Auth;
 using TripEx.Api.Data;
 using TripEx.Api.Services;
 
+// ── Serilog: daily-rolling file logs in <app>/logs/ ──
+// File pattern: logs/tripex-YYYYMMDD.log (new file every day, keep last 30 days)
+var logsDir = Path.Combine(Directory.GetCurrentDirectory(), "logs");
+Directory.CreateDirectory(logsDir);
+
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .WriteTo.Console()
+    .WriteTo.File(
+        path: Path.Combine(logsDir, "tripex-.log"),
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 30,
+        fileSizeLimitBytes: 50 * 1024 * 1024, // 50 MB per file cap
+        rollOnFileSizeLimit: true,
+        shared: true,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .CreateLogger();
+
+// Redirect Console.WriteLine / Console.Error.WriteLine into Serilog
+// so that all existing [OCI] / [OCR] / [OCR-LOG] logs land in the daily file.
+Console.SetOut(new SerilogTextWriter(isError: false));
+Console.SetError(new SerilogTextWriter(isError: true));
+
 var builder = WebApplication.CreateBuilder(args);
+builder.Host.UseSerilog();
 
 // ── Configuration ──
 builder.Services.AddControllers();
