@@ -33,8 +33,8 @@ else
 
 // Redirect Console.WriteLine / Console.Error.WriteLine into log4net
 // so that all existing [OCI] / [OCR] / [OCR-LOG] logs land in the daily file.
-Console.SetOut(new SerilogTextWriter(isError: false));
-Console.SetError(new SerilogTextWriter(isError: true));
+Console.SetOut(new Log4NetTextWriter(isError: false));
+Console.SetError(new Log4NetTextWriter(isError: true));
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders();
