@@ -160,3 +160,4 @@
 /dev-server/dotnet-backend/TripEx.Api.Tests/obj/Release/net8.0/TripEx.Api.Tests.pdb
 /dev-server/dotnet-backend/TripEx.Api.Tests/obj/Release/net8.0/TripEx.Api.Tests.genruntimeconfig.cache
 /dev-server/dotnet-backend/TripEx.Api.Tests/obj/Release/net8.0/ref/TripEx.Api.Tests.dll
+/dev-server/dotnet-backend/TripEx.Api.Tests/bin/Release/net8.0/Data/init-db.sql
