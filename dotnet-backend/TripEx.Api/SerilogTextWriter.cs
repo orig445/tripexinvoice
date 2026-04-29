@@ -12,12 +12,16 @@ namespace TripEx.Api;
 public sealed class SerilogTextWriter : TextWriter
 {
     private readonly bool _isError;
+    private readonly TextWriter? _echo;
     private readonly StringBuilder _buffer = new();
     private readonly object _lock = new();
 
-    public SerilogTextWriter(bool isError)
+    /// <param name="isError">Route to Log.Error when true, Log.Information otherwise.</param>
+    /// <param name="echo">Original stdout/stderr to mirror output to (avoids silent terminal).</param>
+    public SerilogTextWriter(bool isError, TextWriter? echo = null)
     {
         _isError = isError;
+        _echo = echo;
     }
 
     public override Encoding Encoding => Encoding.UTF8;
@@ -66,6 +70,10 @@ public sealed class SerilogTextWriter : TextWriter
         var line = _buffer.ToString();
         _buffer.Clear();
         if (string.IsNullOrWhiteSpace(line)) return;
+
+        // Echo to original stdout/stderr so the terminal stays readable.
+        // This writes directly to the saved pre-redirect writer — no feedback loop.
+        _echo?.WriteLine(line);
 
         if (_isError) Log.Error("{ConsoleLine}", line);
         else Log.Information("{ConsoleLine}", line);

@@ -14,12 +14,20 @@ using TripEx.Api.Services;
 var logsDir = Path.Combine(Directory.GetCurrentDirectory(), "logs");
 Directory.CreateDirectory(logsDir);
 
+// Save original stdout/stderr BEFORE redirecting — SerilogTextWriter echoes to these
+// so [OCI]/[OCR] lines remain visible in the terminal as well as going to the file.
+var originalOut = Console.Out;
+var originalErr = Console.Error;
+
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
     .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
     .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Warning)
     .Enrich.FromLogContext()
-    .WriteTo.Console()
+    // NOTE: WriteTo.Console() is intentionally absent here.
+    // Adding it would create an infinite loop: ConsoleSink → Console.Out →
+    // SerilogTextWriter → Log.Information → ConsoleSink → … → StackOverflowException.
+    // Terminal visibility is provided by SerilogTextWriter echoing to originalOut below.
     .WriteTo.File(
         path: Path.Combine(logsDir, "tripex-.log"),
         rollingInterval: RollingInterval.Day,
@@ -32,8 +40,8 @@ Log.Logger = new LoggerConfiguration()
 
 // Redirect Console.WriteLine / Console.Error.WriteLine into Serilog
 // so that all existing [OCI] / [OCR] / [OCR-LOG] logs land in the daily file.
-Console.SetOut(new SerilogTextWriter(isError: false));
-Console.SetError(new SerilogTextWriter(isError: true));
+Console.SetOut(new SerilogTextWriter(isError: false, originalOut));
+Console.SetError(new SerilogTextWriter(isError: true, originalErr));
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog();
