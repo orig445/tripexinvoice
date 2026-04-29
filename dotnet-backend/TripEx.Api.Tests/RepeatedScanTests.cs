@@ -88,7 +88,7 @@ public class RepeatedScanTests
     }
 
     [Fact]
-    public void ParseJsonFromAiResponse_ConcurrentCalls_AreThreadSafe()
+    public async Task ParseJsonFromAiResponse_ConcurrentCalls_AreThreadSafe()
     {
         // Simulates the bulk-train scenario (parallel uploads from UI)
         var results = new List<JsonElement>();
@@ -99,7 +99,7 @@ public class RepeatedScanTests
             lock (lockObj) { results.Add(parsed); }
         })).ToArray();
 
-        Task.WaitAll(tasks);
+        await Task.WhenAll(tasks);
 
         Assert.Equal(10, results.Count);
         foreach (var r in results)
