@@ -18,4 +18,12 @@
     <PackageReference Include="Serilog.Sinks.Console" Version="5.0.1" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Ensure init-db.sql is copied to output and included in publish -->
+    <Content Include="Data\init-db.sql">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

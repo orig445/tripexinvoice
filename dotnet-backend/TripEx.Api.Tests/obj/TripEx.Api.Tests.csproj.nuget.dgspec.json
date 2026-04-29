@@ -10,11 +10,11 @@
         "projectUniqueName": "/dev-server/dotnet-backend/TripEx.Api.Tests/TripEx.Api.Tests.csproj",
         "projectName": "TripEx.Api.Tests",
         "projectPath": "/dev-server/dotnet-backend/TripEx.Api.Tests/TripEx.Api.Tests.csproj",
-        "packagesPath": "/tmp/nuget",
+        "packagesPath": "/root/.nuget/packages/",
         "outputPath": "/dev-server/dotnet-backend/TripEx.Api.Tests/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "/tmp/dotnet-home/.nuget/NuGet/NuGet.Config"
+          "/root/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net8.0"
@@ -76,7 +76,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "/nix/store/m3vn4p3ypcbziv9qdalz1w4dxs59ydrk-dotnet-sdk-8.0.418/share/dotnet/sdk/8.0.418/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "/tmp/dotnet/sdk/8.0.420/PortableRuntimeIdentifierGraph.json"
         }
       }
     },
@@ -86,11 +86,11 @@
         "projectUniqueName": "/dev-server/dotnet-backend/TripEx.Api/TripEx.Api.csproj",
         "projectName": "TripEx.Api",
         "projectPath": "/dev-server/dotnet-backend/TripEx.Api/TripEx.Api.csproj",
-        "packagesPath": "/tmp/nuget",
+        "packagesPath": "/root/.nuget/packages/",
         "outputPath": "/dev-server/dotnet-backend/TripEx.Api/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "/tmp/dotnet-home/.nuget/NuGet/NuGet.Config"
+          "/root/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net8.0"
@@ -139,6 +139,18 @@
               "target": "Package",
               "version": "[8.0.0, )"
             },
+            "Serilog.AspNetCore": {
+              "target": "Package",
+              "version": "[8.0.1, )"
+            },
+            "Serilog.Sinks.Console": {
+              "target": "Package",
+              "version": "[5.0.1, )"
+            },
+            "Serilog.Sinks.File": {
+              "target": "Package",
+              "version": "[5.0.0, )"
+            },
             "Swashbuckle.AspNetCore": {
               "target": "Package",
               "version": "[6.5.0, )"
@@ -163,7 +175,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "/nix/store/m3vn4p3ypcbziv9qdalz1w4dxs59ydrk-dotnet-sdk-8.0.418/share/dotnet/sdk/8.0.418/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "/tmp/dotnet/sdk/8.0.420/PortableRuntimeIdentifierGraph.json"
         }
       }
     }
