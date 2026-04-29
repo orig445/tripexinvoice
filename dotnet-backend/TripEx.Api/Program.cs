@@ -122,49 +122,58 @@ builder.Services.AddScoped<FileStorageService>();
 
 var app = builder.Build();
 
-// ── Ensure database tables exist ──
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<TripExDbContext>();
-    
-    // Run init-db.sql to create missing tables — split by GO batches
-    var initSqlPath = Path.Combine(Directory.GetCurrentDirectory(), "Data", "init-db.sql");
-    if (!File.Exists(initSqlPath))
-        initSqlPath = Path.Combine(AppContext.BaseDirectory, "Data", "init-db.sql");
-    
-    if (File.Exists(initSqlPath))
-    {
-        var sql = File.ReadAllText(initSqlPath);
-        var batches = System.Text.RegularExpressions.Regex.Split(sql, @"^\s*GO\s*$",
-            System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        
-        foreach (var batch in batches)
-        {
-            var trimmed = batch.Trim();
-            if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("PRINT")) continue;
-            try
-            {
-                db.Database.ExecuteSqlRaw(trimmed);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"⚠️ Batch note: {ex.Message}");
-            }
-        }
-        Console.WriteLine("✅ Database tables verified/created from init-db.sql");
-    }
-    else
-    {
-        Console.WriteLine("⚠️ init-db.sql not found, trying EnsureCreated...");
-        try { db.Database.EnsureCreated(); } catch { }
-    }
-}
+Console.WriteLine($"🚀 [STARTUP] App built at {DateTime.Now:HH:mm:ss.fff}");
 
-// ── Ensure storage directory exists ──
+// ── Ensure storage directory exists (fast, safe) ──
 var storagePath = app.Configuration["Storage:LocalPath"]
     ?? Environment.GetEnvironmentVariable("STORAGE_PATH")
     ?? Path.Combine(Directory.GetCurrentDirectory(), "storage");
-Directory.CreateDirectory(storagePath);
+try { Directory.CreateDirectory(storagePath); } catch (Exception ex) { Console.WriteLine($"⚠️ Storage dir: {ex.Message}"); }
+
+// ── Database init runs in BACKGROUND (does not block IIS startup) ──
+// IIS aborts the process if startup takes > 120s. SQL Server connection
+// during cold-start can easily exceed that, so we defer DB init.
+_ = Task.Run(async () =>
+{
+    try
+    {
+        await Task.Delay(2000); // let the host finish binding ports first
+        Console.WriteLine($"🗄️ [DB-INIT] Starting database initialization at {DateTime.Now:HH:mm:ss.fff}");
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<TripExDbContext>();
+
+        var initSqlPath = Path.Combine(Directory.GetCurrentDirectory(), "Data", "init-db.sql");
+        if (!File.Exists(initSqlPath))
+            initSqlPath = Path.Combine(AppContext.BaseDirectory, "Data", "init-db.sql");
+
+        if (File.Exists(initSqlPath))
+        {
+            var sql = await File.ReadAllTextAsync(initSqlPath);
+            var batches = System.Text.RegularExpressions.Regex.Split(sql, @"^\s*GO\s*$",
+                System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            foreach (var batch in batches)
+            {
+                var trimmed = batch.Trim();
+                if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("PRINT")) continue;
+                try { await db.Database.ExecuteSqlRawAsync(trimmed); }
+                catch (Exception ex) { Console.WriteLine($"⚠️ [DB-INIT] Batch note: {ex.Message}"); }
+            }
+            Console.WriteLine($"✅ [DB-INIT] Database verified in {sw.ElapsedMilliseconds}ms");
+        }
+        else
+        {
+            Console.WriteLine("⚠️ [DB-INIT] init-db.sql not found, trying EnsureCreated...");
+            try { await db.Database.EnsureCreatedAsync(); } catch (Exception ex) { Console.WriteLine($"⚠️ [DB-INIT] EnsureCreated: {ex.Message}"); }
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"❌ [DB-INIT] Background DB init failed: {ex.Message}");
+    }
+});
 
 // ── Middleware ──
 if (app.Environment.IsDevelopment())
