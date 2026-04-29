@@ -1,16 +1,17 @@
 using System.Text;
-using Serilog;
+using log4net;
 
 namespace TripEx.Api;
 
 /// <summary>
-/// Bridges Console.WriteLine / Console.Error.WriteLine output into Serilog,
-/// so that all existing [OCI] / [OCR] / [OCR-LOG] / [OCR-VALIDATE] / [OCR-DATE]
+/// Bridges Console.WriteLine / Console.Error.WriteLine output into log4net,
+/// so all existing [OCI] / [OCR] / [OCR-LOG] / [OCR-VALIDATE] / [OCR-DATE]
 /// log lines are written to the daily-rolling file under /logs/.
-/// Buffers partial writes until a newline is seen, then flushes one log entry per line.
+/// (Class name kept as SerilogTextWriter to avoid touching call sites; impl is log4net.)
 /// </summary>
 public sealed class SerilogTextWriter : TextWriter
 {
+    private static readonly ILog _log = LogManager.GetLogger("Console");
     private readonly bool _isError;
     private readonly StringBuilder _buffer = new();
     private readonly object _lock = new();
@@ -26,14 +27,8 @@ public sealed class SerilogTextWriter : TextWriter
     {
         lock (_lock)
         {
-            if (value == '\n')
-            {
-                Flush();
-            }
-            else if (value != '\r')
-            {
-                _buffer.Append(value);
-            }
+            if (value == '\n') Flush();
+            else if (value != '\r') _buffer.Append(value);
         }
     }
 
@@ -61,13 +56,11 @@ public sealed class SerilogTextWriter : TextWriter
 
     public override void Flush()
     {
-        // Caller already holds _lock when invoked from Write/WriteLine above.
-        // External Flush() calls are also safe because StringBuilder ops are short.
         var line = _buffer.ToString();
         _buffer.Clear();
         if (string.IsNullOrWhiteSpace(line)) return;
 
-        if (_isError) Log.Error("{ConsoleLine}", line);
-        else Log.Information("{ConsoleLine}", line);
+        if (_isError) _log.Error(line);
+        else _log.Info(line);
     }
 }
