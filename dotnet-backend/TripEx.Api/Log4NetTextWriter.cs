@@ -7,16 +7,15 @@ namespace TripEx.Api;
 /// Bridges Console.WriteLine / Console.Error.WriteLine output into log4net,
 /// so all existing [OCI] / [OCR] / [OCR-LOG] / [OCR-VALIDATE] / [OCR-DATE]
 /// log lines are written to the daily-rolling file under /logs/.
-/// (Class name kept as SerilogTextWriter to avoid touching call sites; impl is log4net.)
 /// </summary>
-public sealed class SerilogTextWriter : TextWriter
+public sealed class Log4NetTextWriter : TextWriter
 {
     private static readonly ILog _log = LogManager.GetLogger("Console");
     private readonly bool _isError;
     private readonly StringBuilder _buffer = new();
     private readonly object _lock = new();
 
-    public SerilogTextWriter(bool isError)
+    public Log4NetTextWriter(bool isError)
     {
         _isError = isError;
     }
