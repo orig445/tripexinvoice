@@ -83,3 +83,4 @@
 /dev-server/dotnet-backend/TripEx.Api/obj/Release/net8.0/TripEx.Api.pdb
 /dev-server/dotnet-backend/TripEx.Api/obj/Release/net8.0/TripEx.Api.genruntimeconfig.cache
 /dev-server/dotnet-backend/TripEx.Api/obj/Release/net8.0/ref/TripEx.Api.dll
+/dev-server/dotnet-backend/TripEx.Api/bin/Release/net8.0/Data/init-db.sql

@@ -1,6 +1,7 @@
 /tmp/tripex-publish/TripEx.Api
 /tmp/tripex-publish/web.config
 /tmp/tripex-publish/appsettings.json
+/tmp/tripex-publish/Data/init-db.sql
 /tmp/tripex-publish/TripEx.Api.dll
 /tmp/tripex-publish/TripEx.Api.deps.json
 /tmp/tripex-publish/TripEx.Api.runtimeconfig.json

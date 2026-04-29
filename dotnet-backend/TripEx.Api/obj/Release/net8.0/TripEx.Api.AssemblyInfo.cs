@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TripEx.Api")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+737ede19bc8dc761ed0fe47595eaafc0d42d15fa")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a094551200b3eff85f9afebdf259647716219815")]
 [assembly: System.Reflection.AssemblyProductAttribute("TripEx.Api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TripEx.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
