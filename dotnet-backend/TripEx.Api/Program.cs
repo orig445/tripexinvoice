@@ -1,42 +1,44 @@
 using System.Text;
+using log4net;
+using log4net.Config;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
-using Serilog;
 using TripEx.Api;
 using TripEx.Api.Auth;
 using TripEx.Api.Data;
 using TripEx.Api.Services;
 
-// ── Serilog: daily-rolling file logs in <app>/logs/ ──
-// File pattern: logs/tripex-YYYYMMDD.log (new file every day, keep last 30 days)
+// ── log4net: daily-rolling file logs in <app>/logs/ ──
+// File pattern: logs/tripex-YYYYMMDD.log (new file every day, keep last 30 days, 50MB cap).
+// Config is loaded from log4net.config which sits next to the dll in publish output.
 var logsDir = Path.Combine(Directory.GetCurrentDirectory(), "logs");
-Directory.CreateDirectory(logsDir);
+try { Directory.CreateDirectory(logsDir); } catch { /* never fail startup over logs dir */ }
 
-Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Information()
-    .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
-    .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Warning)
-    .Enrich.FromLogContext()
-    .WriteTo.Console()
-    .WriteTo.File(
-        path: Path.Combine(logsDir, "tripex-.log"),
-        rollingInterval: RollingInterval.Day,
-        retainedFileCountLimit: 30,
-        fileSizeLimitBytes: 50 * 1024 * 1024, // 50 MB per file cap
-        rollOnFileSizeLimit: true,
-        shared: true,
-        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
-    .CreateLogger();
+var log4netConfigPath = Path.Combine(AppContext.BaseDirectory, "log4net.config");
+if (!File.Exists(log4netConfigPath))
+    log4netConfigPath = Path.Combine(Directory.GetCurrentDirectory(), "log4net.config");
 
-// Redirect Console.WriteLine / Console.Error.WriteLine into Serilog
+if (File.Exists(log4netConfigPath))
+{
+    var repo = LogManager.GetRepository(System.Reflection.Assembly.GetExecutingAssembly());
+    XmlConfigurator.ConfigureAndWatch(repo, new FileInfo(log4netConfigPath));
+}
+else
+{
+    BasicConfigurator.Configure(LogManager.GetRepository(System.Reflection.Assembly.GetExecutingAssembly()));
+}
+
+// Redirect Console.WriteLine / Console.Error.WriteLine into log4net
 // so that all existing [OCI] / [OCR] / [OCR-LOG] logs land in the daily file.
 Console.SetOut(new SerilogTextWriter(isError: false));
 Console.SetError(new SerilogTextWriter(isError: true));
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Host.UseSerilog();
+builder.Logging.ClearProviders();
+builder.Logging.AddLog4Net(log4netConfigPath);
 
 // ── Configuration ──
 builder.Services.AddControllers();
