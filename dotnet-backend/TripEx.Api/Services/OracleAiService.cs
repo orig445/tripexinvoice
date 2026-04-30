@@ -83,7 +83,7 @@ public class OracleAiService
             }
         };
 
-        return await ChatAsync(messages, 2048, 0.1);
+        return await ChatAsync(messages, 4096, 0.1);
     }
 
     /// <summary>
@@ -555,6 +555,10 @@ PAYMENT FORM RULES:
         cleaned = Regex.Replace(cleaned, @",\s*}", "}");
         cleaned = Regex.Replace(cleaned, @",\s*]", "]");
 
+        // Fix dangling property name (key with no value due to truncation): ,"key"} → }
+        // This happens when max_tokens cuts the response mid-property: "expense_type": → "expense"}
+        cleaned = Regex.Replace(cleaned, @",\s*""[^""\\]*(?:\\.[^""\\]*)*""\s*(?=})", "");
+
         try
         {
             return JsonDocument.Parse(cleaned).RootElement.Clone();
@@ -563,6 +567,37 @@ PAYMENT FORM RULES:
         {
             Console.Error.WriteLine($"[OCI-PARSE] Final parse failed: {ex.Message}");
             Console.Error.WriteLine($"[OCI-PARSE] Cleaned content: {cleaned[..Math.Min(500, cleaned.Length)]}");
+
+            // Last-resort: strip everything after the last complete key-value pair
+            var lastColonIdx = cleaned.LastIndexOf(':');
+            var lastCommaIdx = cleaned.LastIndexOf(',');
+            if (lastColonIdx > 0 && lastCommaIdx > 0 && lastCommaIdx > lastColonIdx)
+            {
+                // Truncation happened after the last comma (incomplete property) — remove it
+                var truncated = cleaned[..lastCommaIdx];
+                // Close any unclosed braces/brackets
+                int ob = 0, ob2 = 0; bool ins = false; bool esc2 = false;
+                foreach (char c in truncated)
+                {
+                    if (esc2) { esc2 = false; continue; }
+                    if (c == '\\') { esc2 = true; continue; }
+                    if (c == '"') { ins = !ins; continue; }
+                    if (ins) continue;
+                    if (c == '{') ob++;
+                    else if (c == '}') ob--;
+                    else if (c == '[') ob2++;
+                    else if (c == ']') ob2--;
+                }
+                for (int i = 0; i < ob2; i++) truncated += "]";
+                for (int i = 0; i < ob; i++) truncated += "}";
+                try
+                {
+                    Console.WriteLine($"[OCI-PARSE] Last-resort recovery: trimmed to last comma, length={truncated.Length}");
+                    return JsonDocument.Parse(truncated).RootElement.Clone();
+                }
+                catch { /* fall through to original error */ }
+            }
+
             throw new InvalidOperationException(
                 $"Failed to parse AI response as JSON: {ex.Message}. Content length={cleaned.Length}");
         }

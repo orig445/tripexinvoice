@@ -70,6 +70,7 @@ public class InvoiceService
                 Console.WriteLine($"[OCR][{source}] Raw response length: {rawResponse?.Length ?? 0}");
 
                 var aiJson = OracleAiService.ParseJsonFromAiResponse(rawResponse!);
+                ValidateJsonCompleteness(aiJson, source, attempt);
                 aiJson = ValidateAndFixAmounts(aiJson);
                 var detectedCurrency = aiJson.TryGetProperty("currency", out var curProp) ? curProp.GetString() : null;
                 aiJson = ValidateDateByCurrency(aiJson, detectedCurrency, country);
@@ -375,6 +376,38 @@ public class InvoiceService
             Console.Error.WriteLine($"[OCR-LOG] Failed to save log: {ex.Message}");
         }
     }
+    // ═══════════════════════════════════════
+    // JSON Completeness Validation
+    // ═══════════════════════════════════════
+
+    /// <summary>
+    /// Logs warnings for any required top-level fields missing from the parsed AI JSON.
+    /// Missing fields indicate truncation or a malformed response — callers use this for observability.
+    /// </summary>
+    private static void ValidateJsonCompleteness(JsonElement json, string source, int attempt)
+    {
+        var requiredTopLevel = new[] { "document_type", "invoice_number", "invoice_date", "currency", "expense_type", "merchant", "amounts", "payment" };
+        var missing = requiredTopLevel.Where(f => !json.TryGetProperty(f, out _)).ToList();
+        if (missing.Count > 0)
+            Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt}: JSON missing fields [{string.Join(", ", missing)}] — likely truncated response");
+
+        // Specifically check payment.amount_paid since this is the total shown to the user
+        if (json.TryGetProperty("payment", out var pay))
+        {
+            if (!pay.TryGetProperty("amount_paid", out var amtProp) || amtProp.ValueKind == JsonValueKind.Null)
+                Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt}: payment.amount_paid is missing or null — total will be empty");
+            else
+            {
+                var rawAmt = amtProp.ValueKind == JsonValueKind.Number ? amtProp.GetRawText() : amtProp.GetString();
+                Console.WriteLine($"[OCR][{source}] Attempt {attempt}: payment.amount_paid={rawAmt}");
+            }
+        }
+        else
+        {
+            Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt}: 'payment' block missing — amount_paid cannot be extracted");
+        }
+    }
+
     // ═══════════════════════════════════════
     // Amount Validation
     // ═══════════════════════════════════════
