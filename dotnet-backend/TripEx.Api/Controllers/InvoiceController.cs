@@ -74,18 +74,18 @@ public class InvoiceController : ControllerBase
             var fallbackFields = BuildMultiCaseFields(fallback);
             var fallbackDoc = BuildMindeeDocument(fallback);
 
-            return Ok(new
+            return Ok(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
-                success = false,
-                Success = false,
-                error = ex.Message,
-                Error = ex.Message,
-                rawResponse = "",
-                RawResponse = "",
-                fields = fallbackFields,
-                Fields = fallbackFields,
-                document = fallbackDoc,
-                Document = fallbackDoc
+                { "success", false },
+                { "Success", false },
+                { "error", ex.Message },
+                { "Error", ex.Message },
+                { "rawResponse", "" },
+                { "RawResponse", "" },
+                { "fields", fallbackFields },
+                { "Fields", fallbackFields },
+                { "document", fallbackDoc },
+                { "Document", fallbackDoc }
             });
         }
     }
