@@ -956,6 +956,7 @@ public class InvoiceService
     /// </summary>
     public async Task<List<InvoiceScanLog>> GetRecentLogsAsync(int limit = 50, Guid? userId = null)
     {
+        await SchemaGuard.EnsureInvoiceScanLogsAsync(_db);
         var query = _db.InvoiceScanLogs.AsNoTracking().AsQueryable();
         if (userId.HasValue && userId.Value != Guid.Empty)
             query = query.Where(l => l.UserId == userId.Value);
@@ -1009,6 +1010,7 @@ public class InvoiceService
             var byCountry = verifiedSamples.GroupBy(s => s.Country ?? "UNKNOWN").ToList();
 
             // Clear existing patterns
+            await SchemaGuard.EnsureOcrTrainingPatternsAsync(_db);
             _db.OcrTrainingPatterns.RemoveRange(_db.OcrTrainingPatterns);
 
             var patternsCreated = 0;
@@ -1117,6 +1119,7 @@ public class InvoiceService
     /// </summary>
     public async Task<TrainingStatsResponse> GetTrainingStatsAsync()
     {
+        await SchemaGuard.EnsureOcrTrainingPatternsAsync(_db);
         var totalSamples = await _db.OcrTrainingSamples.CountAsync();
         var verifiedSamples = await _db.OcrTrainingSamples.CountAsync(s => s.IsVerified);
         var rejectedSamples = await _db.OcrTrainingSamples.CountAsync(s => s.IsRejected);
