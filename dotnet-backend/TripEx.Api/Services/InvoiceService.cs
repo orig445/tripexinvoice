@@ -399,6 +399,9 @@ public class InvoiceService
     {
         try
         {
+            // Defensive: ensure table exists if background DB-init hasn't finished yet
+            await SchemaGuard.EnsureInvoiceScanLogsAsync(_db);
+
             _db.InvoiceScanLogs.Add(log);
             await _db.SaveChangesAsync();
             Console.WriteLine($"[OCR-LOG] Saved {log.Id} | status={log.Status} | http={log.HttpStatusCode} | duration={log.DurationMs}ms | source={log.Source}");
@@ -953,6 +956,7 @@ public class InvoiceService
     /// </summary>
     public async Task<List<InvoiceScanLog>> GetRecentLogsAsync(int limit = 50, Guid? userId = null)
     {
+        await SchemaGuard.EnsureInvoiceScanLogsAsync(_db);
         var query = _db.InvoiceScanLogs.AsNoTracking().AsQueryable();
         if (userId.HasValue && userId.Value != Guid.Empty)
             query = query.Where(l => l.UserId == userId.Value);
@@ -1006,6 +1010,7 @@ public class InvoiceService
             var byCountry = verifiedSamples.GroupBy(s => s.Country ?? "UNKNOWN").ToList();
 
             // Clear existing patterns
+            await SchemaGuard.EnsureOcrTrainingPatternsAsync(_db);
             _db.OcrTrainingPatterns.RemoveRange(_db.OcrTrainingPatterns);
 
             var patternsCreated = 0;
@@ -1114,6 +1119,7 @@ public class InvoiceService
     /// </summary>
     public async Task<TrainingStatsResponse> GetTrainingStatsAsync()
     {
+        await SchemaGuard.EnsureOcrTrainingPatternsAsync(_db);
         var totalSamples = await _db.OcrTrainingSamples.CountAsync();
         var verifiedSamples = await _db.OcrTrainingSamples.CountAsync(s => s.IsVerified);
         var rejectedSamples = await _db.OcrTrainingSamples.CountAsync(s => s.IsRejected);
