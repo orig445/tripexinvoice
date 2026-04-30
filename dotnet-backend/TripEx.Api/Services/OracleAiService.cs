@@ -660,8 +660,9 @@ PAYMENT FORM RULES:
         {
             prev = json;
 
-            // Remove trailing comma or colon before any closing token
-            json = Regex.Replace(json, @"[,\s]+([}\]])", "$1");
+            // Remove trailing comma (with optional whitespace) before any closing token
+            // Deliberately NOT matching standalone whitespace — avoids corrupting string values that contain } or ]
+            json = Regex.Replace(json, @",\s*([}\]])", "$1");
 
             // Remove key-with-colon-but-no-value:
             //   ,"key": }  →  }      (key with comma before it)

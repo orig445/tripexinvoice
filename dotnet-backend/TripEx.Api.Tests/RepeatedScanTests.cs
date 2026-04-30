@@ -81,10 +81,13 @@ public class RepeatedScanTests
     }
 
     [Fact]
-    public void ParseJsonFromAiResponse_NoJsonAtAll_Throws()
+    public void ParseJsonFromAiResponse_NoJsonAtAll_ReturnsEmptyObject()
     {
-        Assert.ThrowsAny<Exception>(() =>
-            OracleAiService.ParseJsonFromAiResponse("Sorry I cannot read this image"));
+        // New behaviour: returns {} instead of throwing, so the caller's
+        // missing-field retry logic can handle it rather than crashing immediately.
+        var result = OracleAiService.ParseJsonFromAiResponse("Sorry I cannot read this image");
+        Assert.Equal(JsonValueKind.Object, result.ValueKind);
+        Assert.Equal("{}", result.GetRawText());
     }
 
     [Fact]
