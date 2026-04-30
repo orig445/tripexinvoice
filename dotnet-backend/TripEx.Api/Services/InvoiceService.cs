@@ -47,7 +47,7 @@ public class InvoiceService
 
         var stopwatch = Stopwatch.StartNew();
         string? rawResponse = null;
-        var countryHint = country?.ToUpperInvariant() ?? "PH";
+        var countryHint = country?.ToUpperInvariant() ?? "";
         var imageSize = imageBase64?.Length ?? 0;
 
         const int maxAttempts = 2;
@@ -70,6 +70,7 @@ public class InvoiceService
                 Console.WriteLine($"[OCR][{source}] Raw response length: {rawResponse?.Length ?? 0}");
 
                 var aiJson = OracleAiService.ParseJsonFromAiResponse(rawResponse!);
+                ValidateJsonCompleteness(aiJson, source, attempt);
                 aiJson = ValidateAndFixAmounts(aiJson);
                 var detectedCurrency = aiJson.TryGetProperty("currency", out var curProp) ? curProp.GetString() : null;
                 aiJson = ValidateDateByCurrency(aiJson, detectedCurrency, country);
@@ -113,7 +114,6 @@ public class InvoiceService
                 {
                     Console.Error.WriteLine($"[OCR][{source}] Total still missing after attempt {attempt}. Starting AGGRESSIVE total-only fallback (3 rounds)...");
                     string recoveredTotal = "";
-                    string? recoveredCurrency = null;
                     for (int round = 1; round <= 3; round++)
                     {
                         try
@@ -146,7 +146,7 @@ public class InvoiceService
                         fields.Total = recoveredTotal;
                         fields.TotalAmount = recoveredTotal;
                         if (string.IsNullOrEmpty(fields.Currency))
-                            fields.Currency = recoveredCurrency ?? DefaultCurrencyForCountry(countryHint);
+                            fields.Currency = DefaultCurrencyForCountry(countryHint) ?? "";
                         missingTotal = false;
                         Console.WriteLine($"[OCR][{source}] ✅ Fallback succeeded — Total={fields.Total} {fields.Currency}");
                     }
@@ -271,7 +271,7 @@ public class InvoiceService
         Total = "",
         TotalAmount = "",
         TotalVAT = "",
-        Currency = DefaultCurrencyForCountry(countryHint),
+        Currency = DefaultCurrencyForCountry(countryHint) ?? "",
         InvoiceNumber = "",
         InvoiceDate = "",
         Type = "other",
@@ -349,13 +349,46 @@ public class InvoiceService
         "IL" => "ILS",
         "PH" => "PHP",
         "US" => "USD",
+        "CA" => "CAD",
+        "AU" => "AUD",
+        "NZ" => "NZD",
+        "GB" or "UK" => "GBP",
+        "CH" => "CHF",
+        "SE" => "SEK",
+        "NO" => "NOK",
+        "DK" => "DKK",
+        "PL" => "PLN",
+        "CZ" => "CZK",
+        "HU" => "HUF",
+        "RO" => "RON",
+        "RU" => "RUB",
+        "TR" => "TRY",
         "TH" => "THB",
-        "KR" => "KRW",
+        "SG" => "SGD",
+        "MY" => "MYR",
+        "ID" => "IDR",
+        "VN" => "VND",
         "JP" => "JPY",
-        "GB" => "GBP",
-        "UK" => "GBP",
-        "EU" => "EUR",
-        _ => "EUR"
+        "KR" => "KRW",
+        "CN" => "CNY",
+        "TW" => "TWD",
+        "HK" => "HKD",
+        "IN" => "INR",
+        "AE" => "AED",
+        "SA" => "SAR",
+        "EG" => "EGP",
+        "ZA" => "ZAR",
+        "NG" => "NGN",
+        "KE" => "KES",
+        "BR" => "BRL",
+        "AR" => "ARS",
+        "MX" => "MXN",
+        "CO" => "COP",
+        "CL" => "CLP",
+        // Eurozone
+        "DE" or "FR" or "IT" or "ES" or "PT" or "NL" or "BE" or "AT" or
+        "FI" or "IE" or "GR" or "EU" => "EUR",
+        _ => null  // unknown country — don't guess, let the AI-detected currency stand
     };
 
     // ═══════════════════════════════════════
@@ -375,6 +408,38 @@ public class InvoiceService
             Console.Error.WriteLine($"[OCR-LOG] Failed to save log: {ex.Message}");
         }
     }
+    // ═══════════════════════════════════════
+    // JSON Completeness Validation
+    // ═══════════════════════════════════════
+
+    /// <summary>
+    /// Logs warnings for any required top-level fields missing from the parsed AI JSON.
+    /// Missing fields indicate truncation or a malformed response — callers use this for observability.
+    /// </summary>
+    private static void ValidateJsonCompleteness(JsonElement json, string source, int attempt)
+    {
+        var requiredTopLevel = new[] { "document_type", "invoice_number", "invoice_date", "currency", "expense_type", "merchant", "amounts", "payment" };
+        var missing = requiredTopLevel.Where(f => !json.TryGetProperty(f, out _)).ToList();
+        if (missing.Count > 0)
+            Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt}: JSON missing fields [{string.Join(", ", missing)}] — likely truncated response");
+
+        // Specifically check payment.amount_paid since this is the total shown to the user
+        if (json.TryGetProperty("payment", out var pay))
+        {
+            if (!pay.TryGetProperty("amount_paid", out var amtProp) || amtProp.ValueKind == JsonValueKind.Null)
+                Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt}: payment.amount_paid is missing or null — total will be empty");
+            else
+            {
+                var rawAmt = amtProp.ValueKind == JsonValueKind.Number ? amtProp.GetRawText() : amtProp.GetString();
+                Console.WriteLine($"[OCR][{source}] Attempt {attempt}: payment.amount_paid={rawAmt}");
+            }
+        }
+        else
+        {
+            Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt}: 'payment' block missing — amount_paid cannot be extracted");
+        }
+    }
+
     // ═══════════════════════════════════════
     // Amount Validation
     // ═══════════════════════════════════════
@@ -842,7 +907,7 @@ public class InvoiceService
             if (string.IsNullOrEmpty(imageBase64))
                 return new BulkTrainResponse { Success = false, Error = "imageBase64 is required" };
 
-            var countryHint = country?.ToUpperInvariant() ?? "IL";
+            var countryHint = country?.ToUpperInvariant() ?? "";
 
             // Reuse main scan path (with retry + logging)
             var scanResult = await AnalyzeInternalAsync(imageBase64, null, country, userId, source: "bulk-train");

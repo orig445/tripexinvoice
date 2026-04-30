@@ -26,7 +26,7 @@ public sealed class Log4NetTextWriter : TextWriter
     {
         lock (_lock)
         {
-            if (value == '\n') Flush();
+            if (value == '\n') FlushCore();
             else if (value != '\r') _buffer.Append(value);
         }
     }
@@ -38,7 +38,7 @@ public sealed class Log4NetTextWriter : TextWriter
         {
             foreach (var ch in value)
             {
-                if (ch == '\n') Flush();
+                if (ch == '\n') FlushCore();
                 else if (ch != '\r') _buffer.Append(ch);
             }
         }
@@ -49,11 +49,18 @@ public sealed class Log4NetTextWriter : TextWriter
         lock (_lock)
         {
             if (!string.IsNullOrEmpty(value)) _buffer.Append(value);
-            Flush();
+            FlushCore();
         }
     }
 
+    // Public Flush() acquires the lock so external callers (Dispose, Console.Out.Flush()) are safe.
     public override void Flush()
+    {
+        lock (_lock) { FlushCore(); }
+    }
+
+    // Must be called only while _lock is held.
+    private void FlushCore()
     {
         var line = _buffer.ToString();
         _buffer.Clear();
