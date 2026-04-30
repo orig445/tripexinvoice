@@ -47,20 +47,20 @@ public class InvoiceController : ControllerBase
             var fieldsDict = BuildMultiCaseFields(result.Fields);
             var mindeeDoc = BuildMindeeDocument(result.Fields);
 
-            return Ok(new
+            return Ok(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
-                success = result.Success,
-                Success = result.Success,
-                error = result.Error,
-                Error = result.Error,
-                rawResponse = result.RawResponse,
-                RawResponse = result.RawResponse,
+                { "success", result.Success },
+                { "Success", result.Success },
+                { "error", result.Error },
+                { "Error", result.Error },
+                { "rawResponse", result.RawResponse },
+                { "RawResponse", result.RawResponse },
                 // ── algotext format (combtas IL path: $.fields.total) ──
-                fields = fieldsDict,
-                Fields = fieldsDict,
+                { "fields", fieldsDict },
+                { "Fields", fieldsDict },
                 // ── mindee format (combtas non-IL path: $.document.inference.prediction.total_amount.value) ──
-                document = mindeeDoc,
-                Document = mindeeDoc
+                { "document", mindeeDoc },
+                { "Document", mindeeDoc }
             });
         }
         catch (Exception ex)
@@ -74,18 +74,18 @@ public class InvoiceController : ControllerBase
             var fallbackFields = BuildMultiCaseFields(fallback);
             var fallbackDoc = BuildMindeeDocument(fallback);
 
-            return Ok(new
+            return Ok(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
-                success = false,
-                Success = false,
-                error = ex.Message,
-                Error = ex.Message,
-                rawResponse = "",
-                RawResponse = "",
-                fields = fallbackFields,
-                Fields = fallbackFields,
-                document = fallbackDoc,
-                Document = fallbackDoc
+                { "success", false },
+                { "Success", false },
+                { "error", ex.Message },
+                { "Error", ex.Message },
+                { "rawResponse", "" },
+                { "RawResponse", "" },
+                { "fields", fallbackFields },
+                { "Fields", fallbackFields },
+                { "document", fallbackDoc },
+                { "Document", fallbackDoc }
             });
         }
     }
