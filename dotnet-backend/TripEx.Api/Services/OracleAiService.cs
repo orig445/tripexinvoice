@@ -363,6 +363,9 @@ CRITICAL RULES:
         string learnedPatternsSection = "";
         try
         {
+            // Defensive: ensure table exists if background DB-init hasn't finished yet
+            await SchemaGuard.EnsureOcrTrainingPatternsAsync(_db);
+
             var patterns = await _db.OcrTrainingPatterns
                 .Where(p => p.Country == null || p.Country == "" || p.Country == (countryHint ?? "").ToUpper())
                 .OrderByDescending(p => p.Confidence)

@@ -399,6 +399,9 @@ public class InvoiceService
     {
         try
         {
+            // Defensive: ensure table exists if background DB-init hasn't finished yet
+            await SchemaGuard.EnsureInvoiceScanLogsAsync(_db);
+
             _db.InvoiceScanLogs.Add(log);
             await _db.SaveChangesAsync();
             Console.WriteLine($"[OCR-LOG] Saved {log.Id} | status={log.Status} | http={log.HttpStatusCode} | duration={log.DurationMs}ms | source={log.Source}");
