@@ -47,7 +47,7 @@ public class InvoiceService
 
         var stopwatch = Stopwatch.StartNew();
         string? rawResponse = null;
-        var countryHint = country?.ToUpperInvariant() ?? "PH";
+        var countryHint = country?.ToUpperInvariant() ?? "";
         var imageSize = imageBase64?.Length ?? 0;
 
         const int maxAttempts = 2;
@@ -147,7 +147,7 @@ public class InvoiceService
                         fields.Total = recoveredTotal;
                         fields.TotalAmount = recoveredTotal;
                         if (string.IsNullOrEmpty(fields.Currency))
-                            fields.Currency = recoveredCurrency ?? DefaultCurrencyForCountry(countryHint);
+                            fields.Currency = recoveredCurrency ?? DefaultCurrencyForCountry(countryHint) ?? "";
                         missingTotal = false;
                         Console.WriteLine($"[OCR][{source}] ✅ Fallback succeeded — Total={fields.Total} {fields.Currency}");
                     }
@@ -272,7 +272,7 @@ public class InvoiceService
         Total = "",
         TotalAmount = "",
         TotalVAT = "",
-        Currency = DefaultCurrencyForCountry(countryHint),
+        Currency = DefaultCurrencyForCountry(countryHint) ?? "",
         InvoiceNumber = "",
         InvoiceDate = "",
         Type = "other",
@@ -350,13 +350,46 @@ public class InvoiceService
         "IL" => "ILS",
         "PH" => "PHP",
         "US" => "USD",
+        "CA" => "CAD",
+        "AU" => "AUD",
+        "NZ" => "NZD",
+        "GB" or "UK" => "GBP",
+        "CH" => "CHF",
+        "SE" => "SEK",
+        "NO" => "NOK",
+        "DK" => "DKK",
+        "PL" => "PLN",
+        "CZ" => "CZK",
+        "HU" => "HUF",
+        "RO" => "RON",
+        "RU" => "RUB",
+        "TR" => "TRY",
         "TH" => "THB",
-        "KR" => "KRW",
+        "SG" => "SGD",
+        "MY" => "MYR",
+        "ID" => "IDR",
+        "VN" => "VND",
         "JP" => "JPY",
-        "GB" => "GBP",
-        "UK" => "GBP",
-        "EU" => "EUR",
-        _ => "EUR"
+        "KR" => "KRW",
+        "CN" => "CNY",
+        "TW" => "TWD",
+        "HK" => "HKD",
+        "IN" => "INR",
+        "AE" => "AED",
+        "SA" => "SAR",
+        "EG" => "EGP",
+        "ZA" => "ZAR",
+        "NG" => "NGN",
+        "KE" => "KES",
+        "BR" => "BRL",
+        "AR" => "ARS",
+        "MX" => "MXN",
+        "CO" => "COP",
+        "CL" => "CLP",
+        // Eurozone
+        "DE" or "FR" or "IT" or "ES" or "PT" or "NL" or "BE" or "AT" or
+        "FI" or "IE" or "GR" or "EU" => "EUR",
+        _ => null  // unknown country — don't guess, let the AI-detected currency stand
     };
 
     // ═══════════════════════════════════════
@@ -875,7 +908,7 @@ public class InvoiceService
             if (string.IsNullOrEmpty(imageBase64))
                 return new BulkTrainResponse { Success = false, Error = "imageBase64 is required" };
 
-            var countryHint = country?.ToUpperInvariant() ?? "IL";
+            var countryHint = country?.ToUpperInvariant() ?? "";
 
             // Reuse main scan path (with retry + logging)
             var scanResult = await AnalyzeInternalAsync(imageBase64, null, country, userId, source: "bulk-train");
