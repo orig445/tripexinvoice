@@ -114,7 +114,6 @@ public class InvoiceService
                 {
                     Console.Error.WriteLine($"[OCR][{source}] Total still missing after attempt {attempt}. Starting AGGRESSIVE total-only fallback (3 rounds)...");
                     string recoveredTotal = "";
-                    string? recoveredCurrency = null;
                     for (int round = 1; round <= 3; round++)
                     {
                         try
@@ -147,7 +146,7 @@ public class InvoiceService
                         fields.Total = recoveredTotal;
                         fields.TotalAmount = recoveredTotal;
                         if (string.IsNullOrEmpty(fields.Currency))
-                            fields.Currency = recoveredCurrency ?? DefaultCurrencyForCountry(countryHint) ?? "";
+                            fields.Currency = DefaultCurrencyForCountry(countryHint) ?? "";
                         missingTotal = false;
                         Console.WriteLine($"[OCR][{source}] ✅ Fallback succeeded — Total={fields.Total} {fields.Currency}");
                     }
