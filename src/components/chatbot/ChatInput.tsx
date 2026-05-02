@@ -12,13 +12,91 @@ interface ChatInputProps {
 
 export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps) {
   const [value, setValue] = useState("");
+  const [isRecording, setIsRecording] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<any>(null);
+  const baseTextRef = useRef<string>("");
+  const { toast } = useToast();
+
+  const SpeechRecognition =
+    typeof window !== "undefined"
+      ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+      : null;
+  const speechSupported = !!SpeechRecognition;
 
   useEffect(() => {
     inputRef.current?.focus();
+    return () => {
+      try {
+        recognitionRef.current?.stop();
+      } catch {}
+    };
   }, []);
+
+  const startRecording = () => {
+    if (!SpeechRecognition) {
+      toast({
+        title: "Voice input not supported",
+        description: "Try Chrome, Edge, or Safari.",
+        variant: "destructive",
+      });
+      return;
+    }
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+
+      baseTextRef.current = value ? value.trim() + " " : "";
+
+      recognition.onresult = (event: any) => {
+        let interim = "";
+        let final = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) final += transcript;
+          else interim += transcript;
+        }
+        if (final) baseTextRef.current += final + " ";
+        setValue((baseTextRef.current + interim).trimStart());
+      };
+
+      recognition.onerror = (event: any) => {
+        if (event.error !== "aborted" && event.error !== "no-speech") {
+          toast({
+            title: "Microphone error",
+            description: event.error,
+            variant: "destructive",
+          });
+        }
+        setIsRecording(false);
+      };
+
+      recognition.onend = () => setIsRecording(false);
+
+      recognition.start();
+      recognitionRef.current = recognition;
+      setIsRecording(true);
+    } catch (err) {
+      console.error("Speech recognition error:", err);
+      setIsRecording(false);
+    }
+  };
+
+  const stopRecording = () => {
+    try {
+      recognitionRef.current?.stop();
+    } catch {}
+    setIsRecording(false);
+  };
+
+  const toggleRecording = () => {
+    if (isRecording) stopRecording();
+    else startRecording();
+  };
 
   const handleSubmit = () => {
     if (!value.trim() || isLoading) return;
