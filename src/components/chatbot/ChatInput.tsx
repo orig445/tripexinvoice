@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Camera, Paperclip } from "lucide-react";
+import { Send, Camera, Paperclip, Mic, MicOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { pdfAllPagesToBase64 } from "@/lib/pdf-utils";
+import { useToast } from "@/hooks/use-toast";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
