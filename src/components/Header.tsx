@@ -65,6 +65,10 @@ export function Header() {
                 <User className="h-4 w-4" />
                 Profile
               </DropdownMenuItem>
+              <DropdownMenuItem className="gap-2" onClick={() => navigate("/chat")}>
+                <Bot className="h-4 w-4" />
+                Full Chat
+              </DropdownMenuItem>
               {isAdmin && (
                 <DropdownMenuItem className="gap-2" onClick={() => navigate("/admin/chatbot")}>
                   <Bot className="h-4 w-4" />
