@@ -117,12 +117,30 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
         onChange={handleFileChange}
       />
 
+      {speechSupported && (
+        <Button
+          type="button"
+          variant={isRecording ? "default" : "ghost"}
+          size="icon"
+          className={`h-9 w-9 flex-shrink-0 ${
+            isRecording
+              ? "bg-destructive text-destructive-foreground hover:bg-destructive/90 animate-pulse"
+              : "text-muted-foreground hover:text-primary"
+          }`}
+          onClick={toggleRecording}
+          disabled={isLoading}
+          title={isRecording ? "Stop recording" : "Speak your message"}
+        >
+          {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+        </Button>
+      )}
+
       <textarea
         ref={inputRef}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Type a message..."
+        placeholder={isRecording ? "Listening..." : "Type a message..."}
         rows={1}
         className="flex-1 resize-none rounded-xl border bg-muted/50 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary min-h-[36px] max-h-[100px]"
         disabled={isLoading}
