@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Camera, Paperclip } from "lucide-react";
+import { Send, Camera, Paperclip, Mic, MicOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { pdfAllPagesToBase64 } from "@/lib/pdf-utils";
+import { useToast } from "@/hooks/use-toast";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -11,13 +12,91 @@ interface ChatInputProps {
 
 export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps) {
   const [value, setValue] = useState("");
+  const [isRecording, setIsRecording] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<any>(null);
+  const baseTextRef = useRef<string>("");
+  const { toast } = useToast();
+
+  const SpeechRecognition =
+    typeof window !== "undefined"
+      ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+      : null;
+  const speechSupported = !!SpeechRecognition;
 
   useEffect(() => {
     inputRef.current?.focus();
+    return () => {
+      try {
+        recognitionRef.current?.stop();
+      } catch {}
+    };
   }, []);
+
+  const startRecording = () => {
+    if (!SpeechRecognition) {
+      toast({
+        title: "Voice input not supported",
+        description: "Try Chrome, Edge, or Safari.",
+        variant: "destructive",
+      });
+      return;
+    }
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+
+      baseTextRef.current = value ? value.trim() + " " : "";
+
+      recognition.onresult = (event: any) => {
+        let interim = "";
+        let final = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) final += transcript;
+          else interim += transcript;
+        }
+        if (final) baseTextRef.current += final + " ";
+        setValue((baseTextRef.current + interim).trimStart());
+      };
+
+      recognition.onerror = (event: any) => {
+        if (event.error !== "aborted" && event.error !== "no-speech") {
+          toast({
+            title: "Microphone error",
+            description: event.error,
+            variant: "destructive",
+          });
+        }
+        setIsRecording(false);
+      };
+
+      recognition.onend = () => setIsRecording(false);
+
+      recognition.start();
+      recognitionRef.current = recognition;
+      setIsRecording(true);
+    } catch (err) {
+      console.error("Speech recognition error:", err);
+      setIsRecording(false);
+    }
+  };
+
+  const stopRecording = () => {
+    try {
+      recognitionRef.current?.stop();
+    } catch {}
+    setIsRecording(false);
+  };
+
+  const toggleRecording = () => {
+    if (isRecording) stopRecording();
+    else startRecording();
+  };
 
   const handleSubmit = () => {
     if (!value.trim() || isLoading) return;
@@ -116,12 +195,30 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
         onChange={handleFileChange}
       />
 
+      {speechSupported && (
+        <Button
+          type="button"
+          variant={isRecording ? "default" : "ghost"}
+          size="icon"
+          className={`h-9 w-9 flex-shrink-0 ${
+            isRecording
+              ? "bg-destructive text-destructive-foreground hover:bg-destructive/90 animate-pulse"
+              : "text-muted-foreground hover:text-primary"
+          }`}
+          onClick={toggleRecording}
+          disabled={isLoading}
+          title={isRecording ? "Stop recording" : "Speak your message"}
+        >
+          {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+        </Button>
+      )}
+
       <textarea
         ref={inputRef}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Type a message..."
+        placeholder={isRecording ? "Listening..." : "Type a message..."}
         rows={1}
         className="flex-1 resize-none rounded-xl border bg-muted/50 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary min-h-[36px] max-h-[100px]"
         disabled={isLoading}
