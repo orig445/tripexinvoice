@@ -467,8 +467,12 @@ Return ONLY the JSON. No explanation, no markdown.${correctionsContext}`;
     }
 
     let finalData = scan1Data;
-    try {
-      const verifyPrompt = `You are a receipt/invoice verification expert. I extracted the following data from a receipt image. Please look at the SAME image and verify each field. If any value is WRONG, return the corrected JSON. If everything is correct, return the SAME JSON unchanged.
+    const amountPaid = scan1Data?.payment?.amount_paid;
+    const isMissingTotal = amountPaid === null || amountPaid === undefined || amountPaid === 0;
+
+    if (isMissingTotal) {
+      try {
+        const verifyPrompt = `You are a receipt/invoice verification expert. I extracted the following data from a receipt image. Please look at the SAME image and verify each field. If any value is WRONG, return the corrected JSON. If everything is correct, return the SAME JSON unchanged.
 
 EXTRACTED DATA:
 ${JSON.stringify(scan1Data, null, 2)}
@@ -481,17 +485,20 @@ RULES:
 - If merchant name has typos compared to the image, fix it
 - Return ONLY the corrected/verified JSON, no explanation`;
 
-      const scan2Raw = await callOracle([
-        { role: "system", content: verifyPrompt },
-        { role: "user", content: [
-          { type: "text", text: "Verify this extracted invoice data against the image:" },
-          imageContent,
-        ]},
-      ], 2048);
-      finalData = normalizeInvoiceData(parseJson(scan2Raw));
-      console.log("Verification scan completed successfully");
-    } catch (verifyErr) {
-      console.error("Verification scan failed, using scan 1 data:", verifyErr);
+        const scan2Raw = await callOracle([
+          { role: "system", content: verifyPrompt },
+          { role: "user", content: [
+            { type: "text", text: "Verify this extracted invoice data against the image:" },
+            imageContent,
+          ]},
+        ], 2048);
+        finalData = normalizeInvoiceData(parseJson(scan2Raw));
+        console.log("Verification scan completed successfully");
+      } catch (verifyErr) {
+        console.error("Verification scan failed, using scan 1 data:", verifyErr);
+      }
+    } else {
+      console.log("Scan 1 returned valid total, skipping verification scan");
     }
 
     return new Response(
