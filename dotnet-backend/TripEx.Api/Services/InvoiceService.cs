@@ -79,12 +79,11 @@ public class InvoiceService
                 stopwatch.Stop();
 
                 // ── Sanity check: detect missing critical fields ──
-                // combtas REQUIRES Total, Date, InvoiceNumber, Currency. Retry if Total=0 OR both Date+InvoiceNum missing.
                 bool missingTotal = IsMissingOrZeroAmount(fields.Total ?? fields.TotalAmount);
                 bool missingDate = string.IsNullOrEmpty(fields.InvoiceDate);
                 bool missingInvoiceNum = string.IsNullOrEmpty(fields.InvoiceNumber);
                 bool isEmptyResult = missingTotal && string.IsNullOrEmpty(fields.MerchantName) && missingInvoiceNum;
-                bool shouldRetry = (missingTotal || (missingDate && missingInvoiceNum)) && attempt < maxAttempts;
+                bool shouldRetry = missingTotal && attempt < maxAttempts;
 
                 if (shouldRetry)
                 {
