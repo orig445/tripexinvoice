@@ -13,7 +13,7 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
     <PackageReference Include="AWSSDK.S3" Version="3.7.305.23" />
-    <PackageReference Include="log4net" Version="2.0.17" />
+    <PackageReference Include="log4net" Version="3.3.1" />
     <PackageReference Include="Microsoft.Extensions.Logging.Log4Net.AspNetCore" Version="8.0.0" />
   </ItemGroup>
 
