@@ -50,219 +50,161 @@ public class InvoiceService
         var countryHint = country?.ToUpperInvariant() ?? "";
         var imageSize = imageBase64?.Length ?? 0;
 
-        const int maxAttempts = 2;
-        // Overall budget — must stay below host (IIS/Nginx/LB) request timeout (~120s in QA).
-        // A single OCI call can take up to 60s, so we allow 1 full attempt + 1 retry safely.
-        const int overallBudgetMs = 100_000;
-        var overallStopwatch = Stopwatch.StartNew();
-        Exception? lastError = null;
-        int? lastHttpStatus = null;
-        string? lastOciBody = null;
-
-        for (int attempt = 1; attempt <= maxAttempts; attempt++)
+        try
         {
-            try
+            var imageContent = imageBase64 ?? imageUrl!;
+            Console.WriteLine($"[OCR][{source}] Scanning | country={countryHint} | imgSize={imageSize}");
+            rawResponse = await _aiService.CallGeminiFlashAsync(imageContent, countryHint);
+            Console.WriteLine($"[OCR][{source}] Raw response length: {rawResponse?.Length ?? 0}");
+
+            var aiJson = OracleAiService.ParseJsonFromAiResponse(rawResponse!);
+            ValidateJsonCompleteness(aiJson, source, 1);
+            aiJson = ValidateAndFixAmounts(aiJson);
+            var detectedCurrency = aiJson.TryGetProperty("currency", out var curProp) ? curProp.GetString() : null;
+            aiJson = ValidateDateByCurrency(aiJson, detectedCurrency, country);
+            var fields = MapToAlgoTextFields(aiJson);
+
+            stopwatch.Stop();
+
+            bool missingTotal = IsMissingOrZeroAmount(fields.Total ?? fields.TotalAmount);
+            bool missingDate = string.IsNullOrEmpty(fields.InvoiceDate);
+            bool missingInvoiceNum = string.IsNullOrEmpty(fields.InvoiceNumber);
+            bool missingVat = IsMissingOrZeroAmount(fields.TotalVAT);
+
+            if (missingTotal)
             {
-                var imageContent = imageBase64 ?? imageUrl!;
-
-                Console.WriteLine($"[OCR][{source}] Attempt {attempt}/{maxAttempts} | country={countryHint} | imgSize={imageSize}");
-                rawResponse = await _aiService.CallGeminiFlashAsync(imageContent, countryHint);
-                Console.WriteLine($"[OCR][{source}] Raw response length: {rawResponse?.Length ?? 0}");
-
-                var aiJson = OracleAiService.ParseJsonFromAiResponse(rawResponse!);
-                ValidateJsonCompleteness(aiJson, source, attempt);
-                aiJson = ValidateAndFixAmounts(aiJson);
-                var detectedCurrency = aiJson.TryGetProperty("currency", out var curProp) ? curProp.GetString() : null;
-                aiJson = ValidateDateByCurrency(aiJson, detectedCurrency, country);
-                var fields = MapToAlgoTextFields(aiJson);
-
-                stopwatch.Stop();
-
-                // ── Sanity check: detect missing critical fields ──
-                bool missingTotal = IsMissingOrZeroAmount(fields.Total ?? fields.TotalAmount);
-                bool missingDate = string.IsNullOrEmpty(fields.InvoiceDate);
-                bool missingInvoiceNum = string.IsNullOrEmpty(fields.InvoiceNumber);
-                bool isEmptyResult = missingTotal && string.IsNullOrEmpty(fields.MerchantName) && missingInvoiceNum;
-                bool shouldRetry = missingTotal && attempt < maxAttempts;
-
-                if (shouldRetry)
-                {
-                    // OCI returned 200 but Gemini missed critical fields — retry with stronger prompt
-                    Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt}: missing critical (Total={fields.Total}, Date={fields.InvoiceDate}, InvNum={fields.InvoiceNumber}). Retrying...");
-                    await SaveScanLog(new InvoiceScanLog
-                    {
-                        UserId = userId ?? Guid.Empty,
-                        RawAiResponse = rawResponse,
-                        CountryHint = countryHint,
-                        Status = isEmptyResult ? "EmptyResult" : "PartialResult",
-                        DurationMs = stopwatch.ElapsedMilliseconds,
-                        HttpStatusCode = 200,
-                        ErrorMessage = $"Missing critical — Total:{!missingTotal}, Date:{!missingDate}, InvNum:{!missingInvoiceNum}",
-                        ErrorType = "PartialExtraction",
-                        Source = source,
-                        AttemptNumber = attempt,
-                        ImageSizeBytes = imageSize
-                    });
-                    await Task.Delay(500);
-                    stopwatch.Restart();
-                    continue;
-                }
-
-                // ── FINAL FALLBACK: if total still missing after main retries, do focused total-only extraction ──
-                if (missingTotal && !string.IsNullOrEmpty(imageBase64))
-                {
-                    Console.Error.WriteLine($"[OCR][{source}] Total still missing after attempt {attempt}. Starting AGGRESSIVE total-only fallback (3 rounds)...");
-                    string recoveredTotal = "";
-                    for (int round = 1; round <= 3; round++)
-                    {
-                        try
-                        {
-                            var focused = await _aiService.CallGeminiTotalOnlyAsync(imageBase64!, countryHint, round);
-                            Console.WriteLine($"[OCR][{source}] Total-only fallback round {round} returned: '{focused}'");
-                            if (!IsMissingOrZeroAmount(focused))
-                            {
-                                var parsed = ParseAmountSmart(focused);
-                                recoveredTotal = parsed.HasValue ? parsed.Value.ToString("0.##", CultureInfo.InvariantCulture) : focused.Trim();
-                                break;
-                            }
-                        }
-                        catch (Exception fx)
-                        {
-                            Console.Error.WriteLine($"[OCR][{source}] Total-only fallback round {round} failed: {fx.Message}");
-                        }
-                    }
-
-                    // Last-resort: regex over the original raw response (search for largest monetary number)
-                    if (IsMissingOrZeroAmount(recoveredTotal))
-                    {
-                        recoveredTotal = ExtractLargestMonetaryFromText(rawResponse) ?? "";
-                        if (!string.IsNullOrEmpty(recoveredTotal))
-                            Console.WriteLine($"[OCR][{source}] Regex fallback recovered total: {recoveredTotal}");
-                    }
-
-                    if (!IsMissingOrZeroAmount(recoveredTotal))
-                    {
-                        fields.Total = recoveredTotal;
-                        fields.TotalAmount = recoveredTotal;
-                        if (string.IsNullOrEmpty(fields.Currency))
-                            fields.Currency = DefaultCurrencyForCountry(countryHint) ?? "";
-                        missingTotal = false;
-                        Console.WriteLine($"[OCR][{source}] ✅ Fallback succeeded — Total={fields.Total} {fields.Currency}");
-                    }
-                }
-
-                Console.WriteLine($"[OCR][{source}] OK in {stopwatch.ElapsedMilliseconds}ms | attempt={attempt} | Total={fields.Total} {fields.Currency} | Merchant={fields.MerchantName}");
-
-                await SaveScanLog(new InvoiceScanLog
-                {
-                    UserId = userId ?? Guid.Empty,
-                    RawAiResponse = rawResponse,
-                    CountryHint = countryHint,
-                    Status = missingTotal ? "FailedMissingTotal" : (isEmptyResult ? "SuccessButEmpty" : "Success"),
-                    DurationMs = stopwatch.ElapsedMilliseconds,
-                    HttpStatusCode = 200,
-                    ErrorMessage = missingTotal ? "Returned no valid total after retries + focused fallback" : (isEmptyResult ? "Returned empty result after retries" : null),
-                    Source = source,
-                    AttemptNumber = attempt,
-                    ImageSizeBytes = imageSize
-                });
-
-                if (missingTotal)
-                    return new AnalyzeInvoiceResponse
-                    {
-                        Success = false,
-                        Fields = fields,
-                        RawResponse = rawResponse,
-                        Error = "OCR failed to extract a valid total amount after all retries and fallbacks."
-                    };
-
-                return new AnalyzeInvoiceResponse { Success = true, Fields = fields, RawResponse = rawResponse };
+                fields.Total = "0";
+                fields.TotalAmount = "0";
             }
-            catch (OciApiException ex)
+
+            bool needsTraining = missingTotal || missingDate || missingInvoiceNum || missingVat;
+            if (needsTraining)
             {
-                lastError = ex;
-                lastHttpStatus = ex.StatusCode;
-                lastOciBody = ex.ResponseBody;
-                Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt} OCI error {ex.StatusCode}: {ex.Message}");
+                Console.WriteLine($"[OCR][{source}] Missing fields (Total:{missingTotal} Date:{missingDate} InvNum:{missingInvoiceNum} VAT:{missingVat}) — saving to training");
+                await SaveTrainingSample(fields, aiJson, countryHint, imageUrl);
+            }
 
-                // Retry only on rate-limit (429) or 5xx
-                bool retriable = ex.StatusCode == 429 || ex.StatusCode >= 500;
-                if (!retriable || attempt == maxAttempts) break;
+            Console.WriteLine($"[OCR][{source}] Done in {stopwatch.ElapsedMilliseconds}ms | Total={fields.Total} {fields.Currency} | Merchant={fields.MerchantName}");
 
-                // ── Budget guard: don't start a retry that would push us past host timeout ──
-                int delayMs = (int)Math.Pow(2, attempt) * 500; // 1s, 2s, 4s
-                int projectedMs = (int)overallStopwatch.ElapsedMilliseconds + delayMs + 60_000;
-                if (projectedMs > overallBudgetMs)
-                {
-                    Console.Error.WriteLine($"[OCR][{source}] Budget exhausted ({overallStopwatch.ElapsedMilliseconds}ms used). Skipping retry to avoid host Thread Abort.");
-                    break;
-                }
-                Console.WriteLine($"[OCR][{source}] Retriable, waiting {delayMs}ms before retry...");
-                await Task.Delay(delayMs);
-            }
-            catch (HttpRequestException ex)
+            await SaveScanLog(new InvoiceScanLog
             {
-                lastError = ex;
-                Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt} network error: {ex.Message}");
-                if (attempt == maxAttempts) break;
-                int delayMs = (int)Math.Pow(2, attempt) * 500;
-                if (overallStopwatch.ElapsedMilliseconds + delayMs + 60_000 > overallBudgetMs)
-                {
-                    Console.Error.WriteLine($"[OCR][{source}] Budget exhausted on network retry. Aborting.");
-                    break;
-                }
-                await Task.Delay(delayMs);
-            }
-            catch (TaskCanceledException ex)
-            {
-                // HttpClient timeout (60s) — treat as 504 and respect budget
-                lastError = ex;
-                lastHttpStatus = 504;
-                Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt} timed out after 60s: {ex.Message}");
-                if (attempt == maxAttempts) break;
-                if (overallStopwatch.ElapsedMilliseconds + 60_000 > overallBudgetMs)
-                {
-                    Console.Error.WriteLine($"[OCR][{source}] Budget exhausted after timeout. Aborting before host kills us.");
-                    break;
-                }
-                await Task.Delay(500);
-            }
-            catch (Exception ex)
-            {
-                // Non-retriable (parse error, validation, etc.) — fail immediately
-                lastError = ex;
-                Console.Error.WriteLine($"[OCR][{source}] Attempt {attempt} non-retriable error: {ex.GetType().Name}: {ex.Message}");
-                break;
-            }
+                UserId = userId ?? Guid.Empty,
+                RawAiResponse = rawResponse,
+                CountryHint = countryHint,
+                Status = needsTraining ? "PartialResult" : "Success",
+                DurationMs = stopwatch.ElapsedMilliseconds,
+                HttpStatusCode = 200,
+                ErrorMessage = needsTraining ? $"Missing: Total:{missingTotal} Date:{missingDate} InvNum:{missingInvoiceNum} VAT:{missingVat}" : null,
+                Source = source,
+                AttemptNumber = 1,
+                ImageSizeBytes = imageSize
+            });
+
+            return new AnalyzeInvoiceResponse { Success = true, Fields = fields, RawResponse = rawResponse };
         }
-
-        stopwatch.Stop();
-        var errMsg = lastError?.Message ?? "Unknown error";
-        Console.Error.WriteLine($"[OCR][{source}] FAILED after retries in {stopwatch.ElapsedMilliseconds}ms: {errMsg}");
-
-        await SaveScanLog(new InvoiceScanLog
+        catch (OciApiException ex)
         {
-            UserId = userId ?? Guid.Empty,
-            RawAiResponse = rawResponse,
-            CountryHint = countryHint,
-            Status = "Failed",
-            DurationMs = stopwatch.ElapsedMilliseconds,
-            HttpStatusCode = lastHttpStatus,
-            ErrorMessage = errMsg,
-            ErrorType = lastError?.GetType().Name,
-            OciResponseBody = lastOciBody,
-            Source = source,
-            AttemptNumber = maxAttempts,
-            ImageSizeBytes = imageSize
-        });
-
-        return new AnalyzeInvoiceResponse
+            stopwatch.Stop();
+            Console.Error.WriteLine($"[OCR][{source}] OCI error {ex.StatusCode}: {ex.Message}");
+            await SaveScanLog(new InvoiceScanLog
+            {
+                UserId = userId ?? Guid.Empty,
+                RawAiResponse = rawResponse,
+                CountryHint = countryHint,
+                Status = "Failed",
+                DurationMs = stopwatch.ElapsedMilliseconds,
+                HttpStatusCode = ex.StatusCode,
+                ErrorMessage = ex.Message,
+                ErrorType = nameof(OciApiException),
+                OciResponseBody = ex.ResponseBody,
+                Source = source,
+                AttemptNumber = 1,
+                ImageSizeBytes = imageSize
+            });
+            return new AnalyzeInvoiceResponse { Success = false, Error = ex.Message, RawResponse = rawResponse ?? "", Fields = CreateFailureFields(countryHint) };
+        }
+        catch (HttpRequestException ex)
         {
-            Success = false,
-            Error = errMsg,
-            RawResponse = rawResponse ?? "",
-            Fields = CreateFailureFields(countryHint)
-        };
+            stopwatch.Stop();
+            Console.Error.WriteLine($"[OCR][{source}] Network error: {ex.Message}");
+            await SaveScanLog(new InvoiceScanLog
+            {
+                UserId = userId ?? Guid.Empty,
+                CountryHint = countryHint,
+                Status = "Failed",
+                DurationMs = stopwatch.ElapsedMilliseconds,
+                ErrorMessage = ex.Message,
+                ErrorType = nameof(HttpRequestException),
+                Source = source,
+                AttemptNumber = 1,
+                ImageSizeBytes = imageSize
+            });
+            return new AnalyzeInvoiceResponse { Success = false, Error = ex.Message, Fields = CreateFailureFields(countryHint) };
+        }
+        catch (TaskCanceledException ex)
+        {
+            stopwatch.Stop();
+            Console.Error.WriteLine($"[OCR][{source}] Timed out after 60s: {ex.Message}");
+            await SaveScanLog(new InvoiceScanLog
+            {
+                UserId = userId ?? Guid.Empty,
+                CountryHint = countryHint,
+                Status = "Failed",
+                DurationMs = stopwatch.ElapsedMilliseconds,
+                HttpStatusCode = 504,
+                ErrorMessage = "Request timed out",
+                ErrorType = nameof(TaskCanceledException),
+                Source = source,
+                AttemptNumber = 1,
+                ImageSizeBytes = imageSize
+            });
+            return new AnalyzeInvoiceResponse { Success = false, Error = "OCR request timed out.", Fields = CreateFailureFields(countryHint) };
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            Console.Error.WriteLine($"[OCR][{source}] Error: {ex.GetType().Name}: {ex.Message}");
+            await SaveScanLog(new InvoiceScanLog
+            {
+                UserId = userId ?? Guid.Empty,
+                CountryHint = countryHint,
+                Status = "Failed",
+                DurationMs = stopwatch.ElapsedMilliseconds,
+                ErrorMessage = ex.Message,
+                ErrorType = ex.GetType().Name,
+                Source = source,
+                AttemptNumber = 1,
+                ImageSizeBytes = imageSize
+            });
+            return new AnalyzeInvoiceResponse { Success = false, Error = ex.Message, Fields = CreateFailureFields(countryHint) };
+        }
+    }
+
+    private async Task SaveTrainingSample(InvoiceFields fields, JsonElement aiJson, string countryHint, string? imageUrl)
+    {
+        try
+        {
+            await SchemaGuard.EnsureOcrTrainingSamplesAsync(_db);
+            var sample = new OcrTrainingSample
+            {
+                VendorName = fields.MerchantName,
+                Country = countryHint,
+                Currency = fields.Currency,
+                DocumentType = fields.Type,
+                ExtractedFields = JsonSerializer.Serialize(fields),
+                FieldPositions = BuildFieldPositions(aiJson),
+                ImageUrl = imageUrl,
+                IsVerified = false,
+                IsRejected = false
+            };
+            _db.OcrTrainingSamples.Add(sample);
+            await _db.SaveChangesAsync();
+            Console.WriteLine($"[OCR-TRAIN] Saved incomplete scan for training: {sample.Id}");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[OCR-TRAIN] Failed to save training sample: {ex.Message}");
+        }
     }
 
     private static InvoiceFields CreateFailureFields(string countryHint) => new()
