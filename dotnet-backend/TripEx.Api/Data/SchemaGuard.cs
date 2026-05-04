@@ -40,6 +40,28 @@ CREATE TABLE [dbo].[OcrTrainingPatterns] (
 );");
     }
 
+    public static async Task EnsureOcrTrainingSamplesAsync(TripExDbContext db)
+    {
+        await EnsureAsync(db, "OcrTrainingSamples", @"
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'OcrTrainingSamples')
+CREATE TABLE [dbo].[OcrTrainingSamples] (
+    [Id] UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    [VendorName] NVARCHAR(255) NULL,
+    [Country] NVARCHAR(10) NULL,
+    [Currency] NVARCHAR(10) NULL,
+    [DocumentType] NVARCHAR(100) NULL,
+    [ExtractedFields] NVARCHAR(MAX) NULL,
+    [FieldPositions] NVARCHAR(MAX) NULL,
+    [Corrections] NVARCHAR(MAX) NULL,
+    [ImageUrl] NVARCHAR(2048) NULL,
+    [IsVerified] BIT NOT NULL DEFAULT 0,
+    [IsRejected] BIT NOT NULL DEFAULT 0,
+    [CreatedAt] DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET()
+);
+IF COL_LENGTH('dbo.OcrTrainingSamples', 'ImageUrl') IS NULL
+    ALTER TABLE [dbo].[OcrTrainingSamples] ADD [ImageUrl] NVARCHAR(2048) NULL;");
+    }
+
     public static async Task EnsureInvoiceScanLogsAsync(TripExDbContext db)
     {
         await EnsureAsync(db, "InvoiceScanLogs", @"

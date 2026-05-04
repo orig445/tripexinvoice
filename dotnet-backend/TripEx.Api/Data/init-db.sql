@@ -202,10 +202,13 @@ CREATE TABLE [dbo].[OcrTrainingSamples] (
     [ExtractedFields] NVARCHAR(MAX) NULL,
     [FieldPositions] NVARCHAR(MAX) NULL,
     [Corrections] NVARCHAR(MAX) NULL,
+    [ImageUrl] NVARCHAR(2048) NULL,
     [IsVerified] BIT NOT NULL DEFAULT 0,
     [IsRejected] BIT NOT NULL DEFAULT 0,
     [CreatedAt] DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET()
 );
+IF COL_LENGTH('dbo.OcrTrainingSamples', 'ImageUrl') IS NULL
+    ALTER TABLE [dbo].[OcrTrainingSamples] ADD [ImageUrl] NVARCHAR(2048) NULL;
 GO
 
 -- ── 14. OCR Training Patterns ──

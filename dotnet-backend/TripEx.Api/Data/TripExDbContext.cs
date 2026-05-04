@@ -232,6 +232,7 @@ public class OcrTrainingSample
     [Column("ExtractedFields", TypeName = "nvarchar(max)")] public string? ExtractedFields { get; set; }
     [Column("FieldPositions", TypeName = "nvarchar(max)")] public string? FieldPositions { get; set; }
     [Column("Corrections", TypeName = "nvarchar(max)")] public string? Corrections { get; set; }
+    [Column("ImageUrl", TypeName = "nvarchar(2048)")] public string? ImageUrl { get; set; }
     [Column("IsVerified")] public bool IsVerified { get; set; } = false;
     [Column("IsRejected")] public bool IsRejected { get; set; } = false;
     [Column("CreatedAt")] public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
