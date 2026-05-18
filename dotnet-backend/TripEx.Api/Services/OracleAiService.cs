@@ -54,10 +54,10 @@ public class OracleAiService
         if (string.IsNullOrWhiteSpace(imageBase64))
             throw new ArgumentException("imageBase64 cannot be empty");
 
-        // Ensure proper data URI prefix
+        // Ensure proper data URI prefix with correct MIME type
         var imageUrl = imageBase64.StartsWith("data:")
             ? imageBase64
-            : $"data:image/jpeg;base64,{imageBase64}";
+            : $"data:{DetectMimeType(imageBase64)};base64,{imageBase64}";
 
         // Validate base64 content (strip prefix and check)
         var base64Part = imageUrl.Contains(",") ? imageUrl[(imageUrl.IndexOf(',') + 1)..] : imageUrl;
@@ -98,7 +98,7 @@ public class OracleAiService
 
         var imageUrl = imageBase64.StartsWith("data:")
             ? imageBase64
-            : $"data:image/jpeg;base64,{imageBase64}";
+            : $"data:{DetectMimeType(imageBase64)};base64,{imageBase64}";
 
         // Round-specific instructions to force different reasoning paths
         var roundHint = retryRound switch
@@ -791,6 +791,38 @@ PAYMENT FORM RULES:
         return parts.Count > 0
             ? $"{{{string.Join(", ", parts)}}}"
             : "{}";
+    }
+
+    /// <summary>
+    /// Detects the actual MIME type from the first bytes of a base64 string.
+    /// Prevents sending PDFs or PNGs mislabeled as image/jpeg, which causes OCI 400 errors.
+    /// </summary>
+    private static string DetectMimeType(string base64)
+    {
+        // Read enough chars to identify the magic bytes (at most 16 chars)
+        var sample = base64.Length > 16 ? base64[..16] : base64;
+        try
+        {
+            var bytes = Convert.FromBase64String(sample.PadRight((sample.Length + 3) & ~3, '='));
+            // PDF: %PDF → 25 50 44 46
+            if (bytes.Length >= 4 && bytes[0] == 0x25 && bytes[1] == 0x50 && bytes[2] == 0x44 && bytes[3] == 0x46)
+                return "application/pdf";
+            // PNG: ‰PNG → 89 50 4E 47
+            if (bytes.Length >= 4 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47)
+                return "image/png";
+            // WEBP: RIFF????WEBP
+            if (bytes.Length >= 12 && bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46
+                && bytes[8] == 0x57 && bytes[9] == 0x45 && bytes[10] == 0x42 && bytes[11] == 0x50)
+                return "image/webp";
+            // GIF: GIF87a / GIF89a
+            if (bytes.Length >= 3 && bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46)
+                return "image/gif";
+            // JPEG: FF D8 FF
+            if (bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF)
+                return "image/jpeg";
+        }
+        catch { /* fall through to default */ }
+        return "image/jpeg";
     }
 
     private static string EscapeJsonString(string s) =>
