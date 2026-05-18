@@ -67,6 +67,13 @@ public class OracleAiService
             throw new ArgumentException(
                 $"Image too large ({base64Part.Length / 1_000_000}MB base64). Max ~10MB. Please compress on the client side.");
 
+        // Diagnostic: log declared MIME type and magic bytes for debugging OCI rejections
+        var declaredMime = imageUrl.StartsWith("data:") && imageUrl.Contains(";")
+            ? imageUrl[5..imageUrl.IndexOf(';')]
+            : "unknown";
+        var b64Preview = base64Part.Length >= 12 ? base64Part[..12] : base64Part;
+        Console.WriteLine($"[OCI] Image: mime={declaredMime}, base64len={base64Part.Length}, b64prefix={b64Preview}");
+
         var prompt = await PrepareSystemPromptAsync(countryHint);
 
         var messages = new List<OracleMessage>

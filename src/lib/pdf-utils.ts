@@ -5,13 +5,13 @@ import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 /**
- * Renders the first page of a PDF file to a JPEG base64 data URL.
+ * Renders the first page of a PDF file to a PNG base64 data URL.
+ * PNG is used instead of JPEG to avoid JPEG encoding variant issues with vision APIs.
  * Returns { base64DataUrl, blob } for upload/preview.
  */
 export async function pdfPageToImage(
   file: File,
-  maxWidth = 1600,
-  quality = 0.85
+  maxWidth = 1600
 ): Promise<{ base64DataUrl: string; blob: Blob }> {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -29,7 +29,7 @@ export async function pdfPageToImage(
 
   await page.render({ canvasContext: ctx, viewport }).promise;
 
-  const base64DataUrl = canvas.toDataURL("image/jpeg", quality);
+  const base64DataUrl = canvas.toDataURL("image/png");
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(
@@ -37,20 +37,18 @@ export async function pdfPageToImage(
         if (blob) resolve({ base64DataUrl, blob });
         else reject(new Error("Failed to convert PDF to image"));
       },
-      "image/jpeg",
-      quality
+      "image/png"
     );
   });
 }
 
 /**
- * Renders ALL pages of a PDF to JPEG base64 strings (without data: prefix).
+ * Renders ALL pages of a PDF to PNG base64 strings (without data: prefix).
  * Used by chatbot to send multiple pages for analysis.
  */
 export async function pdfAllPagesToBase64(
   file: File,
-  maxWidth = 1200,
-  quality = 0.7
+  maxWidth = 1200
 ): Promise<string[]> {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -69,7 +67,7 @@ export async function pdfAllPagesToBase64(
     if (!ctx) continue;
 
     await page.render({ canvasContext: ctx, viewport }).promise;
-    const dataUrl = canvas.toDataURL("image/jpeg", quality);
+    const dataUrl = canvas.toDataURL("image/png");
     const base64 = dataUrl.split(",")[1];
     if (base64) pages.push(base64);
   }

@@ -82,25 +82,29 @@ export function InvoiceUploader({ onInvoiceProcessed }: InvoiceUploaderProps) {
     setStatus("uploading");
 
     try {
-      // Convert to JPEG (handles HEIC, PDF and other formats)
+      // Convert to image (PDF → PNG, other formats → JPEG)
       let base64: string;
       let blob: Blob;
+      let imageMimeType: string;
       if (isPdf) {
         const result = await pdfPageToImage(file);
         base64 = result.base64DataUrl;
         blob = result.blob;
+        imageMimeType = "image/png";
       } else {
         const result = await compressToJpeg(file);
         base64 = result.base64;
         blob = result.blob;
+        imageMimeType = "image/jpeg";
       }
       const previewUrl = URL.createObjectURL(blob);
       setPreviewUrl(previewUrl);
 
-      const fileName = `${Date.now()}-image.jpg`;
+      const ext = isPdf ? "png" : "jpg";
+      const fileName = `${Date.now()}-image.${ext}`;
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from("invoices")
-        .upload(fileName, blob, { contentType: "image/jpeg" });
+        .upload(fileName, blob, { contentType: imageMimeType });
 
       if (uploadError) {
         console.error("Upload error:", uploadError);
