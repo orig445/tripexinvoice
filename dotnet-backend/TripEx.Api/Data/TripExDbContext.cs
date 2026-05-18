@@ -43,6 +43,20 @@ public class TripExDbContext : DbContext
         modelBuilder.Entity<UserCredential>()
             .HasIndex(c => c.Email)
             .IsUnique();
+
+        modelBuilder.Entity<ChatbotConfig>()
+            .Property(e => e.Temperature)
+            .HasPrecision(5, 4);
+
+        modelBuilder.Entity<Invoice>()
+            .Property(e => e.Subtotal)
+            .HasPrecision(18, 4);
+        modelBuilder.Entity<Invoice>()
+            .Property(e => e.TaxAmount)
+            .HasPrecision(18, 4);
+        modelBuilder.Entity<Invoice>()
+            .Property(e => e.TotalAmount)
+            .HasPrecision(18, 4);
     }
 }
 
