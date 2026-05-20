@@ -42,7 +42,7 @@ public class OracleAiService
         _endpoint = config["Oracle:Endpoint"]
             ?? "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions";
         _model = config["Oracle:Model"]
-            ?? "google.gemini-2.0-flash";
+            ?? "google.gemini-2.0-flash-001";
         _compartmentId = config["Oracle:CompartmentId"];
     }
 
@@ -872,6 +872,10 @@ PAYMENT FORM RULES:
             invalidReason = $"Unrecognized image format. Header bytes: {headerHex}";
             Console.Error.WriteLine($"[OCR-IMAGE] ❌ {invalidReason}");
         }
+        else if (actualMime == "application/pdf")
+        {
+            Console.WriteLine($"[OCR-IMAGE] 📄 PDF detected ({imageBytes.Length:N0} bytes) — will send directly to Gemini (supports PDF input)");
+        }
 
         // ── SHA256 hash ──
         var hashBytes = SHA256.HashData(imageBytes);
@@ -890,13 +894,14 @@ PAYMENT FORM RULES:
 
             var ext = actualMime switch
             {
-                "image/jpeg" => ".jpg",
-                "image/png"  => ".png",
-                "image/webp" => ".webp",
-                "image/gif"  => ".gif",
-                "image/bmp"  => ".bmp",
-                "unknown"    => ".bin",  // unrecognized format — save as binary for hex inspection
-                _            => ".jpg"
+                "image/jpeg"     => ".jpg",
+                "image/png"      => ".png",
+                "image/webp"     => ".webp",
+                "image/gif"      => ".gif",
+                "image/bmp"      => ".bmp",
+                "application/pdf"=> ".pdf",
+                "unknown"        => ".bin",  // unrecognized format — save as binary for hex inspection
+                _                => ".jpg"
             };
             var fileName = $"{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}-{hash[..8]}{ext}";
             debugFilePath = Path.Combine(debugDir, fileName);
@@ -982,6 +987,8 @@ PAYMENT FORM RULES:
         if (b[0] == 0x47 && b[1] == 0x49 && b[2] == 0x46) return "image/gif";
         // BMP: BM
         if (b[0] == 0x42 && b[1] == 0x4D) return "image/bmp";
+        // PDF: %PDF
+        if (b[0] == 0x25 && b[1] == 0x50 && b[2] == 0x44 && b[3] == 0x46) return "application/pdf";
         return "unknown";
     }
 
