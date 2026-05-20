@@ -181,8 +181,8 @@ _ = Task.Run(async () =>
 // ── Middleware ──
 // if (app.Environment.IsDevelopment())
 // {
-//     app.UseSwagger();
-//     app.UseSwaggerUI();
+     app.UseSwagger();
+     app.UseSwaggerUI();
 // }
 
 app.UseCors();
