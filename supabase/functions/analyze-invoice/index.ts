@@ -185,7 +185,10 @@ serve(async (req) => {
   try {
     const { imageBase64, imageUrl } = await req.json();
 
-    const ORACLE_API_KEY = Deno.env.get("oracleapikey_2");
+    const ORACLE_API_KEY =
+      Deno.env.get("oracleapikey_2") ||
+      Deno.env.get("oracleapikey") ||
+      Deno.env.get("invoice");
     if (!ORACLE_API_KEY) {
       throw new Error("Oracle API key (invoice secret) is not configured");
     }
