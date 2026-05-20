@@ -815,7 +815,9 @@ PAYMENT FORM RULES:
     /// - Detects actual MIME type from magic bytes (ignores declared type if wrong)
     /// - Validates image header
     /// - Computes SHA256 hash to detect corruption in transit
-    /// - Saves a copy to OCR_DEBUG_IMAGES_DIR if the env var is set
+    /// - Always saves a copy to logs/ocr-images/ (override: OCR_DEBUG_IMAGES_DIR env var)
+    /// - Verifies written file size matches decoded byte count
+    /// - Async cleanup: keeps last 7 days / max 500 files
     /// </summary>
     public ImageInspectionResult InspectImage(string imageBase64)
     {
@@ -875,24 +877,53 @@ PAYMENT FORM RULES:
         var hashBytes = SHA256.HashData(imageBytes);
         var hash = Convert.ToHexString(hashBytes).ToLowerInvariant();
 
-        // ── Save to debug directory if configured ──
+        // ── Save to debug directory (always — default: logs/ocr-images/) ──
+        // Override with OCR_DEBUG_IMAGES_DIR env var if needed.
         string? debugFilePath = null;
         var debugDir = Environment.GetEnvironmentVariable("OCR_DEBUG_IMAGES_DIR");
-        if (!string.IsNullOrWhiteSpace(debugDir))
+        if (string.IsNullOrWhiteSpace(debugDir))
+            debugDir = Path.Combine(Directory.GetCurrentDirectory(), "logs", "ocr-images");
+
+        try
         {
-            try
+            Directory.CreateDirectory(debugDir);
+
+            var ext = actualMime switch
             {
-                Directory.CreateDirectory(debugDir);
-                var ext = actualMime switch { "image/png" => ".png", "image/webp" => ".webp", "image/gif" => ".gif", "image/bmp" => ".bmp", _ => ".jpg" };
-                var fileName = $"{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}-{hash[..8]}{ext}";
-                debugFilePath = Path.Combine(debugDir, fileName);
-                File.WriteAllBytes(debugFilePath, imageBytes);
-                Console.WriteLine($"[OCR-IMAGE] 💾 Debug image saved: {debugFilePath} ({imageBytes.Length:N0} bytes)");
-            }
-            catch (Exception ex)
+                "image/jpeg" => ".jpg",
+                "image/png"  => ".png",
+                "image/webp" => ".webp",
+                "image/gif"  => ".gif",
+                "image/bmp"  => ".bmp",
+                "unknown"    => ".bin",  // unrecognized format — save as binary for hex inspection
+                _            => ".jpg"
+            };
+            var fileName = $"{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}-{hash[..8]}{ext}";
+            debugFilePath = Path.Combine(debugDir, fileName);
+
+            File.WriteAllBytes(debugFilePath, imageBytes);
+
+            // Verify the write actually landed (guards against silent truncation)
+            var writtenSize = new FileInfo(debugFilePath).Length;
+            if (writtenSize != imageBytes.Length)
             {
-                Console.WriteLine($"[OCR-IMAGE] Warning: could not save debug image: {ex.Message}");
+                Console.Error.WriteLine(
+                    $"[OCR-IMAGE] ❌ Write verification failed: wrote {imageBytes.Length} bytes but file is {writtenSize} bytes — {debugFilePath}");
+                debugFilePath = null; // mark as failed so the log shows null
             }
+            else
+            {
+                Console.WriteLine(
+                    $"[OCR-IMAGE] 💾 Saved: {debugFilePath} ({writtenSize:N0} bytes, sha256={hash[..16]}...)");
+            }
+
+            // Async cleanup — delete files older than 7 days, cap at 500 files
+            _ = Task.Run(() => CleanupDebugImages(debugDir));
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[OCR-IMAGE] ❌ Could not save debug image: {ex.GetType().Name}: {ex.Message}");
+            debugFilePath = null;
         }
 
         Console.WriteLine(
@@ -901,6 +932,40 @@ PAYMENT FORM RULES:
 
         return new ImageInspectionResult(actualMime, imageBytes.Length, hash, debugFilePath,
             invalidReason == null, invalidReason);
+    }
+
+    private static void CleanupDebugImages(string dir)
+    {
+        try
+        {
+            var allFiles = Directory.GetFiles(dir)
+                .Select(f => new FileInfo(f))
+                .OrderBy(f => f.LastWriteTimeUtc)
+                .ToList();
+
+            var cutoff = DateTime.UtcNow.AddDays(-7);
+            const int maxFiles = 500;
+
+            // Delete files older than 7 days
+            var toDelete = allFiles.Where(f => f.LastWriteTimeUtc < cutoff).ToList();
+
+            // If still over limit after age-based cleanup, remove oldest first
+            var remaining = allFiles.Count - toDelete.Count;
+            if (remaining > maxFiles)
+                toDelete.AddRange(allFiles.Except(toDelete).Take(remaining - maxFiles));
+
+            foreach (var f in toDelete)
+            {
+                try { f.Delete(); } catch { /* best-effort */ }
+            }
+
+            if (toDelete.Count > 0)
+                Console.WriteLine($"[OCR-IMAGE] Cleaned up {toDelete.Count} old debug image(s) from {dir}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[OCR-IMAGE] Cleanup warning: {ex.Message}");
+        }
     }
 
     private static string DetectMimeFromBytes(byte[] b)
