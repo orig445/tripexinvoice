@@ -216,6 +216,11 @@ public class InvoiceScanLog
     [Column("ImageSizeBytes")] public int? ImageSizeBytes { get; set; }
     [Column("Source")] public string? Source { get; set; }      // "analyze" | "bulk-train" | "chat"
     [Column("AttemptNumber")] public int? AttemptNumber { get; set; }
+
+    // ── Image integrity diagnostics ──
+    [Column("ImageMimeType")] public string? ImageMimeType { get; set; }   // actual detected MIME type
+    [Column("ImageHash")] public string? ImageHash { get; set; }           // SHA256 of decoded bytes
+    [Column("ImageDebugPath")] public string? ImageDebugPath { get; set; } // path to saved debug file
 }
 
 /// <summary>

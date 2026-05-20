@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
@@ -54,18 +55,20 @@ public class OracleAiService
         if (string.IsNullOrWhiteSpace(imageBase64))
             throw new ArgumentException("imageBase64 cannot be empty");
 
-        // Ensure proper data URI prefix
-        var imageUrl = imageBase64.StartsWith("data:")
-            ? imageBase64
-            : $"data:image/jpeg;base64,{imageBase64}";
+        // ── Extract base64 part and auto-correct MIME type from magic bytes ──
+        var base64Part = imageBase64.Contains(",")
+            ? imageBase64[(imageBase64.IndexOf(',') + 1)..].Trim()
+            : imageBase64.Trim();
 
-        // Validate base64 content (strip prefix and check)
-        var base64Part = imageUrl.Contains(",") ? imageUrl[(imageUrl.IndexOf(',') + 1)..] : imageUrl;
-        if (string.IsNullOrWhiteSpace(base64Part) || base64Part.Length < MinImageBase64Length)
+        if (base64Part.Length < MinImageBase64Length)
             throw new ArgumentException("Image data is too small or empty — likely corrupted");
         if (base64Part.Length > MaxImageBase64Length)
             throw new ArgumentException(
                 $"Image too large ({base64Part.Length / 1_000_000}MB base64). Max ~10MB. Please compress on the client side.");
+
+        // Detect MIME type from first 12 bytes only (lightweight, no full decode)
+        string correctedMime = DetectMimeFromBase64Prefix(base64Part);
+        var imageUrl = $"data:{correctedMime};base64,{base64Part}";
 
         var prompt = await PrepareSystemPromptAsync(countryHint);
 
@@ -804,7 +807,150 @@ PAYMENT FORM RULES:
         return Regex.Replace(str, @"\\u([0-9a-fA-F]{4})", m =>
             ((char)Convert.ToInt32(m.Groups[1].Value, 16)).ToString());
     }
+
+    // ── Image integrity inspection ─────────────────────────────────────────
+
+    /// <summary>
+    /// Inspects the image before sending to OCI:
+    /// - Detects actual MIME type from magic bytes (ignores declared type if wrong)
+    /// - Validates image header
+    /// - Computes SHA256 hash to detect corruption in transit
+    /// - Saves a copy to OCR_DEBUG_IMAGES_DIR if the env var is set
+    /// </summary>
+    public ImageInspectionResult InspectImage(string imageBase64)
+    {
+        // ── Extract declared MIME type and raw base64 from data URI ──
+        string declaredMime = "image/jpeg";
+        string base64Part = imageBase64;
+
+        if (imageBase64.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+        {
+            var semicolonIdx = imageBase64.IndexOf(';');
+            if (semicolonIdx > 5)
+                declaredMime = imageBase64.Substring(5, semicolonIdx - 5).Trim().ToLowerInvariant();
+            var commaIdx = imageBase64.IndexOf(',');
+            if (commaIdx >= 0)
+                base64Part = imageBase64[(commaIdx + 1)..];
+        }
+
+        // ── Decode base64 ──
+        byte[] imageBytes;
+        try
+        {
+            imageBytes = Convert.FromBase64String(base64Part.Trim());
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[OCR-IMAGE] ❌ Base64 decode failed: {ex.Message}");
+            return new ImageInspectionResult(declaredMime, 0, "", null, false,
+                $"Base64 decode failed: {ex.Message}");
+        }
+
+        if (imageBytes.Length < 8)
+        {
+            Console.Error.WriteLine($"[OCR-IMAGE] ❌ Image too small: {imageBytes.Length} bytes");
+            return new ImageInspectionResult(declaredMime, imageBytes.Length, "", null, false,
+                $"Image too small ({imageBytes.Length} bytes)");
+        }
+
+        // ── Auto-detect actual format from magic bytes ──
+        string actualMime = DetectMimeFromBytes(imageBytes);
+        bool mimeMismatch = actualMime != declaredMime;
+        if (mimeMismatch)
+        {
+            Console.Error.WriteLine(
+                $"[OCR-IMAGE] ⚠️ MIME TYPE MISMATCH: declared={declaredMime}, actual={actualMime} — using actual for OCI");
+        }
+
+        // ── Validate known header ──
+        string? invalidReason = null;
+        if (actualMime == "unknown")
+        {
+            var headerHex = string.Join(" ", imageBytes[..Math.Min(8, imageBytes.Length)].Select(b => b.ToString("X2")));
+            invalidReason = $"Unrecognized image format. Header bytes: {headerHex}";
+            Console.Error.WriteLine($"[OCR-IMAGE] ❌ {invalidReason}");
+        }
+
+        // ── SHA256 hash ──
+        var hashBytes = SHA256.HashData(imageBytes);
+        var hash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+
+        // ── Save to debug directory if configured ──
+        string? debugFilePath = null;
+        var debugDir = Environment.GetEnvironmentVariable("OCR_DEBUG_IMAGES_DIR");
+        if (!string.IsNullOrWhiteSpace(debugDir))
+        {
+            try
+            {
+                Directory.CreateDirectory(debugDir);
+                var ext = actualMime switch { "image/png" => ".png", "image/webp" => ".webp", "image/gif" => ".gif", "image/bmp" => ".bmp", _ => ".jpg" };
+                var fileName = $"{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}-{hash[..8]}{ext}";
+                debugFilePath = Path.Combine(debugDir, fileName);
+                File.WriteAllBytes(debugFilePath, imageBytes);
+                Console.WriteLine($"[OCR-IMAGE] 💾 Debug image saved: {debugFilePath} ({imageBytes.Length:N0} bytes)");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[OCR-IMAGE] Warning: could not save debug image: {ex.Message}");
+            }
+        }
+
+        Console.WriteLine(
+            $"[OCR-IMAGE] mime={actualMime}{(mimeMismatch ? $" (was {declaredMime})" : "")} | " +
+            $"size={imageBytes.Length:N0}B | sha256={hash[..16]}... | valid={invalidReason == null}");
+
+        return new ImageInspectionResult(actualMime, imageBytes.Length, hash, debugFilePath,
+            invalidReason == null, invalidReason);
+    }
+
+    private static string DetectMimeFromBytes(byte[] b)
+    {
+        if (b.Length < 4) return "unknown";
+        // JPEG: FF D8 FF
+        if (b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF) return "image/jpeg";
+        // PNG: 89 50 4E 47 0D 0A 1A 0A
+        if (b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E && b[3] == 0x47) return "image/png";
+        // WebP: RIFF????WEBP
+        if (b.Length >= 12 && b[0] == 0x52 && b[1] == 0x49 && b[2] == 0x46 && b[3] == 0x46
+            && b[8] == 0x57 && b[9] == 0x45 && b[10] == 0x42 && b[11] == 0x50) return "image/webp";
+        // GIF87a / GIF89a
+        if (b[0] == 0x47 && b[1] == 0x49 && b[2] == 0x46) return "image/gif";
+        // BMP: BM
+        if (b[0] == 0x42 && b[1] == 0x4D) return "image/bmp";
+        return "unknown";
+    }
+
+    // Lightweight: decode only the first 16 bytes of base64 to detect MIME type.
+    // Used in CallGeminiFlashAsync to avoid a full decode when InspectImage already ran.
+    private static string DetectMimeFromBase64Prefix(string base64)
+    {
+        try
+        {
+            // Base64 encodes 3 bytes per 4 chars; 16 bytes needs ~24 chars
+            var prefix = base64.Length > 24 ? base64[..24] : base64;
+            // Pad to valid base64 length
+            while (prefix.Length % 4 != 0) prefix += "=";
+            var bytes = Convert.FromBase64String(prefix);
+            return DetectMimeFromBytes(bytes);
+        }
+        catch
+        {
+            return "image/jpeg"; // safe fallback
+        }
+    }
 }
+
+/// <summary>
+/// Result of image inspection before sending to OCI.
+/// </summary>
+public record ImageInspectionResult(
+    string MimeType,        // actual detected MIME type (corrected if declared was wrong)
+    int DecodedBytes,       // decoded image size in bytes
+    string Sha256Hash,      // hex SHA256 of the decoded bytes
+    string? DebugFilePath,  // path to saved debug file (null if debug dir not configured)
+    bool IsValid,           // false if format is unrecognized
+    string? InvalidReason   // human-readable reason when IsValid=false
+);
 
 /// <summary>
 /// Exception carrying OCI HTTP status + raw response body for diagnostics.

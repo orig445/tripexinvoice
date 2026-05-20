@@ -49,11 +49,26 @@ public class InvoiceService
         string? rawResponse = null;
         var countryHint = country?.ToUpperInvariant() ?? "";
         var imageSize = imageBase64?.Length ?? 0;
+        ImageInspectionResult? imageInspection = null;
 
         try
         {
             var imageContent = imageBase64 ?? imageUrl!;
-            Console.WriteLine($"[OCR][{source}] Scanning | country={countryHint} | imgSize={imageSize}");
+
+            // Inspect image before sending: detect real MIME type, hash, save debug copy
+            if (!string.IsNullOrEmpty(imageBase64))
+            {
+                imageInspection = _aiService.InspectImage(imageBase64);
+                if (!imageInspection.IsValid)
+                    Console.Error.WriteLine($"[OCR][{source}] ⚠️ Image validation failed: {imageInspection.InvalidReason}");
+            }
+
+            Console.WriteLine(
+                $"[OCR][{source}] Scanning | country={countryHint} | imgSize={imageSize} | " +
+                $"mime={imageInspection?.MimeType ?? "url"} | " +
+                $"decoded={imageInspection?.DecodedBytes.ToString("N0") ?? "n/a"}B | " +
+                $"sha256={imageInspection?.Sha256Hash[..16] ?? "n/a"}...");
+
             rawResponse = await _aiService.CallGeminiFlashAsync(imageContent, countryHint);
             Console.WriteLine($"[OCR][{source}] Raw response length: {rawResponse?.Length ?? 0}");
 
@@ -97,7 +112,10 @@ public class InvoiceService
                 ErrorMessage = needsTraining ? $"Missing: Total:{missingTotal} Date:{missingDate} InvNum:{missingInvoiceNum} VAT:{missingVat}" : null,
                 Source = source,
                 AttemptNumber = 1,
-                ImageSizeBytes = imageSize
+                ImageSizeBytes = imageInspection?.DecodedBytes ?? imageSize,
+                ImageMimeType = imageInspection?.MimeType,
+                ImageHash = imageInspection?.Sha256Hash,
+                ImageDebugPath = imageInspection?.DebugFilePath,
             });
 
             return new AnalyzeInvoiceResponse { Success = true, Fields = fields, RawResponse = rawResponse };
@@ -119,7 +137,10 @@ public class InvoiceService
                 OciResponseBody = ex.ResponseBody,
                 Source = source,
                 AttemptNumber = 1,
-                ImageSizeBytes = imageSize
+                ImageSizeBytes = imageInspection?.DecodedBytes ?? imageSize,
+                ImageMimeType = imageInspection?.MimeType,
+                ImageHash = imageInspection?.Sha256Hash,
+                ImageDebugPath = imageInspection?.DebugFilePath,
             });
             return new AnalyzeInvoiceResponse { Success = false, Error = ex.Message, RawResponse = rawResponse ?? "", Fields = CreateFailureFields(countryHint) };
         }
@@ -137,7 +158,10 @@ public class InvoiceService
                 ErrorType = nameof(HttpRequestException),
                 Source = source,
                 AttemptNumber = 1,
-                ImageSizeBytes = imageSize
+                ImageSizeBytes = imageInspection?.DecodedBytes ?? imageSize,
+                ImageMimeType = imageInspection?.MimeType,
+                ImageHash = imageInspection?.Sha256Hash,
+                ImageDebugPath = imageInspection?.DebugFilePath,
             });
             return new AnalyzeInvoiceResponse { Success = false, Error = ex.Message, Fields = CreateFailureFields(countryHint) };
         }
@@ -156,7 +180,10 @@ public class InvoiceService
                 ErrorType = nameof(TaskCanceledException),
                 Source = source,
                 AttemptNumber = 1,
-                ImageSizeBytes = imageSize
+                ImageSizeBytes = imageInspection?.DecodedBytes ?? imageSize,
+                ImageMimeType = imageInspection?.MimeType,
+                ImageHash = imageInspection?.Sha256Hash,
+                ImageDebugPath = imageInspection?.DebugFilePath,
             });
             return new AnalyzeInvoiceResponse { Success = false, Error = "OCR request timed out.", Fields = CreateFailureFields(countryHint) };
         }
@@ -174,7 +201,10 @@ public class InvoiceService
                 ErrorType = ex.GetType().Name,
                 Source = source,
                 AttemptNumber = 1,
-                ImageSizeBytes = imageSize
+                ImageSizeBytes = imageInspection?.DecodedBytes ?? imageSize,
+                ImageMimeType = imageInspection?.MimeType,
+                ImageHash = imageInspection?.Sha256Hash,
+                ImageDebugPath = imageInspection?.DebugFilePath,
             });
             return new AnalyzeInvoiceResponse { Success = false, Error = ex.Message, Fields = CreateFailureFields(countryHint) };
         }

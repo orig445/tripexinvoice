@@ -298,7 +298,10 @@ public class InvoiceController : ControllerBase
                     : l.OciResponseBody,
                 RawAiResponsePreview = l.RawAiResponse?.Length > 500
                     ? l.RawAiResponse.Substring(0, 500) + "..."
-                    : l.RawAiResponse
+                    : l.RawAiResponse,
+                l.ImageMimeType,
+                l.ImageHash,
+                l.ImageDebugPath
             })
         });
     }

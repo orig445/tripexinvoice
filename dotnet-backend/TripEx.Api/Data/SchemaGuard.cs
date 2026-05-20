@@ -89,7 +89,13 @@ IF COL_LENGTH('dbo.InvoiceScanLogs', 'ImageSizeBytes') IS NULL
 IF COL_LENGTH('dbo.InvoiceScanLogs', 'Source') IS NULL
     ALTER TABLE [dbo].[InvoiceScanLogs] ADD [Source] NVARCHAR(50) NULL;
 IF COL_LENGTH('dbo.InvoiceScanLogs', 'AttemptNumber') IS NULL
-    ALTER TABLE [dbo].[InvoiceScanLogs] ADD [AttemptNumber] INT NULL;");
+    ALTER TABLE [dbo].[InvoiceScanLogs] ADD [AttemptNumber] INT NULL;
+IF COL_LENGTH('dbo.InvoiceScanLogs', 'ImageMimeType') IS NULL
+    ALTER TABLE [dbo].[InvoiceScanLogs] ADD [ImageMimeType] NVARCHAR(50) NULL;
+IF COL_LENGTH('dbo.InvoiceScanLogs', 'ImageHash') IS NULL
+    ALTER TABLE [dbo].[InvoiceScanLogs] ADD [ImageHash] NVARCHAR(64) NULL;
+IF COL_LENGTH('dbo.InvoiceScanLogs', 'ImageDebugPath') IS NULL
+    ALTER TABLE [dbo].[InvoiceScanLogs] ADD [ImageDebugPath] NVARCHAR(1024) NULL;");
     }
 
     private static async Task EnsureAsync(TripExDbContext db, string tableName, string ddl)
