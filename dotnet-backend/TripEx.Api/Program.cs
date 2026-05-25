@@ -124,6 +124,11 @@ builder.Services.AddScoped<GeolocationService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<FileStorageService>();
 
+// ── Integration Services (NetSuite + רשות המיסים) ──
+builder.Services.AddScoped<NetSuiteService>();
+builder.Services.AddScoped<TaxAuthorityService>();
+builder.Services.AddScoped<IntegrationSyncService>();
+
 var app = builder.Build();
 
 Console.WriteLine($"🚀 [STARTUP] App built at {DateTime.Now:HH:mm:ss.fff}");

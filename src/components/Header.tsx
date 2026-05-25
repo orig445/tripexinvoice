@@ -1,4 +1,4 @@
-import { Receipt, LogOut, User, Shield, Bot } from "lucide-react";
+import { Receipt, LogOut, User, Shield, Bot, Plug } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -73,6 +73,12 @@ export function Header() {
                 <DropdownMenuItem className="gap-2" onClick={() => navigate("/admin/chatbot")}>
                   <Bot className="h-4 w-4" />
                   Chatbot Panel
+                </DropdownMenuItem>
+              )}
+              {isAdmin && (
+                <DropdownMenuItem className="gap-2" onClick={() => navigate("/admin/integrations")}>
+                  <Plug className="h-4 w-4" />
+                  אינטגרציות
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />

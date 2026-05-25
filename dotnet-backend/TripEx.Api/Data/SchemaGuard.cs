@@ -98,6 +98,84 @@ IF COL_LENGTH('dbo.InvoiceScanLogs', 'ImageDebugPath') IS NULL
     ALTER TABLE [dbo].[InvoiceScanLogs] ADD [ImageDebugPath] NVARCHAR(1024) NULL;");
     }
 
+    /// <summary>
+    /// מבטיח שכל טבלאות האינטגרציה קיימות (NetSuite + רשות המיסים)
+    /// Ensures all integration tables exist (idempotent)
+    /// </summary>
+    public static async Task EnsureIntegrationTablesAsync(TripExDbContext db)
+    {
+        await EnsureAsync(db, "NetSuiteConfigs", @"
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'NetSuiteConfigs')
+CREATE TABLE [dbo].[NetSuiteConfigs] (
+    [Id]                        UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    [AccountId]                 NVARCHAR(100) NOT NULL DEFAULT '',
+    [ConsumerKey]               NVARCHAR(255) NOT NULL DEFAULT '',
+    [ConsumerSecret]            NVARCHAR(MAX) NOT NULL DEFAULT '',
+    [TokenKey]                  NVARCHAR(255) NOT NULL DEFAULT '',
+    [TokenSecret]               NVARCHAR(MAX) NOT NULL DEFAULT '',
+    [AmountThreshold]           DECIMAL(18,2) NOT NULL DEFAULT 5000,
+    [Currency]                  NVARCHAR(10) NOT NULL DEFAULT 'ILS',
+    [IsEnabled]                 BIT NOT NULL DEFAULT 0,
+    [AutoSync]                  BIT NOT NULL DEFAULT 0,
+    [AutoSyncIntervalMinutes]   INT NOT NULL DEFAULT 60,
+    [LastSyncAt]                DATETIME NULL,
+    [CreatedAt]                 DATETIME NOT NULL DEFAULT GETUTCDATE(),
+    [UpdatedAt]                 DATETIME NOT NULL DEFAULT GETUTCDATE()
+);");
+
+        await EnsureAsync(db, "TaxAuthorityConfigs", @"
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'TaxAuthorityConfigs')
+CREATE TABLE [dbo].[TaxAuthorityConfigs] (
+    [Id]            UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    [ApiBaseUrl]    NVARCHAR(500) NOT NULL DEFAULT 'https://openapi.taxes.gov.il',
+    [ClientId]      NVARCHAR(255) NULL,
+    [ClientSecret]  NVARCHAR(MAX) NULL,
+    [Username]      NVARCHAR(255) NULL,
+    [BusinessId]    NVARCHAR(50) NOT NULL DEFAULT '',
+    [IsEnabled]     BIT NOT NULL DEFAULT 0,
+    [UseSandbox]    BIT NOT NULL DEFAULT 1,
+    [CreatedAt]     DATETIME NOT NULL DEFAULT GETUTCDATE(),
+    [UpdatedAt]     DATETIME NOT NULL DEFAULT GETUTCDATE()
+);");
+
+        await EnsureAsync(db, "IntegrationSyncLogs", @"
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'IntegrationSyncLogs')
+CREATE TABLE [dbo].[IntegrationSyncLogs] (
+    [Id]             UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    [Status]         NVARCHAR(50) NOT NULL DEFAULT '',
+    [IsDryRun]       BIT NOT NULL DEFAULT 0,
+    [TotalFetched]   INT NOT NULL DEFAULT 0,
+    [AboveThreshold] INT NOT NULL DEFAULT 0,
+    [Approved]       INT NOT NULL DEFAULT 0,
+    [Failed]         INT NOT NULL DEFAULT 0,
+    [ErrorMessage]   NVARCHAR(MAX) NULL,
+    [StartedAt]      DATETIME NOT NULL DEFAULT GETUTCDATE(),
+    [CompletedAt]    DATETIME NULL,
+    [DurationMs]     BIGINT NOT NULL DEFAULT 0,
+    [DetailsJson]    NVARCHAR(MAX) NULL
+);");
+
+        await EnsureAsync(db, "AllocationRecords", @"
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'AllocationRecords')
+CREATE TABLE [dbo].[AllocationRecords] (
+    [Id]                      UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    [NetSuiteTransactionId]   NVARCHAR(100) NOT NULL DEFAULT '',
+    [TranId]                  NVARCHAR(100) NOT NULL DEFAULT '',
+    [VendorId]                NVARCHAR(100) NULL,
+    [VendorName]              NVARCHAR(255) NULL,
+    [Amount]                  DECIMAL(18,2) NOT NULL DEFAULT 0,
+    [Currency]                NVARCHAR(10) NOT NULL DEFAULT 'ILS',
+    [InvoiceDate]             NVARCHAR(20) NULL,
+    [AllocationNumber]        NVARCHAR(100) NULL,
+    [Status]                  NVARCHAR(50) NOT NULL DEFAULT 'pending',
+    [ErrorMessage]            NVARCHAR(MAX) NULL,
+    [CreatedAt]               DATETIME NOT NULL DEFAULT GETUTCDATE()
+);
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_AllocationRecords_NetSuiteTransactionId')
+    CREATE INDEX IX_AllocationRecords_NetSuiteTransactionId
+        ON [dbo].[AllocationRecords] ([NetSuiteTransactionId]);");
+    }
+
     private static async Task EnsureAsync(TripExDbContext db, string tableName, string ddl)
     {
         // Fast path — already verified in this process

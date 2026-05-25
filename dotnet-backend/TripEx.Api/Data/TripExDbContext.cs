@@ -23,6 +23,12 @@ public class TripExDbContext : DbContext
     public DbSet<OcrTrainingSample> OcrTrainingSamples => Set<OcrTrainingSample>();
     public DbSet<OcrTrainingPattern> OcrTrainingPatterns => Set<OcrTrainingPattern>();
 
+    // ── Integration tables ──
+    public DbSet<NetSuiteConfigEntity> NetSuiteConfigs => Set<NetSuiteConfigEntity>();
+    public DbSet<TaxAuthorityConfigEntity> TaxAuthorityConfigs => Set<TaxAuthorityConfigEntity>();
+    public DbSet<IntegrationSyncLogEntity> IntegrationSyncLogs => Set<IntegrationSyncLogEntity>();
+    public DbSet<AllocationRecordEntity> AllocationRecords => Set<AllocationRecordEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ChatSession>().ToTable("chat_sessions");
@@ -39,6 +45,12 @@ public class TripExDbContext : DbContext
         modelBuilder.Entity<InvoiceScanLog>().ToTable("InvoiceScanLogs");
         modelBuilder.Entity<OcrTrainingSample>().ToTable("OcrTrainingSamples");
         modelBuilder.Entity<OcrTrainingPattern>().ToTable("OcrTrainingPatterns");
+
+        // Integration tables
+        modelBuilder.Entity<NetSuiteConfigEntity>().ToTable("NetSuiteConfigs");
+        modelBuilder.Entity<TaxAuthorityConfigEntity>().ToTable("TaxAuthorityConfigs");
+        modelBuilder.Entity<IntegrationSyncLogEntity>().ToTable("IntegrationSyncLogs");
+        modelBuilder.Entity<AllocationRecordEntity>().ToTable("AllocationRecords");
 
         modelBuilder.Entity<UserCredential>()
             .HasIndex(c => c.Email)
@@ -258,4 +270,88 @@ public class OcrTrainingPattern
     [Column("SourceCount")] public int SourceCount { get; set; } = 0;
     [Column("CreatedAt")] public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     [Column("UpdatedAt")] public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Integration Entity Classes
+// ═══════════════════════════════════════════════════════════════════
+
+/// <summary>
+/// הגדרות חיבור NetSuite — שמור בבסיס הנתונים
+/// </summary>
+[Table("NetSuiteConfigs")]
+public class NetSuiteConfigEntity
+{
+    [Key, Column("Id")] public Guid Id { get; set; } = Guid.NewGuid();
+    [Column("AccountId")] public string AccountId { get; set; } = "";
+    [Column("ConsumerKey")] public string ConsumerKey { get; set; } = "";
+    [Column("ConsumerSecret", TypeName = "nvarchar(max)")] public string ConsumerSecret { get; set; } = "";
+    [Column("TokenKey")] public string TokenKey { get; set; } = "";
+    [Column("TokenSecret", TypeName = "nvarchar(max)")] public string TokenSecret { get; set; } = "";
+    [Column("AmountThreshold")] public decimal AmountThreshold { get; set; } = 5000;
+    [Column("Currency")] public string Currency { get; set; } = "ILS";
+    [Column("IsEnabled")] public bool IsEnabled { get; set; } = false;
+    [Column("AutoSync")] public bool AutoSync { get; set; } = false;
+    [Column("AutoSyncIntervalMinutes")] public int AutoSyncIntervalMinutes { get; set; } = 60;
+    [Column("LastSyncAt")] public DateTime? LastSyncAt { get; set; }
+    [Column("CreatedAt")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    [Column("UpdatedAt")] public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// הגדרות חיבור רשות המיסים — שמור בבסיס הנתונים
+/// </summary>
+[Table("TaxAuthorityConfigs")]
+public class TaxAuthorityConfigEntity
+{
+    [Key, Column("Id")] public Guid Id { get; set; } = Guid.NewGuid();
+    [Column("ApiBaseUrl")] public string ApiBaseUrl { get; set; } = "https://openapi.taxes.gov.il";
+    [Column("ClientId")] public string? ClientId { get; set; }
+    [Column("ClientSecret", TypeName = "nvarchar(max)")] public string? ClientSecret { get; set; }
+    [Column("Username")] public string? Username { get; set; }
+    [Column("BusinessId")] public string BusinessId { get; set; } = "";
+    [Column("IsEnabled")] public bool IsEnabled { get; set; } = false;
+    [Column("UseSandbox")] public bool UseSandbox { get; set; } = true;
+    [Column("CreatedAt")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    [Column("UpdatedAt")] public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// לוג סנכרון — כל הרצה של הסנכרון
+/// </summary>
+[Table("IntegrationSyncLogs")]
+public class IntegrationSyncLogEntity
+{
+    [Key, Column("Id")] public Guid Id { get; set; } = Guid.NewGuid();
+    [Column("Status")] public string Status { get; set; } = ""; // success / partial / failed
+    [Column("IsDryRun")] public bool IsDryRun { get; set; } = false;
+    [Column("TotalFetched")] public int TotalFetched { get; set; }
+    [Column("AboveThreshold")] public int AboveThreshold { get; set; }
+    [Column("Approved")] public int Approved { get; set; }
+    [Column("Failed")] public int Failed { get; set; }
+    [Column("ErrorMessage", TypeName = "nvarchar(max)")] public string? ErrorMessage { get; set; }
+    [Column("StartedAt")] public DateTime StartedAt { get; set; } = DateTime.UtcNow;
+    [Column("CompletedAt")] public DateTime? CompletedAt { get; set; }
+    [Column("DurationMs")] public long DurationMs { get; set; }
+    [Column("DetailsJson", TypeName = "nvarchar(max)")] public string? DetailsJson { get; set; }
+}
+
+/// <summary>
+/// רישום הקצאה — כל בקשת מספר הקצאה ותוצאתה
+/// </summary>
+[Table("AllocationRecords")]
+public class AllocationRecordEntity
+{
+    [Key, Column("Id")] public Guid Id { get; set; } = Guid.NewGuid();
+    [Column("NetSuiteTransactionId")] public string NetSuiteTransactionId { get; set; } = "";
+    [Column("TranId")] public string TranId { get; set; } = "";
+    [Column("VendorId")] public string? VendorId { get; set; }
+    [Column("VendorName")] public string? VendorName { get; set; }
+    [Column("Amount")] public decimal Amount { get; set; }
+    [Column("Currency")] public string Currency { get; set; } = "ILS";
+    [Column("InvoiceDate")] public string? InvoiceDate { get; set; }
+    [Column("AllocationNumber")] public string? AllocationNumber { get; set; }
+    [Column("Status")] public string Status { get; set; } = "pending"; // pending / approved / failed
+    [Column("ErrorMessage", TypeName = "nvarchar(max)")] public string? ErrorMessage { get; set; }
+    [Column("CreatedAt")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

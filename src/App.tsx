@@ -9,6 +9,7 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import AdminChatbot from "./pages/AdminChatbot";
 import Chat from "./pages/Chat";
+import Integrations from "./pages/Integrations";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,6 +37,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <AdminChatbot />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/integrations"
+              element={
+                <ProtectedRoute>
+                  <Integrations />
                 </ProtectedRoute>
               }
             />

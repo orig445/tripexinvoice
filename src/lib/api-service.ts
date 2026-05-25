@@ -183,3 +183,47 @@ export async function processKnowledgeDocument(documentId: string) {
   }
   return callSupabaseFunction("process-knowledge", { document_id: documentId });
 }
+
+// ─────────────────────────────────────────────────────────────────
+// Generic REST helpers (used by integrations pages)
+// Support GET + POST to any endpoint on the external backend
+// ─────────────────────────────────────────────────────────────────
+
+async function restGet<T = any>(endpoint: string): Promise<T> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`API error ${res.status}: ${errText}`);
+  }
+  return res.json();
+}
+
+async function restPost<T = any>(endpoint: string, body?: unknown): Promise<T> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`API error ${res.status}: ${errText}`);
+  }
+  return res.json();
+}
+
+/** Convenience object for components that prefer apiService.get / .post style */
+export const apiService = {
+  get: restGet,
+  post: restPost,
+};
