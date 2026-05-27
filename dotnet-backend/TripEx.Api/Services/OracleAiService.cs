@@ -47,9 +47,15 @@ public class OracleAiService
     }
 
     /// <summary>
-    /// Invoice-specific call: sends image + country hint to Gemini 2.5 Flash
+    /// Invoice-specific call: sends image + country hint to Gemini 2.5 Flash.
+    /// Optionally accepts caller-supplied expenseTypes and formOfPayments so the AI
+    /// can return the matching IDs directly.
     /// </summary>
-    public async Task<string> CallGeminiFlashAsync(string imageBase64, string countryHint)
+    public async Task<string> CallGeminiFlashAsync(
+        string imageBase64,
+        string countryHint,
+        IList<TripEx.Api.Models.ExpenseTypeOption>? expenseTypes = null,
+        IList<TripEx.Api.Models.FormOfPaymentOption>? formOfPayments = null)
     {
         // ── Validate input ──
         if (string.IsNullOrWhiteSpace(imageBase64))
@@ -70,7 +76,7 @@ public class OracleAiService
         string correctedMime = DetectMimeFromBase64Prefix(base64Part);
         var imageUrl = $"data:{correctedMime};base64,{base64Part}";
 
-        var prompt = await PrepareSystemPromptAsync(countryHint);
+        var prompt = await PrepareSystemPromptAsync(countryHint, expenseTypes, formOfPayments);
 
         var messages = new List<OracleMessage>
         {
@@ -302,9 +308,14 @@ CRITICAL RULES:
     }
 
     /// <summary>
-    /// Prepare system prompt based on country hint + learned patterns from DB
+    /// Prepare system prompt based on country hint + learned patterns from DB.
+    /// When expenseTypes / formOfPayments are provided, the prompt instructs the AI
+    /// to return the matching IDs from those lists.
     /// </summary>
-    private async Task<string> PrepareSystemPromptAsync(string? countryHint)
+    private async Task<string> PrepareSystemPromptAsync(
+        string? countryHint,
+        IList<TripEx.Api.Models.ExpenseTypeOption>? expenseTypes = null,
+        IList<TripEx.Api.Models.FormOfPaymentOption>? formOfPayments = null)
     {
         string locale = countryHint?.ToUpperInvariant() switch
         {
@@ -391,6 +402,41 @@ LEARNED PATTERNS (from analyzed receipts — use these to improve accuracy):
         {
             Console.WriteLine($"[OCI] Warning: Could not load training patterns: {ex.Message}");
         }
+
+        // ── Build caller-supplied lookup sections ──
+        string expenseTypesSection = "";
+        if (expenseTypes != null && expenseTypes.Count > 0)
+        {
+            var lines = expenseTypes.Select(e => $"  {e.Id}: \"{e.Name}\"");
+            expenseTypesSection = $@"
+
+EXPENSE TYPE OPTIONS (caller-supplied — pick the best matching ID for expense_type_id):
+{string.Join("\n", lines)}
+- Return the numeric ID of the best match as ""expense_type_id"".
+- If none fit, return null for expense_type_id.";
+        }
+
+        string formOfPaymentsSection = "";
+        if (formOfPayments != null && formOfPayments.Count > 0)
+        {
+            var lines = formOfPayments.Select(f => $"  {f.Id}: \"{f.Name}\"");
+            formOfPaymentsSection = $@"
+
+FORM OF PAYMENT OPTIONS (caller-supplied — pick the best matching ID for form_of_payment_id):
+{string.Join("\n", lines)}
+- Return the numeric ID of the best match as ""form_of_payment_id"".
+- If none fit, return null for form_of_payment_id.";
+        }
+
+        // ── Build dynamic output format additions ──
+        string expenseTypeIdField = expenseTypes != null && expenseTypes.Count > 0
+            ? @",
+  ""expense_type_id"": number or null"
+            : "";
+        string formOfPaymentIdField = formOfPayments != null && formOfPayments.Count > 0
+            ? @",
+  ""form_of_payment_id"": number or null"
+            : "";
 
         return $@"You are an expert invoice/receipt OCR analyzer. Extract data for {locale}.
 Return STRICT JSON only — no markdown, no explanation.
@@ -508,17 +554,17 @@ EXTRACTION RULES:
 6. CATEGORY: Must be one of: business_meal, vehicle, entertainment, hotel, internet, parking, meal, taxi, other.
 
 CURRENCY: ₱=PHP, ₪=ILS, ฿=THB, $=USD, ₩=KRW, ¥=JPY/CNY (unless context says otherwise).
-{learnedPatternsSection}
+{learnedPatternsSection}{expenseTypesSection}{formOfPaymentsSection}
 OUTPUT FORMAT:
 {{
   ""document_type"": ""string"",
   ""invoice_number"": ""string or null"",
   ""invoice_date"": ""YYYY-MM-DD or null"",
   ""currency"": ""string"",
-  ""expense_type"": ""business_meal|vehicle|entertainment|hotel|internet|parking|other|meal|taxi"",
+  ""expense_type"": ""business_meal|vehicle|entertainment|hotel|internet|parking|other|meal|taxi""{expenseTypeIdField},
   ""merchant"": {{ ""name"": ""string"", ""tin"": ""string or null"", ""address"": ""string or null"", ""city"": ""string or null"" }},
   ""amounts"": {{ ""vatable_sales_amount"": number, ""non_vatable_sales_amount"": 0, ""service_charge_amount"": 0, ""tax_amount"": number }},
-  ""payment"": {{ ""method"": ""string or null"", ""amount_paid"": number, ""form_of_payment"": ""credit|cash|bank"", ""card_last4"": ""string or null"", ""card_type"": ""visa|mastercard|amex|diners|isracart|other or null"" }},
+  ""payment"": {{ ""method"": ""string or null"", ""amount_paid"": number, ""form_of_payment"": ""credit|cash|bank""{formOfPaymentIdField}, ""card_last4"": ""string or null"", ""card_type"": ""visa|mastercard|amex|diners|isracart|other or null"" }},
   ""item_count"": number
 }}
 
