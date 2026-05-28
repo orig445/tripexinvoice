@@ -29,18 +29,29 @@ public class InvoiceService
     }
 
     /// <summary>
-    /// Main entry point — called by InvoiceController and ChatService
+    /// Main entry point — called by InvoiceController and ChatService.
+    /// Optionally accepts caller-supplied expense-type and form-of-payment lookup lists
+    /// so the AI (and server-side fallback) can return the matching IDs.
     /// </summary>
-    public async Task<AnalyzeInvoiceResponse> AnalyzeAsync(string? imageBase64, string? imageUrl, string? country, Guid? userId = null)
+    public async Task<AnalyzeInvoiceResponse> AnalyzeAsync(
+        string? imageBase64,
+        string? imageUrl,
+        string? country,
+        Guid? userId = null,
+        IList<ExpenseTypeOption>? expenseTypes = null,
+        IList<FormOfPaymentOption>? formOfPayments = null)
     {
-        return await AnalyzeInternalAsync(imageBase64, imageUrl, country, userId, source: "analyze");
+        return await AnalyzeInternalAsync(imageBase64, imageUrl, country, userId,
+            source: "analyze", expenseTypes: expenseTypes, formOfPayments: formOfPayments);
     }
 
     /// <summary>
     /// Internal scan with retry + detailed logging. Used by both AnalyzeAsync and BulkTrainAsync.
     /// </summary>
     private async Task<AnalyzeInvoiceResponse> AnalyzeInternalAsync(
-        string? imageBase64, string? imageUrl, string? country, Guid? userId, string source)
+        string? imageBase64, string? imageUrl, string? country, Guid? userId, string source,
+        IList<ExpenseTypeOption>? expenseTypes = null,
+        IList<FormOfPaymentOption>? formOfPayments = null)
     {
         if (string.IsNullOrEmpty(imageBase64) && string.IsNullOrEmpty(imageUrl))
             return new AnalyzeInvoiceResponse { Success = false, Error = "Either imageBase64 or imageUrl must be provided" };
@@ -69,7 +80,7 @@ public class InvoiceService
                 $"decoded={imageInspection?.DecodedBytes.ToString("N0") ?? "n/a"}B | " +
                 $"sha256={imageInspection?.Sha256Hash[..16] ?? "n/a"}...");
 
-            rawResponse = await _aiService.CallGeminiFlashAsync(imageContent, countryHint);
+            rawResponse = await _aiService.CallGeminiFlashAsync(imageContent, countryHint, expenseTypes, formOfPayments);
             Console.WriteLine($"[OCR][{source}] Raw response length: {rawResponse?.Length ?? 0}");
 
             var aiJson = OracleAiService.ParseJsonFromAiResponse(rawResponse!);
@@ -78,6 +89,9 @@ public class InvoiceService
             var detectedCurrency = aiJson.TryGetProperty("currency", out var curProp) ? curProp.GetString() : null;
             aiJson = ValidateDateByCurrency(aiJson, detectedCurrency, country);
             var fields = MapToAlgoTextFields(aiJson);
+
+            // ── Resolve expenseTypeId and formOfPaymentId ──
+            ResolveOptionIds(fields, aiJson, expenseTypes, formOfPayments);
 
             stopwatch.Stop();
 
@@ -234,6 +248,93 @@ public class InvoiceService
         catch (Exception ex)
         {
             Console.Error.WriteLine($"[OCR-TRAIN] Failed to save training sample: {ex.Message}");
+        }
+    }
+
+    // ═══════════════════════════════════════
+    // Option ID Resolution (expense type & form of payment)
+    // ═══════════════════════════════════════
+
+    /// <summary>
+    /// Resolves ExpenseTypeId and FormOfPaymentId from the caller-supplied option lists.
+    /// Strategy:
+    ///   1. If the AI returned a numeric expense_type_id / form_of_payment_id that exists in the list → use it.
+    ///   2. Server-side fuzzy fallback: compare the AI-detected string value against option names
+    ///      (case-insensitive, underscore-normalised) and pick the best match.
+    /// </summary>
+    private static void ResolveOptionIds(
+        InvoiceFields fields,
+        JsonElement aiJson,
+        IList<ExpenseTypeOption>? expenseTypes,
+        IList<FormOfPaymentOption>? formOfPayments)
+    {
+        // ── Expense Type ID ──
+        if (expenseTypes != null && expenseTypes.Count > 0)
+        {
+            // 1. AI returned a numeric id
+            if (aiJson.TryGetProperty("expense_type_id", out var etIdProp))
+            {
+                int? aiId = etIdProp.ValueKind == JsonValueKind.Number
+                    ? etIdProp.GetInt32()
+                    : int.TryParse(etIdProp.GetString(), out var p) ? p : (int?)null;
+
+                if (aiId.HasValue && expenseTypes.Any(e => e.Id == aiId.Value))
+                {
+                    fields.ExpenseTypeId = aiId.Value;
+                    Console.WriteLine($"[OCR-IDS] expense_type_id={aiId.Value} (AI-selected)");
+                }
+            }
+
+            // 2. Server-side fallback: match ExpenseType string against option names
+            if (fields.ExpenseTypeId == null && !string.IsNullOrEmpty(fields.ExpenseType))
+            {
+                var normalised = fields.ExpenseType.ToLowerInvariant().Replace("_", " ").Trim();
+                var match = expenseTypes.FirstOrDefault(e =>
+                    e.Name.ToLowerInvariant().Replace("_", " ").Trim() == normalised);
+                if (match != null)
+                {
+                    fields.ExpenseTypeId = match.Id;
+                    Console.WriteLine($"[OCR-IDS] expense_type_id={match.Id} (server-side name match: '{match.Name}')");
+                }
+            }
+
+            if (fields.ExpenseTypeId == null)
+                Console.WriteLine($"[OCR-IDS] expense_type_id=null — no match for '{fields.ExpenseType}' in {expenseTypes.Count} options");
+        }
+
+        // ── Form of Payment ID ──
+        if (formOfPayments != null && formOfPayments.Count > 0)
+        {
+            // 1. AI returned a numeric id
+            if (aiJson.TryGetProperty("payment", out var paymentEl) &&
+                paymentEl.TryGetProperty("form_of_payment_id", out var fopIdProp))
+            {
+                int? aiId = fopIdProp.ValueKind == JsonValueKind.Number
+                    ? fopIdProp.GetInt32()
+                    : int.TryParse(fopIdProp.GetString(), out var p) ? p : (int?)null;
+
+                if (aiId.HasValue && formOfPayments.Any(f => f.Id == aiId.Value))
+                {
+                    fields.FormOfPaymentId = aiId.Value;
+                    Console.WriteLine($"[OCR-IDS] form_of_payment_id={aiId.Value} (AI-selected)");
+                }
+            }
+
+            // 2. Server-side fallback: match FormOfPayment string against option names
+            if (fields.FormOfPaymentId == null && !string.IsNullOrEmpty(fields.FormOfPayment))
+            {
+                var normalised = fields.FormOfPayment.ToLowerInvariant().Replace("_", " ").Trim();
+                var match = formOfPayments.FirstOrDefault(f =>
+                    f.Name.ToLowerInvariant().Replace("_", " ").Trim() == normalised);
+                if (match != null)
+                {
+                    fields.FormOfPaymentId = match.Id;
+                    Console.WriteLine($"[OCR-IDS] form_of_payment_id={match.Id} (server-side name match: '{match.Name}')");
+                }
+            }
+
+            if (fields.FormOfPaymentId == null)
+                Console.WriteLine($"[OCR-IDS] form_of_payment_id=null — no match for '{fields.FormOfPayment}' in {formOfPayments.Count} options");
         }
     }
 

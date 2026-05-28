@@ -32,7 +32,9 @@ public class InvoiceController : ControllerBase
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (Guid.TryParse(userIdClaim, out var uid)) userId = uid;
 
-            var result = await _invoiceService.AnalyzeAsync(request.ImageBase64, request.ImageUrl, request.Country, userId);
+            var result = await _invoiceService.AnalyzeAsync(
+                request.ImageBase64, request.ImageUrl, request.Country, userId,
+                request.ExpenseTypes, request.FormOfPayments);
 
             // Ensure currency defaults if AI couldn't detect
             if (result.Fields != null && string.IsNullOrEmpty(result.Fields.Currency))
@@ -201,7 +203,9 @@ public class InvoiceController : ControllerBase
         Set(f.PaymentMethod, "PaymentMethod", "paymentMethod", "payment_method");
         Set(f.AmountPaid, "AmountPaid", "amountPaid", "amount_paid");
         Set(f.ExpenseType, "ExpenseType", "expenseType", "expense_type", "Category", "category");
+        Set(f.ExpenseTypeId, "ExpenseTypeId", "expenseTypeId", "expense_type_id");
         Set(f.FormOfPayment, "FormOfPayment", "formOfPayment", "form_of_payment");
+        Set(f.FormOfPaymentId, "FormOfPaymentId", "formOfPaymentId", "form_of_payment_id");
         Set(f.CardLast4, "CardLast4", "cardLast4", "card_last4");
         Set(f.CardType, "CardType", "cardType", "card_type");
         Set(f.ExtraDetails, "ExtraDetails", "extraDetails", "extra_details");

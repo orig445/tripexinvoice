@@ -57,11 +57,41 @@ public class ChatResponse
 // Invoice Models (AlgoText-compatible format)
 // ═══════════════════════════════════════
 
+/// <summary>
+/// A single expense-type option sent by the caller so the AI can pick the best match.
+/// </summary>
+public class ExpenseTypeOption
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+}
+
+/// <summary>
+/// A single form-of-payment option sent by the caller so the AI can pick the best match.
+/// </summary>
+public class FormOfPaymentOption
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+}
+
 public class AnalyzeInvoiceRequest
 {
     public string? ImageBase64 { get; set; }
     public string? ImageUrl { get; set; }
     public string? Country { get; set; }  // "IL", "PH", etc.
+
+    /// <summary>
+    /// Optional list of expense-type options (id + name) from the client.
+    /// When provided, the AI (and server-side fallback) will return the matching ExpenseTypeId.
+    /// </summary>
+    public List<ExpenseTypeOption>? ExpenseTypes { get; set; }
+
+    /// <summary>
+    /// Optional list of form-of-payment options (id + name) from the client.
+    /// When provided, the AI (and server-side fallback) will return the matching FormOfPaymentId.
+    /// </summary>
+    public List<FormOfPaymentOption>? FormOfPayments { get; set; }
 }
 
 public class AnalyzeInvoiceResponse
@@ -93,8 +123,10 @@ public class InvoiceFields
     public string? PaymentMethod { get; set; }
     public string? AmountPaid { get; set; }
     public string? ExpenseType { get; set; }      // business_meal, vehicle, entertainment, hotel, internet, parking, other, meal, taxi
+    public int? ExpenseTypeId { get; set; }       // ID matched from the caller-supplied ExpenseTypes list
     public string? TotalAmount { get; set; }      // Total amount (same as Total, explicit field)
     public string? FormOfPayment { get; set; }    // credit, cash, bank
+    public int? FormOfPaymentId { get; set; }     // ID matched from the caller-supplied FormOfPayments list
     public string? CardLast4 { get; set; }        // Last 4 digits of credit card
     public string? CardType { get; set; }         // visa, mastercard, amex, diners, isracart, other
     public string? ExtraDetails { get; set; }     // JSON string with all raw extracted data
