@@ -113,7 +113,7 @@ public class InvoiceService
                 await SaveTrainingSample(fields, aiJson, countryHint, imageUrl);
             }
 
-            Console.WriteLine($"[OCR][{source}] Done in {stopwatch.ElapsedMilliseconds}ms | Total={fields.Total} {fields.Currency} | Merchant={fields.MerchantName}");
+            Console.WriteLine($"[OCR][{source}] Done in {stopwatch.ElapsedMilliseconds}ms | Total={fields.Total} {fields.Currency} | Merchant={fields.MerchantName} | ExpenseTypeId={fields.ExpenseTypeId?.ToString() ?? "null"} | FormOfPaymentId={fields.FormOfPaymentId?.ToString() ?? "null"}");
 
             await SaveScanLog(new InvoiceScanLog
             {
