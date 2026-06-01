@@ -59,20 +59,36 @@ public class ChatResponse
 
 /// <summary>
 /// A single expense-type option sent by the caller so the AI can pick the best match.
+/// Accepts both Id/Name and ExpenseTypeId/ExpenseTypeDesc naming conventions.
 /// </summary>
 public class ExpenseTypeOption
 {
     public int Id { get; set; }
     public string Name { get; set; } = "";
+
+    // AlgoText / combtas naming aliases
+    [System.Text.Json.Serialization.JsonPropertyName("ExpenseTypeId")]
+    public int? ExpenseTypeId { get => Id == 0 ? null : Id; set { if (value.HasValue) Id = value.Value; } }
+
+    [System.Text.Json.Serialization.JsonPropertyName("ExpenseTypeDesc")]
+    public string? ExpenseTypeDesc { get => string.IsNullOrEmpty(Name) ? null : Name; set { if (value != null) Name = value; } }
 }
 
 /// <summary>
 /// A single form-of-payment option sent by the caller so the AI can pick the best match.
+/// Accepts both Id/Name and FormOfPaymentId/FormOfPaymentDesc naming conventions.
 /// </summary>
 public class FormOfPaymentOption
 {
     public int Id { get; set; }
     public string Name { get; set; } = "";
+
+    // AlgoText / combtas naming aliases
+    [System.Text.Json.Serialization.JsonPropertyName("FormOfPaymentId")]
+    public int? FormOfPaymentId { get => Id == 0 ? null : Id; set { if (value.HasValue) Id = value.Value; } }
+
+    [System.Text.Json.Serialization.JsonPropertyName("FormOfPaymentDesc")]
+    public string? FormOfPaymentDesc { get => string.IsNullOrEmpty(Name) ? null : Name; set { if (value != null) Name = value; } }
 }
 
 public class AnalyzeInvoiceRequest
@@ -84,14 +100,31 @@ public class AnalyzeInvoiceRequest
     /// <summary>
     /// Optional list of expense-type options (id + name) from the client.
     /// When provided, the AI (and server-side fallback) will return the matching ExpenseTypeId.
+    /// Accepts both "ExpenseTypes" and "ListOfExpenseType" JSON keys.
     /// </summary>
     public List<ExpenseTypeOption>? ExpenseTypes { get; set; }
 
     /// <summary>
     /// Optional list of form-of-payment options (id + name) from the client.
     /// When provided, the AI (and server-side fallback) will return the matching FormOfPaymentId.
+    /// Accepts both "FormOfPayments" and "ListOfFormOfPayment" JSON keys.
     /// </summary>
     public List<FormOfPaymentOption>? FormOfPayments { get; set; }
+
+    // AlgoText / combtas naming aliases — delegate to the canonical properties above
+    [System.Text.Json.Serialization.JsonPropertyName("ListOfExpenseType")]
+    public List<ExpenseTypeOption>? ListOfExpenseType
+    {
+        get => ExpenseTypes;
+        set { if (ExpenseTypes == null) ExpenseTypes = value; }
+    }
+
+    [System.Text.Json.Serialization.JsonPropertyName("ListOfFormOfPayment")]
+    public List<FormOfPaymentOption>? ListOfFormOfPayment
+    {
+        get => FormOfPayments;
+        set { if (FormOfPayments == null) FormOfPayments = value; }
+    }
 }
 
 public class AnalyzeInvoiceResponse
