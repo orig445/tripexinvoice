@@ -80,6 +80,16 @@ public class InvoiceService
                 $"decoded={imageInspection?.DecodedBytes.ToString("N0") ?? "n/a"}B | " +
                 $"sha256={imageInspection?.Sha256Hash[..16] ?? "n/a"}...");
 
+            if (expenseTypes != null && expenseTypes.Count > 0)
+                Console.WriteLine($"[OCR][{source}] ExpenseTypes list ({expenseTypes.Count}): [{string.Join(", ", expenseTypes.Select(e => $"{e.Id}={e.Name}"))}]");
+            else
+                Console.WriteLine($"[OCR][{source}] ExpenseTypes list: (empty)");
+
+            if (formOfPayments != null && formOfPayments.Count > 0)
+                Console.WriteLine($"[OCR][{source}] FormOfPayments list ({formOfPayments.Count}): [{string.Join(", ", formOfPayments.Select(f => $"{f.Id}={f.Name}"))}]");
+            else
+                Console.WriteLine($"[OCR][{source}] FormOfPayments list: (empty)");
+
             rawResponse = await _aiService.CallGeminiFlashAsync(imageContent, countryHint, expenseTypes, formOfPayments);
             Console.WriteLine($"[OCR][{source}] Raw response length: {rawResponse?.Length ?? 0}");
 
@@ -113,7 +123,13 @@ public class InvoiceService
                 await SaveTrainingSample(fields, aiJson, countryHint, imageUrl);
             }
 
-            Console.WriteLine($"[OCR][{source}] Done in {stopwatch.ElapsedMilliseconds}ms | Total={fields.Total} {fields.Currency} | Merchant={fields.MerchantName} | ExpenseTypeId={fields.ExpenseTypeId?.ToString() ?? "null"} | FormOfPaymentId={fields.FormOfPaymentId?.ToString() ?? "null"}");
+            var etName = fields.ExpenseTypeId.HasValue
+                ? expenseTypes?.FirstOrDefault(e => e.Id == fields.ExpenseTypeId.Value)?.Name ?? "?"
+                : null;
+            var fopName = fields.FormOfPaymentId.HasValue
+                ? formOfPayments?.FirstOrDefault(f => f.Id == fields.FormOfPaymentId.Value)?.Name ?? "?"
+                : null;
+            Console.WriteLine($"[OCR][{source}] Done in {stopwatch.ElapsedMilliseconds}ms | Total={fields.Total} {fields.Currency} | Merchant={fields.MerchantName} | ExpenseTypeId={fields.ExpenseTypeId?.ToString() ?? "null"} ({etName ?? "none"}) | FormOfPaymentId={fields.FormOfPaymentId?.ToString() ?? "null"} ({fopName ?? "none"})");
 
             await SaveScanLog(new InvoiceScanLog
             {
