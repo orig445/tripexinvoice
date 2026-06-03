@@ -272,6 +272,22 @@ public class InvoiceService
     // ═══════════════════════════════════════
 
     /// <summary>
+    private static readonly Dictionary<string, string> FormOfPaymentAliases = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["apple pay"]   = "credit card",
+        ["applepay"]    = "credit card",
+        ["google pay"]  = "credit card",
+        ["googlepay"]   = "credit card",
+        ["samsung pay"] = "credit card",
+        ["samsungpay"]  = "credit card",
+    };
+
+    private static string NormaliseFormOfPayment(string value)
+    {
+        var normalised = value.ToLowerInvariant().Replace("_", " ").Trim();
+        return FormOfPaymentAliases.TryGetValue(normalised, out var alias) ? alias : normalised;
+    }
+
     /// Resolves ExpenseTypeId and FormOfPaymentId from the caller-supplied option lists.
     /// Strategy:
     ///   1. If the AI returned a numeric expense_type_id / form_of_payment_id that exists in the list → use it.
@@ -339,9 +355,9 @@ public class InvoiceService
             // 2. Server-side fallback: match FormOfPayment string against option names
             if (fields.FormOfPaymentId == null && !string.IsNullOrEmpty(fields.FormOfPayment))
             {
-                var normalised = fields.FormOfPayment.ToLowerInvariant().Replace("_", " ").Trim();
+                var normalised = NormaliseFormOfPayment(fields.FormOfPayment);
                 var match = formOfPayments.FirstOrDefault(f =>
-                    f.Name.ToLowerInvariant().Replace("_", " ").Trim() == normalised);
+                    NormaliseFormOfPayment(f.Name) == normalised);
                 if (match != null)
                 {
                     fields.FormOfPaymentId = match.Id;
