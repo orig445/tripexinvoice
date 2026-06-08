@@ -11,6 +11,7 @@ public class FileStorageService
     private readonly string _provider;
     private readonly string _localPath;
     private readonly IConfiguration _config;
+    private readonly AmazonS3Client? _s3Client;
 
     public FileStorageService(IConfiguration config)
     {
@@ -21,6 +22,10 @@ public class FileStorageService
         _localPath = config["Storage:LocalPath"]
             ?? Environment.GetEnvironmentVariable("STORAGE_PATH")
             ?? Path.Combine(Directory.GetCurrentDirectory(), "storage");
+
+        // Create S3 client once — reused for all operations in this scope
+        if (_provider == "s3")
+            _s3Client = CreateS3Client();
     }
 
     /// <summary>
@@ -103,7 +108,7 @@ public class FileStorageService
 
     private async Task<byte[]> ReadFromS3Async(string key)
     {
-        using var client = CreateS3Client();
+        var client = _s3Client!;
         var response = await client.GetObjectAsync(new GetObjectRequest
         {
             BucketName = GetBucketName(),
@@ -117,7 +122,7 @@ public class FileStorageService
 
     private async Task<string> SaveToS3Async(string key, byte[] data)
     {
-        using var client = CreateS3Client();
+        var client = _s3Client!;
         await client.PutObjectAsync(new PutObjectRequest
         {
             BucketName = GetBucketName(),
@@ -129,7 +134,7 @@ public class FileStorageService
 
     private async Task DeleteFromS3Async(string key)
     {
-        using var client = CreateS3Client();
+        var client = _s3Client!;
         await client.DeleteObjectAsync(new DeleteObjectRequest
         {
             BucketName = GetBucketName(),

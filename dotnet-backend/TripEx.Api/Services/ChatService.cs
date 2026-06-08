@@ -1,3 +1,4 @@
+using System.Data;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -250,9 +251,9 @@ public class ChatService
         // Call the search_knowledge database function via raw SQL
         var chunks = new List<(string FileName, string Content)>();
 
+        var connection = _db.Database.GetDbConnection();
         try
         {
-            var connection = _db.Database.GetDbConnection();
             await connection.OpenAsync();
 
             // Full query search
@@ -304,6 +305,11 @@ public class ChatService
         catch (Exception ex)
         {
             Console.WriteLine($"RAG search error: {ex.Message}");
+        }
+        finally
+        {
+            if (connection.State != ConnectionState.Closed)
+                await connection.CloseAsync();
         }
 
         if (chunks.Count == 0) return "";

@@ -123,6 +123,7 @@ builder.Services.AddScoped<KnowledgeService>();
 builder.Services.AddScoped<GeolocationService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<FileStorageService>();
+builder.Services.AddHostedService<DbCleanupService>();
 
 var app = builder.Build();
 
