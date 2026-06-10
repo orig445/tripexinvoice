@@ -36,6 +36,16 @@ else
 Console.SetOut(new Log4NetTextWriter(isError: false));
 Console.SetError(new Log4NetTextWriter(isError: true));
 
+// ── Global exception handlers — log crashes before IIS kills the process ──
+AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+    Console.Error.WriteLine($"[FATAL] Unhandled AppDomain exception (isTerminating={e.IsTerminating}): {e.ExceptionObject}");
+
+TaskScheduler.UnobservedTaskException += (_, e) =>
+{
+    Console.Error.WriteLine($"[WARN] Unobserved Task exception (marking observed to prevent crash): {e.Exception}");
+    e.SetObserved(); // prevents process crash from fire-and-forget tasks
+};
+
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders();
 builder.Logging.AddLog4Net(log4netConfigPath);
