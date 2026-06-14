@@ -23,6 +23,11 @@ public class OracleAiService
     // Higher limit prevents request queueing under bursts of bulk uploads.
     private static readonly SemaphoreSlim _ociThrottle = new(10, 10);
 
+    // ── Image debug saving: disabled by default to reduce disk I/O and avoid disk-full crashes ──
+    // Set environment variable OCR_SAVE_DEBUG_IMAGES=true to re-enable.
+    private static readonly bool _saveDebugImages =
+        string.Equals(Environment.GetEnvironmentVariable("OCR_SAVE_DEBUG_IMAGES"), "true", StringComparison.OrdinalIgnoreCase);
+
     // ── Image size limits (raw base64 length) ──
     // 10MB raw bytes ≈ 13.3MB base64 chars
     private const int MaxImageBase64Length = 14_000_000;
@@ -927,54 +932,54 @@ PAYMENT FORM RULES:
         var hashBytes = SHA256.HashData(imageBytes);
         var hash = Convert.ToHexString(hashBytes).ToLowerInvariant();
 
-        // ── Save to debug directory (always — default: logs/ocr-images/) ──
-        // Override with OCR_DEBUG_IMAGES_DIR env var if needed.
+        // ── Save to debug directory (opt-in: set OCR_SAVE_DEBUG_IMAGES=true to enable) ──
         string? debugFilePath = null;
-        var debugDir = Environment.GetEnvironmentVariable("OCR_DEBUG_IMAGES_DIR");
-        if (string.IsNullOrWhiteSpace(debugDir))
-            debugDir = Path.Combine(Directory.GetCurrentDirectory(), "logs", "ocr-images");
-
-        try
+        if (_saveDebugImages)
         {
-            Directory.CreateDirectory(debugDir);
+            var debugDir = Environment.GetEnvironmentVariable("OCR_DEBUG_IMAGES_DIR");
+            if (string.IsNullOrWhiteSpace(debugDir))
+                debugDir = Path.Combine(Directory.GetCurrentDirectory(), "logs", "ocr-images");
 
-            var ext = actualMime switch
+            try
             {
-                "image/jpeg"     => ".jpg",
-                "image/png"      => ".png",
-                "image/webp"     => ".webp",
-                "image/gif"      => ".gif",
-                "image/bmp"      => ".bmp",
-                "application/pdf"=> ".pdf",
-                "unknown"        => ".bin",  // unrecognized format — save as binary for hex inspection
-                _                => ".jpg"
-            };
-            var fileName = $"{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}-{hash[..8]}{ext}";
-            debugFilePath = Path.Combine(debugDir, fileName);
+                Directory.CreateDirectory(debugDir);
 
-            File.WriteAllBytes(debugFilePath, imageBytes);
+                var ext = actualMime switch
+                {
+                    "image/jpeg"      => ".jpg",
+                    "image/png"       => ".png",
+                    "image/webp"      => ".webp",
+                    "image/gif"       => ".gif",
+                    "image/bmp"       => ".bmp",
+                    "application/pdf" => ".pdf",
+                    "unknown"         => ".bin",
+                    _                 => ".jpg"
+                };
+                var fileName = $"{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}-{hash[..8]}{ext}";
+                debugFilePath = Path.Combine(debugDir, fileName);
 
-            // Verify the write actually landed (guards against silent truncation)
-            var writtenSize = new FileInfo(debugFilePath).Length;
-            if (writtenSize != imageBytes.Length)
-            {
-                Console.Error.WriteLine(
-                    $"[OCR-IMAGE] ❌ Write verification failed: wrote {imageBytes.Length} bytes but file is {writtenSize} bytes — {debugFilePath}");
-                debugFilePath = null; // mark as failed so the log shows null
+                File.WriteAllBytes(debugFilePath, imageBytes);
+
+                var writtenSize = new FileInfo(debugFilePath).Length;
+                if (writtenSize != imageBytes.Length)
+                {
+                    Console.Error.WriteLine(
+                        $"[OCR-IMAGE] ❌ Write verification failed: wrote {imageBytes.Length} bytes but file is {writtenSize} bytes — {debugFilePath}");
+                    debugFilePath = null;
+                }
+                else
+                {
+                    Console.WriteLine(
+                        $"[OCR-IMAGE] 💾 Saved: {debugFilePath} ({writtenSize:N0} bytes, sha256={hash[..16]}...)");
+                }
+
+                _ = Task.Run(() => CleanupDebugImages(debugDir));
             }
-            else
+            catch (Exception ex)
             {
-                Console.WriteLine(
-                    $"[OCR-IMAGE] 💾 Saved: {debugFilePath} ({writtenSize:N0} bytes, sha256={hash[..16]}...)");
+                Console.Error.WriteLine($"[OCR-IMAGE] ❌ Could not save debug image: {ex.GetType().Name}: {ex.Message}");
+                debugFilePath = null;
             }
-
-            // Async cleanup — delete files older than 7 days, cap at 500 files
-            _ = Task.Run(() => CleanupDebugImages(debugDir));
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[OCR-IMAGE] ❌ Could not save debug image: {ex.GetType().Name}: {ex.Message}");
-            debugFilePath = null;
         }
 
         Console.WriteLine(

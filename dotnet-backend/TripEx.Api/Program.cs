@@ -50,6 +50,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders();
 builder.Logging.AddLog4Net(log4netConfigPath);
 
+// Prevent BackgroundService exceptions from stopping the entire host process.
+// Without this, an unhandled exception in DbCleanupService (or any other BackgroundService)
+// would trigger IIS Rapid Fail Protection and stop the app pool.
+builder.Services.Configure<HostOptions>(opts =>
+    opts.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore);
+
 // ── Configuration ──
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
