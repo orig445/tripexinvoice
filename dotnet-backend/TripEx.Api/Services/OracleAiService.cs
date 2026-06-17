@@ -2,6 +2,9 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Processing;
+using SixLabors.ImageSharp.Formats.Jpeg;
 using TripEx.Api.Data;
 using TripEx.Api.Models;
 
@@ -79,6 +82,14 @@ public class OracleAiService
 
         // Detect MIME type from first 12 bytes only (lightweight, no full decode)
         string correctedMime = DetectMimeFromBase64Prefix(base64Part);
+
+        // ── Resize if too large (skip PDFs) ──
+        if (correctedMime != "application/pdf")
+        {
+            base64Part = ResizeIfTooLarge(base64Part, out var resizedMime);
+            if (resizedMime != null) correctedMime = resizedMime;
+        }
+
         var imageUrl = $"data:{correctedMime};base64,{base64Part}";
 
         var prompt = await PrepareSystemPromptAsync(countryHint, expenseTypes, formOfPayments);
@@ -1044,6 +1055,44 @@ PAYMENT FORM RULES:
         // PDF: %PDF
         if (b[0] == 0x25 && b[1] == 0x50 && b[2] == 0x44 && b[3] == 0x46) return "application/pdf";
         return "unknown";
+    }
+
+    // ── Image resizing: shrink to max 1600px on any dimension before sending to OCI ──
+    // Reduces payload size and speeds up API response. Skipped for PDFs.
+    // Returns the (possibly new) base64 string and sets resizedMime if format changed.
+    private static string ResizeIfTooLarge(string base64Part, out string? resizedMime)
+    {
+        resizedMime = null;
+        const int MaxDimension = 1600;
+        try
+        {
+            var imageBytes = Convert.FromBase64String(base64Part);
+            using var img = SixLabors.ImageSharp.Image.Load(imageBytes);
+
+            if (img.Width <= MaxDimension && img.Height <= MaxDimension)
+                return base64Part; // already small enough
+
+            double scale = Math.Min((double)MaxDimension / img.Width, (double)MaxDimension / img.Height);
+            int newWidth  = (int)Math.Round(img.Width  * scale);
+            int newHeight = (int)Math.Round(img.Height * scale);
+
+            img.Mutate(x => x.Resize(newWidth, newHeight));
+
+            using var ms = new System.IO.MemoryStream();
+            img.SaveAsJpeg(ms, new JpegEncoder { Quality = 85 });
+            var resized = Convert.ToBase64String(ms.ToArray());
+
+            Console.WriteLine($"[OCR] Image resized {img.Width}x{img.Height} → {newWidth}x{newHeight} | " +
+                              $"before={base64Part.Length / 1024}KB base64, after={resized.Length / 1024}KB base64");
+
+            resizedMime = "image/jpeg";
+            return resized;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[OCR] Resize skipped (non-fatal): {ex.Message}");
+            return base64Part;
+        }
     }
 
     // Lightweight: decode only the first 16 bytes of base64 to detect MIME type.

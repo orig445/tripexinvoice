@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using TripEx.Api.Data;
 using TripEx.Api.Models;
 
@@ -15,6 +17,7 @@ public class InvoiceService
 {
     private readonly TripExDbContext _db;
     private readonly OracleAiService _aiService;
+    private readonly IMemoryCache _cache;
 
     private static readonly HashSet<string> ValidExpenseTypes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -22,10 +25,11 @@ public class InvoiceService
         "internet", "parking", "other", "meal", "taxi"
     };
 
-    public InvoiceService(TripExDbContext db, OracleAiService aiService)
+    public InvoiceService(TripExDbContext db, OracleAiService aiService, IMemoryCache cache)
     {
         _db = db;
         _aiService = aiService;
+        _cache = cache;
     }
 
     /// <summary>
@@ -90,7 +94,22 @@ public class InvoiceService
             else
                 Console.WriteLine($"[OCR][{source}] FormOfPayments list: (empty)");
 
-            rawResponse = await _aiService.CallGeminiFlashAsync(imageContent, countryHint, expenseTypes, formOfPayments);
+            // ── SHA256 cache: skip OCI call if we've seen this exact image recently ──
+            string? cacheKey = imageInspection?.Sha256Hash != null
+                ? $"ocr:raw:{imageInspection.Sha256Hash}"
+                : null;
+
+            if (cacheKey != null && _cache.TryGetValue(cacheKey, out string? cachedRaw) && cachedRaw != null)
+            {
+                Console.WriteLine($"[OCR][{source}] Cache HIT ({imageInspection!.Sha256Hash[..16]}...) — skipping OCI call");
+                rawResponse = cachedRaw;
+            }
+            else
+            {
+                rawResponse = await _aiService.CallGeminiFlashAsync(imageContent, countryHint, expenseTypes, formOfPayments);
+                if (cacheKey != null && !string.IsNullOrEmpty(rawResponse))
+                    _cache.Set(cacheKey, rawResponse, TimeSpan.FromHours(1));
+            }
             Console.WriteLine($"[OCR][{source}] Raw response length: {rawResponse?.Length ?? 0}");
 
             var aiJson = OracleAiService.ParseJsonFromAiResponse(rawResponse!);

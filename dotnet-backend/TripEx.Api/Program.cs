@@ -132,6 +132,7 @@ builder.Services.AddAuthentication(options =>
     });
 
 // ── Services ──
+builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<OracleAiService>();
 builder.Services.AddScoped<ChatService>();
