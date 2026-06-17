@@ -35,7 +35,7 @@ public class InvoiceController : ControllerBase
 
             // Early timeout: return a clean error response before the calling application
             // (combtas ~10s timeout) aborts the thread. Configurable via OCR_EARLY_TIMEOUT_MS env var.
-            int earlyMs = int.TryParse(Environment.GetEnvironmentVariable("OCR_EARLY_TIMEOUT_MS"), out var t) ? t : 9500;
+            int earlyMs = int.TryParse(Environment.GetEnvironmentVariable("OCR_EARLY_TIMEOUT_MS"), out var t) ? t : 9000;
             using var earlyCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             earlyCts.CancelAfter(earlyMs);
 
