@@ -170,7 +170,7 @@ CRITICAL RULES:
         var m = Regex.Match(raw ?? "", @"(\d{1,3}(?:[,\.\s]\d{3})*(?:[\.,]\d{1,2})?|\d+(?:[\.,]\d{1,2})?)");
         if (!m.Success) return "";
         var parsed = InvoiceService.ParseAmountSmart(m.Value);
-        return parsed.HasValue ? parsed.Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) : "";
+        return parsed.HasValue ? parsed.Value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) : "";
     }
 
     /// <summary>

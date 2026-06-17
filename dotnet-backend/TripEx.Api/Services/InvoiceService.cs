@@ -445,7 +445,7 @@ public class InvoiceService
             if (v > best) best = v;
         }
 
-        return best > 0 ? best.ToString("0.##", CultureInfo.InvariantCulture) : null;
+        return best > 0 ? best.ToString("F2", CultureInfo.InvariantCulture) : null;
     }
 
     private static string DefaultCurrencyForCountry(string? country) => country?.ToUpperInvariant() switch

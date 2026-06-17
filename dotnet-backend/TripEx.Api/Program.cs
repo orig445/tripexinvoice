@@ -58,6 +58,7 @@ builder.Services.Configure<HostOptions>(opts =>
 
 // ── Configuration ──
 builder.Services.AddControllers();
+builder.Services.AddRequestTimeouts(); // enables [RequestTimeout] attribute on controllers
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -206,6 +207,7 @@ _ = Task.Run(async () =>
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRequestTimeouts(); // must be after auth, before MapControllers
 app.MapControllers();
 
 app.Run();
