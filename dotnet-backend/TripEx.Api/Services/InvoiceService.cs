@@ -637,7 +637,14 @@ public class InvoiceService
     private static decimal? GetDecimalProp(JsonElement el, string prop)
     {
         if (!el.TryGetProperty(prop, out var val)) return null;
-        if (val.ValueKind == JsonValueKind.Number) return val.GetDecimal();
+        if (val.ValueKind == JsonValueKind.Number)
+        {
+            // Parse via raw text to avoid double→decimal floating-point drift (e.g. 7.55 → 7.550000000000001)
+            var raw = val.GetRawText();
+            if (decimal.TryParse(raw, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var d)) return d;
+            return val.GetDecimal();
+        }
         if (val.ValueKind == JsonValueKind.String)
         {
             var str = val.GetString();
