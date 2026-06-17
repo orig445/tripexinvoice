@@ -25,7 +25,7 @@ public class InvoiceController : ControllerBase
     /// </summary>
     [HttpPost("analyze")]
     [RequestTimeout(90_000)] // 90s — OCR can take 20-60s; prevents IIS thread abort on caller side
-    public async Task<ActionResult> Analyze([FromBody] AnalyzeInvoiceRequest request)
+    public async Task<ActionResult> Analyze([FromBody] AnalyzeInvoiceRequest request, CancellationToken ct)
     {
         try
         {
@@ -33,9 +33,15 @@ public class InvoiceController : ControllerBase
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (Guid.TryParse(userIdClaim, out var uid)) userId = uid;
 
+            // Early timeout: return a clean error response before the calling application
+            // (combtas ~10s timeout) aborts the thread. Configurable via OCR_EARLY_TIMEOUT_MS env var.
+            int earlyMs = int.TryParse(Environment.GetEnvironmentVariable("OCR_EARLY_TIMEOUT_MS"), out var t) ? t : 8500;
+            using var earlyCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            earlyCts.CancelAfter(earlyMs);
+
             var result = await _invoiceService.AnalyzeAsync(
                 request.ImageBase64, request.ImageUrl, request.Country, userId,
-                request.ExpenseTypes, request.FormOfPayments);
+                request.ExpenseTypes, request.FormOfPayments, earlyCts.Token);
 
             // Ensure currency defaults if AI couldn't detect
             if (result.Fields != null && string.IsNullOrEmpty(result.Fields.Currency))

@@ -63,7 +63,8 @@ public class OracleAiService
         string imageBase64,
         string countryHint,
         IList<TripEx.Api.Models.ExpenseTypeOption>? expenseTypes = null,
-        IList<TripEx.Api.Models.FormOfPaymentOption>? formOfPayments = null)
+        IList<TripEx.Api.Models.FormOfPaymentOption>? formOfPayments = null,
+        CancellationToken ct = default)
     {
         // ── Validate input ──
         if (string.IsNullOrWhiteSpace(imageBase64))
@@ -108,7 +109,7 @@ public class OracleAiService
             }
         };
 
-        return await ChatAsync(messages, 4096, 0.1);
+        return await ChatAsync(messages, 4096, 0.1, ct);
     }
 
     /// <summary>
@@ -193,7 +194,8 @@ CRITICAL RULES:
     public async Task<string> ChatAsync(
         List<OracleMessage> messages,
         int maxTokens = 1024,
-        double temperature = 0.3)
+        double temperature = 0.3,
+        CancellationToken ct = default)
     {
         // ── Validate messages ──
         if (messages == null || messages.Count == 0)
@@ -233,7 +235,7 @@ CRITICAL RULES:
 
         // ── Throttle: wait for an OCI slot (max 3 concurrent process-wide) ──
         var throttleStart = DateTime.UtcNow;
-        await _ociThrottle.WaitAsync();
+        await _ociThrottle.WaitAsync(ct);
         var waitedMs = (DateTime.UtcNow - throttleStart).TotalMilliseconds;
         if (waitedMs > 100)
             Console.WriteLine($"[OCI] Throttle wait: {waitedMs:F0}ms (queue depth)");
@@ -245,8 +247,9 @@ CRITICAL RULES:
             Console.WriteLine($"[OCI] Sending request to: {_endpoint}");
             try
             {
-                response = await _httpClient.SendAsync(request);
+                response = await _httpClient.SendAsync(request, ct);
             }
+            catch (OperationCanceledException) { throw; } // propagate early-timeout cancellation
             catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException || !ex.CancellationToken.IsCancellationRequested)
             {
                 // HttpClient.Timeout reached — surface as 504 so retry layer treats it as transient
@@ -260,7 +263,7 @@ CRITICAL RULES:
                 throw new HttpRequestException($"Failed to connect to OCI endpoint: {ex.Message}", ex);
             }
 
-            responseBody = await response.Content.ReadAsStringAsync();
+            responseBody = await response.Content.ReadAsStringAsync(ct);
         }
         finally
         {

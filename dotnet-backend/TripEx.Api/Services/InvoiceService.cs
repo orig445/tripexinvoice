@@ -43,10 +43,11 @@ public class InvoiceService
         string? country,
         Guid? userId = null,
         IList<ExpenseTypeOption>? expenseTypes = null,
-        IList<FormOfPaymentOption>? formOfPayments = null)
+        IList<FormOfPaymentOption>? formOfPayments = null,
+        CancellationToken ct = default)
     {
         return await AnalyzeInternalAsync(imageBase64, imageUrl, country, userId,
-            source: "analyze", expenseTypes: expenseTypes, formOfPayments: formOfPayments);
+            source: "analyze", expenseTypes: expenseTypes, formOfPayments: formOfPayments, ct: ct);
     }
 
     /// <summary>
@@ -55,7 +56,8 @@ public class InvoiceService
     private async Task<AnalyzeInvoiceResponse> AnalyzeInternalAsync(
         string? imageBase64, string? imageUrl, string? country, Guid? userId, string source,
         IList<ExpenseTypeOption>? expenseTypes = null,
-        IList<FormOfPaymentOption>? formOfPayments = null)
+        IList<FormOfPaymentOption>? formOfPayments = null,
+        CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(imageBase64) && string.IsNullOrEmpty(imageUrl))
             return new AnalyzeInvoiceResponse { Success = false, Error = "Either imageBase64 or imageUrl must be provided" };
@@ -106,7 +108,7 @@ public class InvoiceService
             }
             else
             {
-                rawResponse = await _aiService.CallGeminiFlashAsync(imageContent, countryHint, expenseTypes, formOfPayments);
+                rawResponse = await _aiService.CallGeminiFlashAsync(imageContent, countryHint, expenseTypes, formOfPayments, ct);
                 if (cacheKey != null && !string.IsNullOrEmpty(rawResponse))
                     _cache.Set(cacheKey, rawResponse, TimeSpan.FromHours(1));
             }
@@ -213,6 +215,39 @@ public class InvoiceService
                 ImageDebugPath = imageInspection?.DebugFilePath,
             });
             return new AnalyzeInvoiceResponse { Success = false, Error = ex.Message, Fields = CreateFailureFields(countryHint) };
+        }
+        catch (OperationCanceledException)
+        {
+            // Early timeout fired before OCI responded — return clean error so the caller
+            // (combtas) receives a valid HTTP response before their own timeout triggers.
+            stopwatch.Stop();
+            Console.Error.WriteLine($"[OCR][{source}] Early timeout after {stopwatch.ElapsedMilliseconds}ms — returning fast error to caller");
+            try
+            {
+                await SaveScanLog(new InvoiceScanLog
+                {
+                    UserId = userId ?? Guid.Empty,
+                    CountryHint = countryHint,
+                    Status = "EarlyTimeout",
+                    DurationMs = stopwatch.ElapsedMilliseconds,
+                    HttpStatusCode = 504,
+                    ErrorMessage = "Early timeout — OCI did not respond in time",
+                    ErrorType = "EarlyTimeout",
+                    Source = source,
+                    AttemptNumber = 1,
+                    ImageSizeBytes = imageInspection?.DecodedBytes ?? imageSize,
+                    ImageMimeType = imageInspection?.MimeType,
+                    ImageHash = imageInspection?.Sha256Hash,
+                    ImageDebugPath = imageInspection?.DebugFilePath,
+                });
+            }
+            catch { /* never fail the response over a log write */ }
+            return new AnalyzeInvoiceResponse
+            {
+                Success = false,
+                Error = "OCR processing is taking longer than expected. Please try again.",
+                Fields = CreateFailureFields(countryHint)
+            };
         }
         catch (TaskCanceledException ex)
         {
