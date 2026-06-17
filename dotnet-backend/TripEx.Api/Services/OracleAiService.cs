@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Formats.Jpeg;
+using UglyToad.PdfPig;
 using TripEx.Api.Data;
 using TripEx.Api.Models;
 
@@ -83,6 +84,27 @@ public class OracleAiService
 
         // Detect MIME type from first 12 bytes only (lightweight, no full decode)
         string correctedMime = DetectMimeFromBase64Prefix(base64Part);
+
+        // ── PDF: try text extraction first (digital PDFs process in ~1-2s vs 20-30s as image) ──
+        // If the PDF has embedded text (digital invoice), send as text — much faster.
+        // If it's a scanned PDF (no text), fall through and send as image_url as before.
+        object userContent;
+        if (correctedMime == "application/pdf")
+        {
+            var pdfText = TryExtractPdfText(base64Part);
+            if (pdfText != null)
+            {
+                Console.WriteLine($"[OCR] PDF text extracted ({pdfText.Length} chars) — sending as text instead of image");
+                var prompt2 = await PrepareSystemPromptAsync(countryHint, expenseTypes, formOfPayments);
+                var textMessages = new List<OracleMessage>
+                {
+                    new() { Role = "system", Content = prompt2 },
+                    new() { Role = "user", Content = $"Extract data from this invoice text:\n\n{pdfText}" }
+                };
+                return await ChatAsync(textMessages, 4096, 0.1, ct);
+            }
+            Console.WriteLine("[OCR] PDF has no embedded text (scanned) — sending as image to OCI");
+        }
 
         // ── Resize if too large (skip PDFs) ──
         if (correctedMime != "application/pdf")
@@ -1058,6 +1080,34 @@ PAYMENT FORM RULES:
         // PDF: %PDF
         if (b[0] == 0x25 && b[1] == 0x50 && b[2] == 0x44 && b[3] == 0x46) return "application/pdf";
         return "unknown";
+    }
+
+    // ── PDF text extraction: returns text if PDF has embedded text, null if scanned/empty ──
+    // Minimum 80 chars of meaningful text = digital PDF; below that = scanned image PDF.
+    private static string? TryExtractPdfText(string base64Part)
+    {
+        const int MinTextLength = 80;
+        try
+        {
+            var pdfBytes = Convert.FromBase64String(base64Part);
+            using var doc = PdfDocument.Open(pdfBytes);
+            var sb = new System.Text.StringBuilder();
+            foreach (var page in doc.GetPages())
+            {
+                foreach (var word in page.GetWords())
+                    sb.Append(word.Text).Append(' ');
+                sb.AppendLine();
+                // Stop after 2 pages — invoices rarely exceed that
+                if (page.Number >= 2) break;
+            }
+            var text = sb.ToString().Trim();
+            return text.Length >= MinTextLength ? text : null;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[OCR] PDF text extraction failed (non-fatal): {ex.Message}");
+            return null;
+        }
     }
 
     // ── Image resizing: shrink to max 1600px on any dimension before sending to OCI ──
