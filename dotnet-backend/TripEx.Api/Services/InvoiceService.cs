@@ -293,18 +293,54 @@ public class InvoiceService
     /// <summary>
     private static readonly Dictionary<string, string> FormOfPaymentAliases = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["apple pay"]   = "credit card",
-        ["applepay"]    = "credit card",
-        ["google pay"]  = "credit card",
-        ["googlepay"]   = "credit card",
-        ["samsung pay"] = "credit card",
-        ["samsungpay"]  = "credit card",
+        ["apple pay"]    = "credit",
+        ["applepay"]     = "credit",
+        ["google pay"]   = "credit",
+        ["googlepay"]    = "credit",
+        ["samsung pay"]  = "credit",
+        ["samsungpay"]   = "credit",
+        ["credit card"]  = "credit",
+        ["credit_card"]  = "credit",
+        ["creditcard"]   = "credit",
+        ["card"]         = "credit",
+        ["visa"]         = "credit",
+        ["mastercard"]   = "credit",
+        ["amex"]         = "credit",
+        ["diners"]       = "credit",
+        ["isracard"]     = "credit",
+        ["isracart"]     = "credit",
+        ["uatp"]         = "credit",
+        ["airplus"]      = "credit",
+        ["air plus"]     = "credit",
+        ["bank transfer"] = "bank",
+        ["wire transfer"] = "bank",
+        ["העברה"]        = "bank",
+        ["אשראי"]        = "credit",
+        ["מזומן"]        = "cash",
     };
+
+    // Keywords that identify "credit" type options by name fragments
+    private static readonly string[] CreditCardNameKeywords = ["c.c", "cc", "credit", "card", "amex", "uatp", "airplus", "air plus", "visa", "master", "diners"];
+    private static readonly string[] CashNameKeywords       = ["cash", "מזומן", "наличн"];
+    private static readonly string[] BankNameKeywords       = ["bank", "transfer", "wire", "העברה"];
 
     private static string NormaliseFormOfPayment(string value)
     {
         var normalised = value.ToLowerInvariant().Replace("_", " ").Trim();
         return FormOfPaymentAliases.TryGetValue(normalised, out var alias) ? alias : normalised;
+    }
+
+    // Returns true if the option name semantically matches the normalised AI category ("credit"/"cash"/"bank")
+    private static bool FormOfPaymentKeywordMatch(string optionName, string normalisedAiValue)
+    {
+        var lower = optionName.ToLowerInvariant();
+        return normalisedAiValue switch
+        {
+            "credit" => CreditCardNameKeywords.Any(k => lower.Contains(k)),
+            "cash"   => CashNameKeywords.Any(k => lower.Contains(k)),
+            "bank"   => BankNameKeywords.Any(k => lower.Contains(k)),
+            _        => false
+        };
     }
 
     /// Resolves ExpenseTypeId and FormOfPaymentId from the caller-supplied option lists.
@@ -371,7 +407,7 @@ public class InvoiceService
                 }
             }
 
-            // 2. Server-side fallback: match FormOfPayment string against option names
+            // 2. Server-side fallback: exact name match after normalisation
             if (fields.FormOfPaymentId == null && !string.IsNullOrEmpty(fields.FormOfPayment))
             {
                 var normalised = NormaliseFormOfPayment(fields.FormOfPayment);
@@ -381,6 +417,22 @@ public class InvoiceService
                 {
                     fields.FormOfPaymentId = match.Id;
                     Console.WriteLine($"[OCR-IDS] form_of_payment_id={match.Id} (server-side name match: '{match.Name}')");
+                }
+            }
+
+            // 3. Keyword fallback: "credit" → any option containing "c.c"/"cc"/"card"/etc.
+            //    Prefers options with "emp" or "employee" in the name (personal expense cards first).
+            if (fields.FormOfPaymentId == null && !string.IsNullOrEmpty(fields.FormOfPayment))
+            {
+                var normalised = NormaliseFormOfPayment(fields.FormOfPayment);
+                var candidates = formOfPayments.Where(f => FormOfPaymentKeywordMatch(f.Name, normalised)).ToList();
+                if (candidates.Count > 0)
+                {
+                    // Prefer employee-type options over company-type
+                    var best = candidates.FirstOrDefault(f => f.Name.ToLowerInvariant().Contains("emp"))
+                               ?? candidates[0];
+                    fields.FormOfPaymentId = best.Id;
+                    Console.WriteLine($"[OCR-IDS] form_of_payment_id={best.Id} (keyword match '{normalised}' → '{best.Name}')");
                 }
             }
 
