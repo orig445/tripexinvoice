@@ -34,8 +34,13 @@ public class InvoiceController : ControllerBase
             if (Guid.TryParse(userIdClaim, out var uid)) userId = uid;
 
             // Early timeout: return a clean error response before the calling application
-            // (combtas ~10s timeout) aborts the thread. Configurable via OCR_EARLY_TIMEOUT_MS env var.
-            int earlyMs = int.TryParse(Environment.GetEnvironmentVariable("OCR_EARLY_TIMEOUT_MS"), out var t) ? t : 9000;
+            // (combtas ~10s timeout) aborts the thread.
+            // PDFs take longer for Gemini to process — use a separate (longer) timeout for them.
+            // Configurable via OCR_EARLY_TIMEOUT_MS (images) and OCR_EARLY_TIMEOUT_PDF_MS (PDFs).
+            bool isPdf = IsPdf(request.ImageBase64);
+            int earlyMs = isPdf
+                ? int.TryParse(Environment.GetEnvironmentVariable("OCR_EARLY_TIMEOUT_PDF_MS"), out var tp) ? tp : 25000
+                : int.TryParse(Environment.GetEnvironmentVariable("OCR_EARLY_TIMEOUT_MS"),     out var t)  ? t  : 9000;
             using var earlyCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             earlyCts.CancelAfter(earlyMs);
 
@@ -170,6 +175,24 @@ public class InvoiceController : ControllerBase
         var raw = fields?.Total ?? fields?.TotalAmount;
         var amount = TripEx.Api.Services.InvoiceService.ParseAmountSmart(raw);
         return amount.HasValue && amount.Value > 0;
+    }
+
+    // Detect PDF by checking the first bytes of the base64 payload (%PDF magic = 0x25 0x50 0x44 0x46)
+    private static bool IsPdf(string? imageBase64)
+    {
+        if (string.IsNullOrEmpty(imageBase64)) return false;
+        try
+        {
+            // Check data URI prefix first (fast path)
+            if (imageBase64.Contains("application/pdf", StringComparison.OrdinalIgnoreCase)) return true;
+            var b64 = imageBase64.Contains(',') ? imageBase64[(imageBase64.IndexOf(',') + 1)..] : imageBase64;
+            var prefix = b64.Length > 8 ? b64[..8] : b64;
+            while (prefix.Length % 4 != 0) prefix += "=";
+            var bytes = Convert.FromBase64String(prefix);
+            // %PDF magic bytes
+            return bytes.Length >= 4 && bytes[0] == 0x25 && bytes[1] == 0x50 && bytes[2] == 0x44 && bytes[3] == 0x46;
+        }
+        catch { return false; }
     }
 
     /// <summary>
