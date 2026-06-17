@@ -392,6 +392,14 @@ public class InvoiceService
 
     /// <summary>
     /// Locale-aware amount parsing — handles "25,00" (EU), "1,234.56" (US), "1.234,56" (EU thousands),
+    /// Formats a monetary amount: rounds to 2 decimal places and removes trailing zeros.
+    /// 420.00 → "420", 20.64 → "20.64", 4.229 → "4.23"
+    /// </summary>
+    private static string FormatAmount(decimal value) =>
+        Math.Round(value, 2, MidpointRounding.AwayFromZero)
+            .ToString("0.##", CultureInfo.InvariantCulture);
+
+    /// <summary>
     /// currency symbols, and whitespace. Returns null if not a valid positive number.
     /// </summary>
     public static decimal? ParseAmountSmart(string? value)
@@ -445,7 +453,7 @@ public class InvoiceService
             if (v > best) best = v;
         }
 
-        return best > 0 ? best.ToString("F2", CultureInfo.InvariantCulture) : null;
+        return best > 0 ? FormatAmount(best) : null;
     }
 
     private static string DefaultCurrencyForCountry(string? country) => country?.ToUpperInvariant() switch
@@ -858,8 +866,8 @@ public class InvoiceService
 
         if (totalValue.HasValue && totalValue.Value > 0)
         {
-            fields.Total = totalValue.Value.ToString("F2", CultureInfo.InvariantCulture);
-            fields.TotalAmount = totalValue.Value.ToString("F2", CultureInfo.InvariantCulture);
+            fields.Total = FormatAmount(totalValue.Value);
+            fields.TotalAmount = FormatAmount(totalValue.Value);
         }
 
         // VAT — check amounts object AND top-level (multiple naming conventions)
@@ -887,8 +895,8 @@ public class InvoiceService
                       ?? GetDecimalProp(json, "sub_total")
                       ?? GetDecimalProp(json, "net_amount");
 
-        if (taxValue.HasValue && taxValue.Value > 0) fields.TotalVAT = taxValue.Value.ToString("F2", CultureInfo.InvariantCulture);
-        if (vatableValue.HasValue && vatableValue.Value > 0) fields.SubCategory = vatableValue.Value.ToString("F2", CultureInfo.InvariantCulture);
+        if (taxValue.HasValue && taxValue.Value > 0) fields.TotalVAT = FormatAmount(taxValue.Value);
+        if (vatableValue.HasValue && vatableValue.Value > 0) fields.SubCategory = FormatAmount(vatableValue.Value);
 
         // Direct fields (with multiple naming fallbacks)
         fields.Currency = GetStringProp(json, "currency")
@@ -935,7 +943,7 @@ public class InvoiceService
         {
             fields.PaymentMethod = GetStringProp(pay, "method");
             var paidVal = GetDecimalProp(pay, "amount_paid");
-            if (paidVal.HasValue) fields.AmountPaid = paidVal.Value.ToString("F2");
+            if (paidVal.HasValue) fields.AmountPaid = FormatAmount(paidVal.Value);
 
             // Form of payment (credit/cash/bank)
             var formOfPayment = GetStringProp(pay, "form_of_payment")?.ToLowerInvariant()?.Trim();
