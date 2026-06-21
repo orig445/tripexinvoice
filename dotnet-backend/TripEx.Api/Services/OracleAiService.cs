@@ -958,8 +958,8 @@ PAYMENT FORM RULES:
         bool mimeMismatch = actualMime != declaredMime;
         if (mimeMismatch)
         {
-            Console.Error.WriteLine(
-                $"[OCR-IMAGE] ⚠️ MIME TYPE MISMATCH: declared={declaredMime}, actual={actualMime} — using actual for OCI");
+            Console.WriteLine(
+                $"[OCR-IMAGE] MIME mismatch: declared={declaredMime}, actual={actualMime} — using actual for OCI");
         }
 
         // ── Validate known header ──
