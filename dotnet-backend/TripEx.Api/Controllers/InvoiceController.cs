@@ -40,7 +40,7 @@ public class InvoiceController : ControllerBase
             bool isPdf = IsPdf(request.ImageBase64);
             int earlyMs = isPdf
                 ? int.TryParse(Environment.GetEnvironmentVariable("OCR_EARLY_TIMEOUT_PDF_MS"), out var tp) ? tp : 25000
-                : int.TryParse(Environment.GetEnvironmentVariable("OCR_EARLY_TIMEOUT_MS"),     out var t)  ? t  : 9000;
+                : int.TryParse(Environment.GetEnvironmentVariable("OCR_EARLY_TIMEOUT_MS"),     out var t)  ? t  : 12000;
             using var earlyCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             earlyCts.CancelAfter(earlyMs);
 

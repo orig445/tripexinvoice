@@ -1135,11 +1135,13 @@ PAYMENT FORM RULES:
             using var img = SixLabors.ImageSharp.Image.Load(imageBytes);
 
             if (img.Width <= MaxDimension && img.Height <= MaxDimension)
-                return base64Part; // already small enough
+                return base64Part; // already small enough — do NOT re-encode
 
-            double scale = Math.Min((double)MaxDimension / img.Width, (double)MaxDimension / img.Height);
-            int newWidth  = (int)Math.Round(img.Width  * scale);
-            int newHeight = (int)Math.Round(img.Height * scale);
+            int origWidth  = img.Width;
+            int origHeight = img.Height;
+            double scale = Math.Min((double)MaxDimension / origWidth, (double)MaxDimension / origHeight);
+            int newWidth  = (int)Math.Round(origWidth  * scale);
+            int newHeight = (int)Math.Round(origHeight * scale);
 
             img.Mutate(x => x.Resize(newWidth, newHeight));
 
@@ -1147,8 +1149,15 @@ PAYMENT FORM RULES:
             img.SaveAsJpeg(ms, new JpegEncoder { Quality = 85 });
             var resized = Convert.ToBase64String(ms.ToArray());
 
-            Console.WriteLine($"[OCR] Image resized {img.Width}x{img.Height} → {newWidth}x{newHeight} | " +
+            Console.WriteLine($"[OCR] Image resized {origWidth}x{origHeight} → {newWidth}x{newHeight} | " +
                               $"before={base64Part.Length / 1024}KB base64, after={resized.Length / 1024}KB base64");
+
+            // Don't use re-encoded version if it's larger than the original
+            if (resized.Length >= base64Part.Length)
+            {
+                Console.WriteLine("[OCR] Re-encoded image is not smaller — keeping original");
+                return base64Part;
+            }
 
             resizedMime = "image/jpeg";
             return resized;
