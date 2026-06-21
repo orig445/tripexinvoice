@@ -103,14 +103,28 @@ public class InvoiceService
 
             if (cacheKey != null && _cache.TryGetValue(cacheKey, out string? cachedRaw) && cachedRaw != null)
             {
-                Console.WriteLine($"[OCR][{source}] Cache HIT ({imageInspection!.Sha256Hash[..16]}...) — skipping OCI call");
-                rawResponse = cachedRaw;
+                // Validate cached response is complete (has amounts + payment).
+                // If it was truncated when originally cached, discard and call OCI again.
+                if (IsCachedResponseComplete(cachedRaw))
+                {
+                    Console.WriteLine($"[OCR][{source}] Cache HIT ({imageInspection!.Sha256Hash[..16]}...) — skipping OCI call");
+                    rawResponse = cachedRaw;
+                }
+                else
+                {
+                    Console.WriteLine($"[OCR][{source}] Cache HIT but response incomplete (truncated) — discarding cache and retrying OCI");
+                    _cache.Remove(cacheKey);
+                }
             }
-            else
+
+            if (rawResponse == null)
             {
                 rawResponse = await _aiService.CallGeminiFlashAsync(imageContent, countryHint, expenseTypes, formOfPayments, ct);
-                if (cacheKey != null && !string.IsNullOrEmpty(rawResponse))
+                // Only cache complete responses (has both amounts and payment blocks)
+                if (cacheKey != null && !string.IsNullOrEmpty(rawResponse) && IsCachedResponseComplete(rawResponse))
                     _cache.Set(cacheKey, rawResponse, TimeSpan.FromHours(1));
+                else if (cacheKey != null && !string.IsNullOrEmpty(rawResponse))
+                    Console.WriteLine($"[OCR][{source}] Response incomplete — not caching to avoid serving bad data");
             }
             Console.WriteLine($"[OCR][{source}] Raw response length: {rawResponse?.Length ?? 0}");
 
@@ -467,6 +481,13 @@ public class InvoiceService
         FormOfPayment = "cash",
         ExtraDetails = "{}"
     };
+
+    // A response is considered complete if it contains both "amounts" and "payment" blocks.
+    // Truncated responses lack these blocks and produce total=0.
+    private static bool IsCachedResponseComplete(string raw) =>
+        raw.Contains("\"amounts\"", StringComparison.Ordinal) &&
+        raw.Contains("\"payment\"", StringComparison.Ordinal) &&
+        raw.Contains("\"amount_paid\"", StringComparison.Ordinal);
 
     private static bool IsMissingOrZeroAmount(string? value)
     {
