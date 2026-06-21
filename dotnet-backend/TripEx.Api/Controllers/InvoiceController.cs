@@ -24,7 +24,6 @@ public class InvoiceController : ControllerBase
     /// to ensure compatibility with any client mapping (AlgoText / TripEx / QA combtas).
     /// </summary>
     [HttpPost("analyze")]
-    [RequestTimeout(90_000)] // 90s — OCR can take 20-60s; prevents IIS thread abort on caller side
     public async Task<ActionResult> Analyze([FromBody] AnalyzeInvoiceRequest request, CancellationToken ct)
     {
         try
