@@ -88,7 +88,6 @@ public class OracleAiService
         // ── PDF: try text extraction first (digital PDFs process in ~1-2s vs 20-30s as image) ──
         // If the PDF has embedded text (digital invoice), send as text — much faster.
         // If it's a scanned PDF (no text), fall through and send as image_url as before.
-        object userContent;
         if (correctedMime == "application/pdf")
         {
             var pdfText = TryExtractPdfText(base64Part);
