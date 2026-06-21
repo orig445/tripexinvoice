@@ -114,8 +114,11 @@ public class OracleAiService
         // ── Resize if too large (skip PDFs) ──
         if (correctedMime != "application/pdf")
         {
-            base64Part = ResizeIfTooLarge(base64Part, out var resizedMime);
-            if (resizedMime != null) correctedMime = resizedMime;
+            try { base64Part = ResizeIfTooLarge(base64Part, out var resizedMime2); if (resizedMime2 != null) correctedMime = resizedMime2; }
+            catch (Exception ex) when (ex is FileNotFoundException or FileLoadException or TypeLoadException or BadImageFormatException)
+            {
+                Console.WriteLine($"[OCR] ImageSharp assembly not available on this server, skipping resize: {ex.Message}");
+            }
         }
 
         var imageUrl = $"data:{correctedMime};base64,{base64Part}";
@@ -1120,7 +1123,8 @@ PAYMENT FORM RULES:
 
     // ── Image resizing: shrink to max 1600px on any dimension before sending to OCI ──
     // Reduces payload size and speeds up API response. Skipped for PDFs.
-    // Returns the (possibly new) base64 string and sets resizedMime if format changed.
+    // NoInlining defers assembly load to call time so caller can catch FileNotFoundException.
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static string ResizeIfTooLarge(string base64Part, out string? resizedMime)
     {
         resizedMime = null;
