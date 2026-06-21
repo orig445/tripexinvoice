@@ -40,7 +40,7 @@ public class InvoiceController : ControllerBase
             bool isPdf = IsPdf(request.ImageBase64);
             int earlyMs = isPdf
                 ? int.TryParse(Environment.GetEnvironmentVariable("OCR_EARLY_TIMEOUT_PDF_MS"), out var tp) ? tp : 25000
-                : int.TryParse(Environment.GetEnvironmentVariable("OCR_EARLY_TIMEOUT_MS"),     out var t)  ? t  : 9000;
+                : int.TryParse(Environment.GetEnvironmentVariable("OCR_EARLY_TIMEOUT_MS"),     out var t)  ? t  : 12000;
             using var earlyCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             earlyCts.CancelAfter(earlyMs);
 
@@ -52,11 +52,11 @@ public class InvoiceController : ControllerBase
             if (result.Fields != null && string.IsNullOrEmpty(result.Fields.Currency))
                 result.Fields.Currency = DefaultCurrencyForCountry(request.Country);
 
-            if (result.Success && !HasPositiveTotal(result.Fields))
-            {
-                result.Success = false;
-                result.Error = "OCR failed to extract a valid total amount. Please retry with a clearer receipt image.";
-            }
+            // Always return success=true when we got any response from OCI (even partial/zero total).
+            // combtas treats success=false as "file could not be processed" and leaves all fields empty.
+            // Better to return partial data so the user can correct it manually.
+            if (result.Fields != null)
+                result.Success = true;
 
             var fieldsDict = BuildMultiCaseFields(result.Fields);
             var mindeeDoc = BuildMindeeDocument(result.Fields);

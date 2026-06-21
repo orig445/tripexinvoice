@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -5,7 +6,6 @@ using Microsoft.EntityFrameworkCore;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Formats.Jpeg;
-using UglyToad.PdfPig;
 using TripEx.Api.Data;
 using TripEx.Api.Models;
 
@@ -90,7 +90,13 @@ public class OracleAiService
         // If it's a scanned PDF (no text), fall through and send as image_url as before.
         if (correctedMime == "application/pdf")
         {
-            var pdfText = TryExtractPdfText(base64Part);
+            string? pdfText = null;
+            try { pdfText = TryExtractPdfText(base64Part); }
+            catch (Exception ex) when (ex is FileNotFoundException or FileLoadException or TypeLoadException or BadImageFormatException)
+            {
+                Console.WriteLine($"[OCR] PdfPig assembly not available on this server, falling back to image: {ex.Message}");
+            }
+
             if (pdfText != null)
             {
                 Console.WriteLine($"[OCR] PDF text extracted ({pdfText.Length} chars) — sending as text instead of image");
@@ -102,14 +108,17 @@ public class OracleAiService
                 };
                 return await ChatAsync(textMessages, 4096, 0.1, ct);
             }
-            Console.WriteLine("[OCR] PDF has no embedded text (scanned) — sending as image to OCI");
+            Console.WriteLine("[OCR] PDF has no embedded text (scanned or PdfPig unavailable) — sending as image to OCI");
         }
 
         // ── Resize if too large (skip PDFs) ──
         if (correctedMime != "application/pdf")
         {
-            base64Part = ResizeIfTooLarge(base64Part, out var resizedMime);
-            if (resizedMime != null) correctedMime = resizedMime;
+            try { base64Part = ResizeIfTooLarge(base64Part, out var resizedMime2); if (resizedMime2 != null) correctedMime = resizedMime2; }
+            catch (Exception ex) when (ex is FileNotFoundException or FileLoadException or TypeLoadException or BadImageFormatException)
+            {
+                Console.WriteLine($"[OCR] ImageSharp assembly not available on this server, skipping resize: {ex.Message}");
+            }
         }
 
         var imageUrl = $"data:{correctedMime};base64,{base64Part}";
@@ -1083,13 +1092,16 @@ PAYMENT FORM RULES:
 
     // ── PDF text extraction: returns text if PDF has embedded text, null if scanned/empty ──
     // Minimum 80 chars of meaningful text = digital PDF; below that = scanned image PDF.
+    // NoInlining is required so that the JIT loads UglyToad.PdfPig only when this method
+    // is first called — allowing the caller to catch FileNotFoundException if the DLL is missing.
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static string? TryExtractPdfText(string base64Part)
     {
         const int MinTextLength = 80;
         try
         {
             var pdfBytes = Convert.FromBase64String(base64Part);
-            using var doc = PdfDocument.Open(pdfBytes);
+            using var doc = UglyToad.PdfPig.PdfDocument.Open(pdfBytes);
             var sb = new System.Text.StringBuilder();
             foreach (var page in doc.GetPages())
             {
@@ -1111,7 +1123,8 @@ PAYMENT FORM RULES:
 
     // ── Image resizing: shrink to max 1600px on any dimension before sending to OCI ──
     // Reduces payload size and speeds up API response. Skipped for PDFs.
-    // Returns the (possibly new) base64 string and sets resizedMime if format changed.
+    // NoInlining defers assembly load to call time so caller can catch FileNotFoundException.
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static string ResizeIfTooLarge(string base64Part, out string? resizedMime)
     {
         resizedMime = null;
@@ -1122,11 +1135,13 @@ PAYMENT FORM RULES:
             using var img = SixLabors.ImageSharp.Image.Load(imageBytes);
 
             if (img.Width <= MaxDimension && img.Height <= MaxDimension)
-                return base64Part; // already small enough
+                return base64Part; // already small enough — do NOT re-encode
 
-            double scale = Math.Min((double)MaxDimension / img.Width, (double)MaxDimension / img.Height);
-            int newWidth  = (int)Math.Round(img.Width  * scale);
-            int newHeight = (int)Math.Round(img.Height * scale);
+            int origWidth  = img.Width;
+            int origHeight = img.Height;
+            double scale = Math.Min((double)MaxDimension / origWidth, (double)MaxDimension / origHeight);
+            int newWidth  = (int)Math.Round(origWidth  * scale);
+            int newHeight = (int)Math.Round(origHeight * scale);
 
             img.Mutate(x => x.Resize(newWidth, newHeight));
 
@@ -1134,8 +1149,15 @@ PAYMENT FORM RULES:
             img.SaveAsJpeg(ms, new JpegEncoder { Quality = 85 });
             var resized = Convert.ToBase64String(ms.ToArray());
 
-            Console.WriteLine($"[OCR] Image resized {img.Width}x{img.Height} → {newWidth}x{newHeight} | " +
+            Console.WriteLine($"[OCR] Image resized {origWidth}x{origHeight} → {newWidth}x{newHeight} | " +
                               $"before={base64Part.Length / 1024}KB base64, after={resized.Length / 1024}KB base64");
+
+            // Don't use re-encoded version if it's larger than the original
+            if (resized.Length >= base64Part.Length)
+            {
+                Console.WriteLine("[OCR] Re-encoded image is not smaller — keeping original");
+                return base64Part;
+            }
 
             resizedMime = "image/jpeg";
             return resized;
