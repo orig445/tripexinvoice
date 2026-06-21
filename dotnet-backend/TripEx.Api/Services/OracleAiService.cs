@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -5,7 +6,6 @@ using Microsoft.EntityFrameworkCore;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Formats.Jpeg;
-using UglyToad.PdfPig;
 using TripEx.Api.Data;
 using TripEx.Api.Models;
 
@@ -90,7 +90,13 @@ public class OracleAiService
         // If it's a scanned PDF (no text), fall through and send as image_url as before.
         if (correctedMime == "application/pdf")
         {
-            var pdfText = TryExtractPdfText(base64Part);
+            string? pdfText = null;
+            try { pdfText = TryExtractPdfText(base64Part); }
+            catch (Exception ex) when (ex is FileNotFoundException or FileLoadException or TypeLoadException or BadImageFormatException)
+            {
+                Console.WriteLine($"[OCR] PdfPig assembly not available on this server, falling back to image: {ex.Message}");
+            }
+
             if (pdfText != null)
             {
                 Console.WriteLine($"[OCR] PDF text extracted ({pdfText.Length} chars) — sending as text instead of image");
@@ -102,7 +108,7 @@ public class OracleAiService
                 };
                 return await ChatAsync(textMessages, 4096, 0.1, ct);
             }
-            Console.WriteLine("[OCR] PDF has no embedded text (scanned) — sending as image to OCI");
+            Console.WriteLine("[OCR] PDF has no embedded text (scanned or PdfPig unavailable) — sending as image to OCI");
         }
 
         // ── Resize if too large (skip PDFs) ──
@@ -1083,13 +1089,16 @@ PAYMENT FORM RULES:
 
     // ── PDF text extraction: returns text if PDF has embedded text, null if scanned/empty ──
     // Minimum 80 chars of meaningful text = digital PDF; below that = scanned image PDF.
+    // NoInlining is required so that the JIT loads UglyToad.PdfPig only when this method
+    // is first called — allowing the caller to catch FileNotFoundException if the DLL is missing.
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static string? TryExtractPdfText(string base64Part)
     {
         const int MinTextLength = 80;
         try
         {
             var pdfBytes = Convert.FromBase64String(base64Part);
-            using var doc = PdfDocument.Open(pdfBytes);
+            using var doc = UglyToad.PdfPig.PdfDocument.Open(pdfBytes);
             var sb = new System.Text.StringBuilder();
             foreach (var page in doc.GetPages())
             {
