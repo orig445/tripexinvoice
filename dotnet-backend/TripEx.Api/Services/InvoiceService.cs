@@ -249,28 +249,6 @@ public class InvoiceService
                 Fields = CreateFailureFields(countryHint)
             };
         }
-        catch (TaskCanceledException ex)
-        {
-            stopwatch.Stop();
-            Console.Error.WriteLine($"[OCR][{source}] Timed out after 60s: {ex.Message}");
-            await SaveScanLog(new InvoiceScanLog
-            {
-                UserId = userId ?? Guid.Empty,
-                CountryHint = countryHint,
-                Status = "Failed",
-                DurationMs = stopwatch.ElapsedMilliseconds,
-                HttpStatusCode = 504,
-                ErrorMessage = "Request timed out",
-                ErrorType = nameof(TaskCanceledException),
-                Source = source,
-                AttemptNumber = 1,
-                ImageSizeBytes = imageInspection?.DecodedBytes ?? imageSize,
-                ImageMimeType = imageInspection?.MimeType,
-                ImageHash = imageInspection?.Sha256Hash,
-                ImageDebugPath = imageInspection?.DebugFilePath,
-            });
-            return new AnalyzeInvoiceResponse { Success = false, Error = "OCR request timed out.", Fields = CreateFailureFields(countryHint) };
-        }
         catch (Exception ex)
         {
             stopwatch.Stop();
