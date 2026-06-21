@@ -271,7 +271,6 @@ CRITICAL RULES:
             {
                 response = await _httpClient.SendAsync(request, ct);
             }
-            catch (OperationCanceledException) { throw; } // propagate early-timeout cancellation
             catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException || !ex.CancellationToken.IsCancellationRequested)
             {
                 // HttpClient.Timeout reached — surface as 504 so retry layer treats it as transient
@@ -279,6 +278,7 @@ CRITICAL RULES:
                     $"OCI request timed out after {_httpClient.Timeout.TotalSeconds}s",
                     504, null);
             }
+            catch (OperationCanceledException) { throw; } // propagate early-timeout cancellation
             catch (HttpRequestException) { throw; }
             catch (Exception ex)
             {
