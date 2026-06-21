@@ -15,7 +15,7 @@
     <PackageReference Include="AWSSDK.S3" Version="3.7.305.23" />
     <PackageReference Include="log4net" Version="3.3.1" />
     <PackageReference Include="Microsoft.Extensions.Logging.Log4Net.AspNetCore" Version="8.0.0" />
-    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.5" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="4.0.0" />
     <PackageReference Include="PdfPig" Version="0.1.9" />
   </ItemGroup>
 
