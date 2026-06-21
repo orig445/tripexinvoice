@@ -106,7 +106,7 @@ public class OracleAiService
                     new() { Role = "system", Content = prompt2 },
                     new() { Role = "user", Content = $"Extract data from this invoice text:\n\n{pdfText}" }
                 };
-                return await ChatAsync(textMessages, 4096, 0.1, ct);
+                return await ChatAsync(textMessages, 4096, 0.1, ct, forceJsonOutput: true);
             }
             Console.WriteLine("[OCR] PDF has no embedded text (scanned or PdfPig unavailable) — sending as image to OCI");
         }
@@ -139,7 +139,7 @@ public class OracleAiService
             }
         };
 
-        return await ChatAsync(messages, 4096, 0.1, ct);
+        return await ChatAsync(messages, 4096, 0.1, ct, forceJsonOutput: true);
     }
 
     /// <summary>
@@ -225,7 +225,8 @@ CRITICAL RULES:
         List<OracleMessage> messages,
         int maxTokens = 1024,
         double temperature = 0.3,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool forceJsonOutput = false)
     {
         // ── Validate messages ──
         if (messages == null || messages.Count == 0)
@@ -238,6 +239,11 @@ CRITICAL RULES:
             ["max_tokens"] = maxTokens,
             ["temperature"] = temperature
         };
+
+        // Force the model to return valid complete JSON — prevents truncated responses.
+        // When the model hits max_tokens it closes the JSON properly instead of cutting mid-string.
+        if (forceJsonOutput)
+            requestDict["response_format"] = new { type = "json_object" };
 
         // OCI requires compartmentId in the request body
         if (!string.IsNullOrEmpty(_compartmentId))
