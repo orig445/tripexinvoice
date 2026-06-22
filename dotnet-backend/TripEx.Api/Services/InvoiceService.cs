@@ -121,33 +121,14 @@ public class InvoiceService
             {
                 rawResponse = await _aiService.CallGeminiFlashAsync(imageContent, countryHint, expenseTypes, formOfPayments, ct);
 
-                // Retry once if response is truncated (missing amounts or payment block).
-                // Use a fresh CancellationTokenSource so the retry gets its own full budget
-                // instead of inheriting the few seconds left from attempt 1's early timeout.
-                if (!string.IsNullOrEmpty(rawResponse) && !IsCachedResponseComplete(rawResponse) && !ct.IsCancellationRequested)
+                // Cache only complete responses
+                if (cacheKey != null && !string.IsNullOrEmpty(rawResponse))
                 {
-                    Console.WriteLine($"[OCR][{source}] Response incomplete on attempt 1 — retrying OCI once (fresh 30s timeout)");
-                    using var retryCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                    var retryRaw = await _aiService.CallGeminiFlashAsync(imageContent, countryHint, expenseTypes, formOfPayments, retryCts.Token);
-                    if (!string.IsNullOrEmpty(retryRaw) && IsCachedResponseComplete(retryRaw))
-                    {
-                        Console.WriteLine($"[OCR][{source}] Retry succeeded (complete response)");
-                        rawResponse = retryRaw;
-                    }
+                    if (IsCachedResponseComplete(rawResponse))
+                        _cache.Set(cacheKey, rawResponse, TimeSpan.FromHours(1));
                     else
-                    {
-                        Console.WriteLine($"[OCR][{source}] Retry also incomplete — using best available response");
-                        // Keep whichever is longer (more data)
-                        if ((retryRaw?.Length ?? 0) > rawResponse.Length)
-                            rawResponse = retryRaw!;
-                    }
+                        Console.WriteLine($"[OCR][{source}] Response incomplete — not caching");
                 }
-
-                // Only cache complete responses (has both amounts and payment blocks)
-                if (cacheKey != null && !string.IsNullOrEmpty(rawResponse) && IsCachedResponseComplete(rawResponse))
-                    _cache.Set(cacheKey, rawResponse, TimeSpan.FromHours(1));
-                else if (cacheKey != null && !string.IsNullOrEmpty(rawResponse))
-                    Console.WriteLine($"[OCR][{source}] Response incomplete — not caching to avoid serving bad data");
             }
             Console.WriteLine($"[OCR][{source}] Raw response length: {rawResponse?.Length ?? 0}");
 

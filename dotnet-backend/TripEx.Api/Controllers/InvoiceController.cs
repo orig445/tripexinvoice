@@ -36,11 +36,12 @@ public class InvoiceController : ControllerBase
             // (combtas ~10s timeout) aborts the thread.
             // PDFs take longer for Gemini to process — use a separate (longer) timeout for them.
             // Configurable via OCR_EARLY_TIMEOUT_MS (images) and OCR_EARLY_TIMEOUT_PDF_MS (PDFs).
-            // PDF default is 45s: OCI text-path responses can take ~18-20s, and we need headroom
-            // for a retry attempt (which gets its own fresh 30s token in InvoiceService).
+            // PDF default is 40s: one attempt, return whatever OCI managed to extract.
+            // Images default to 12s (they process much faster).
+            // Configurable via OCR_EARLY_TIMEOUT_PDF_MS / OCR_EARLY_TIMEOUT_MS env vars.
             bool isPdf = IsPdf(request.ImageBase64);
             int earlyMs = isPdf
-                ? int.TryParse(Environment.GetEnvironmentVariable("OCR_EARLY_TIMEOUT_PDF_MS"), out var tp) ? tp : 45000
+                ? int.TryParse(Environment.GetEnvironmentVariable("OCR_EARLY_TIMEOUT_PDF_MS"), out var tp) ? tp : 40000
                 : int.TryParse(Environment.GetEnvironmentVariable("OCR_EARLY_TIMEOUT_MS"),     out var t)  ? t  : 12000;
             using var earlyCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             earlyCts.CancelAfter(earlyMs);
