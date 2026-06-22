@@ -255,10 +255,59 @@ public class InvoiceService
         }
         catch (OperationCanceledException)
         {
-            // Early timeout fired before OCI responded — return clean error so the caller
-            // (combtas) receives a valid HTTP response before their own timeout triggers.
             stopwatch.Stop();
-            Console.Error.WriteLine($"[OCR][{source}] Early timeout after {stopwatch.ElapsedMilliseconds}ms — returning fast error to caller");
+            Console.Error.WriteLine($"[OCR][{source}] Early timeout after {stopwatch.ElapsedMilliseconds}ms — attempting to parse best available response");
+
+            // If attempt 1 already returned something (even truncated), try to parse it
+            // rather than returning an empty error response.
+            if (!string.IsNullOrEmpty(rawResponse))
+            {
+                Console.WriteLine($"[OCR][{source}] Timeout but rawResponse has {rawResponse.Length} chars — parsing partial response");
+                try
+                {
+                    var aiJson = OracleAiService.ParseJsonFromAiResponse(rawResponse);
+                    aiJson = ValidateAndFixAmounts(aiJson);
+                    var detectedCurrency = aiJson.TryGetProperty("currency", out var curProp) ? curProp.GetString() : null;
+                    aiJson = ValidateDateByCurrency(aiJson, detectedCurrency, country);
+                    var fields = MapToAlgoTextFields(aiJson);
+                    ResolveOptionIds(fields, aiJson, expenseTypes, formOfPayments);
+
+                    bool missingTotal = IsMissingOrZeroAmount(fields.Total ?? fields.TotalAmount);
+                    if (missingTotal) { fields.Total = "0"; fields.TotalAmount = "0"; }
+
+                    Console.WriteLine($"[OCR][{source}] Partial parse done | Total={fields.Total} {fields.Currency} | Merchant={fields.MerchantName}");
+
+                    try
+                    {
+                        await SaveScanLog(new InvoiceScanLog
+                        {
+                            UserId = userId ?? Guid.Empty,
+                            RawAiResponse = rawResponse,
+                            CountryHint = countryHint,
+                            Status = "EarlyTimeout-Partial",
+                            DurationMs = stopwatch.ElapsedMilliseconds,
+                            HttpStatusCode = 200,
+                            ErrorMessage = "Early timeout — returned partial response",
+                            ErrorType = "EarlyTimeout",
+                            Source = source,
+                            AttemptNumber = 1,
+                            ImageSizeBytes = imageInspection?.DecodedBytes ?? imageSize,
+                            ImageMimeType = imageInspection?.MimeType,
+                            ImageHash = imageInspection?.Sha256Hash,
+                            ImageDebugPath = imageInspection?.DebugFilePath,
+                        });
+                    }
+                    catch { }
+                    return new AnalyzeInvoiceResponse { Success = true, Fields = fields, RawResponse = rawResponse };
+                }
+                catch (Exception parseEx)
+                {
+                    Console.Error.WriteLine($"[OCR][{source}] Partial parse failed: {parseEx.Message}");
+                }
+            }
+
+            // No usable response at all — return clean error
+            Console.Error.WriteLine($"[OCR][{source}] No response available after timeout — returning error");
             try
             {
                 await SaveScanLog(new InvoiceScanLog
@@ -278,7 +327,7 @@ public class InvoiceService
                     ImageDebugPath = imageInspection?.DebugFilePath,
                 });
             }
-            catch { /* never fail the response over a log write */ }
+            catch { }
             return new AnalyzeInvoiceResponse
             {
                 Success = false,
