@@ -19,6 +19,11 @@ public class InvoiceService
     private readonly OracleAiService _aiService;
     private readonly IMemoryCache _cache;
 
+    // Increment this whenever the OCR prompt logic changes significantly.
+    // Changing the version invalidates all in-memory cached responses so stale
+    // pre-change results (e.g. wrong tax_amount before whitelist) are not served.
+    private const string PromptVersion = "v3";
+
     private static readonly HashSet<string> ValidExpenseTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "business_meal", "vehicle", "entertainment", "hotel",
@@ -55,7 +60,7 @@ public class InvoiceService
 
     public void EvictCacheEntry(string sha256)
     {
-        var key = $"ocr:raw:{sha256}";
+        var key = $"ocr:raw:{PromptVersion}:{sha256}";
         _cache.Remove(key);
         Console.WriteLine($"[OCR-CACHE] Evicted cache key for sha256 prefix {sha256[..Math.Min(16, sha256.Length)]}...");
     }
@@ -121,8 +126,9 @@ public class InvoiceService
                 Console.WriteLine($"[OCR][{source}] FormOfPayments list: (empty)");
 
             // ── SHA256 cache: skip OCI call if we've seen this exact image recently ──
+            // Key includes PromptVersion so that prompt changes automatically invalidate cached responses.
             string? cacheKey = imageInspection?.Sha256Hash != null
-                ? $"ocr:raw:{imageInspection.Sha256Hash}"
+                ? $"ocr:raw:{PromptVersion}:{imageInspection.Sha256Hash}"
                 : null;
 
             if (forceRefresh && cacheKey != null)
