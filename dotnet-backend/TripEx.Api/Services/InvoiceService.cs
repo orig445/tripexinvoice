@@ -120,6 +120,26 @@ public class InvoiceService
             if (rawResponse == null)
             {
                 rawResponse = await _aiService.CallGeminiFlashAsync(imageContent, countryHint, expenseTypes, formOfPayments, ct);
+
+                // Retry once if response is truncated (missing amounts or payment block)
+                if (!string.IsNullOrEmpty(rawResponse) && !IsCachedResponseComplete(rawResponse) && !ct.IsCancellationRequested)
+                {
+                    Console.WriteLine($"[OCR][{source}] Response incomplete on attempt 1 — retrying OCI once");
+                    var retryRaw = await _aiService.CallGeminiFlashAsync(imageContent, countryHint, expenseTypes, formOfPayments, ct);
+                    if (!string.IsNullOrEmpty(retryRaw) && IsCachedResponseComplete(retryRaw))
+                    {
+                        Console.WriteLine($"[OCR][{source}] Retry succeeded (complete response)");
+                        rawResponse = retryRaw;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[OCR][{source}] Retry also incomplete — using best available response");
+                        // Keep whichever is longer (more data)
+                        if ((retryRaw?.Length ?? 0) > rawResponse.Length)
+                            rawResponse = retryRaw!;
+                    }
+                }
+
                 // Only cache complete responses (has both amounts and payment blocks)
                 if (cacheKey != null && !string.IsNullOrEmpty(rawResponse) && IsCachedResponseComplete(rawResponse))
                     _cache.Set(cacheKey, rawResponse, TimeSpan.FromHours(1));
@@ -692,8 +712,9 @@ public class InvoiceService
             }
         }
 
-        // Rule 2: If total exists and subtotal+tax don't add up, recalculate tax
-        if (amountPaid.HasValue && vatableSales.HasValue && tax.HasValue)
+        // Rule 2: If total exists and subtotal+tax don't add up, recalculate tax.
+        // Only run when vatableSales > 0 — if subtotal is unknown (0) we can't derive tax.
+        if (amountPaid.HasValue && vatableSales.HasValue && vatableSales.Value > 0 && tax.HasValue)
         {
             var expectedTotal = vatableSales.Value + tax.Value;
             var tolerance = amountPaid.Value * 0.05m;
@@ -968,12 +989,24 @@ public class InvoiceService
                       ?? GetDecimalProp(json, "grandTotal");
 
         // Always populate Total — combtas requires the field.
-        // If still no total but we have subtotal+tax, calculate it (last resort)
+        // If still no total but we have subtotal+tax, calculate it.
         if ((!totalValue.HasValue || totalValue.Value == 0) && json.TryGetProperty("amounts", out var amtFinal))
         {
             var st = GetDecimalProp(amtFinal, "vatable_sales_amount") ?? GetDecimalProp(amtFinal, "subtotal") ?? 0;
             var tx = GetDecimalProp(amtFinal, "tax_amount") ?? GetDecimalProp(amtFinal, "vat_amount") ?? 0;
             if (st + tx > 0) totalValue = st + tx;
+        }
+
+        // Last resort: use payment.amount_paid as the total when amounts block gave us nothing.
+        // This happens on text-only PDF responses where the AI puts the total only in payment.
+        if ((!totalValue.HasValue || totalValue.Value == 0) && json.TryGetProperty("payment", out var payFallback))
+        {
+            var paid = GetDecimalProp(payFallback, "amount_paid");
+            if (paid.HasValue && paid.Value > 0)
+            {
+                Console.WriteLine($"[OCR-PARSE] amounts.total missing — using payment.amount_paid ({paid}) as Total");
+                totalValue = paid;
+            }
         }
 
         if (totalValue.HasValue && totalValue.Value > 0)
