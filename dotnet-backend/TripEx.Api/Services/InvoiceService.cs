@@ -812,31 +812,10 @@ public class InvoiceService
             }
         }
 
-        // Rule 2: If total exists and subtotal+tax don't add up, recalculate tax.
-        // Only run when vatableSales > 0 — if subtotal is unknown (0) we can't derive tax.
-        if (amountPaid.HasValue && vatableSales.HasValue && vatableSales.Value > 0 && tax.HasValue)
-        {
-            var expectedTotal = vatableSales.Value + tax.Value;
-            var tolerance = amountPaid.Value * 0.05m;
-            if (Math.Abs(expectedTotal - amountPaid.Value) > tolerance && amountPaid.Value > 0)
-            {
-                var correctedTax = amountPaid.Value - vatableSales.Value;
-                if (correctedTax >= 0)
-                {
-                    Console.WriteLine($"[OCR-VALIDATE] Subtotal+Tax ({expectedTotal}) != Total ({amountPaid}) — Recalculating tax to {correctedTax}");
-                    var dict = JsonSerializer.Deserialize<Dictionary<string, object>>(json.GetRawText()) ?? new();
-                    if (dict.ContainsKey("amounts"))
-                    {
-                        var amountsDict = JsonSerializer.Deserialize<Dictionary<string, object>>(
-                            JsonSerializer.Serialize(dict["amounts"])) ?? new();
-                        amountsDict["tax_amount"] = correctedTax;
-                        dict["amounts"] = amountsDict;
-                        var rebuilt = JsonSerializer.SerializeToUtf8Bytes(dict);
-                        return JsonDocument.Parse(rebuilt).RootElement.Clone();
-                    }
-                }
-            }
-        }
+        // Note: vatable_sales_amount is always recalculated server-side in ApplyServerSideCalculations
+        // as (amount_paid - tax_amount), so we never "recalculate tax" here.
+        // Doing so would corrupt a correct whitelist-filtered tax_amount when the AI's vatable_sales_amount
+        // is wrong (e.g. it excluded service charges that should stay in the vatable base).
 
         return json;
     }
