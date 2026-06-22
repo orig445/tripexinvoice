@@ -111,6 +111,12 @@ public class AnalyzeInvoiceRequest
     /// </summary>
     public List<FormOfPaymentOption>? FormOfPayments { get; set; }
 
+    /// <summary>
+    /// When true, bypass the SHA256 response cache and force a fresh OCI call.
+    /// Use when a previous scan returned wrong results that were cached.
+    /// </summary>
+    public bool ForceRefresh { get; set; }
+
     // AlgoText / combtas naming aliases — delegate to the canonical properties above
     [System.Text.Json.Serialization.JsonPropertyName("ListOfExpenseType")]
     public List<ExpenseTypeOption>? ListOfExpenseType
@@ -125,6 +131,14 @@ public class AnalyzeInvoiceRequest
         get => FormOfPayments;
         set { if (FormOfPayments == null) FormOfPayments = value; }
     }
+}
+
+public class CacheInvalidateRequest
+{
+    /// <summary>Full or partial SHA256 hash of the image to evict from cache.</summary>
+    public string? Sha256 { get; set; }
+    /// <summary>When true, clears all cached OCR responses.</summary>
+    public bool ClearAll { get; set; }
 }
 
 public class AnalyzeInvoiceResponse
