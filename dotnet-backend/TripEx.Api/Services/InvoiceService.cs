@@ -592,10 +592,14 @@ public class InvoiceService
         ExtraDetails = "{}"
     };
 
-    // A response is complete when amount_paid is present.
-    // payment is now output first in the prompt, so truncated responses may still have it.
+    // A response is complete when it has both amount_paid AND invoice_date AND merchant.
+    // Checking all three prevents stale truncated responses (that happen to include amount_paid
+    // but are cut off before the later fields) from being served as complete from cache.
     private static bool IsCachedResponseComplete(string? raw) =>
-        !string.IsNullOrEmpty(raw) && raw.Contains("\"amount_paid\"", StringComparison.Ordinal);
+        !string.IsNullOrEmpty(raw)
+        && raw.Contains("\"amount_paid\"", StringComparison.Ordinal)
+        && raw.Contains("\"invoice_date\"", StringComparison.Ordinal)
+        && raw.Contains("\"merchant\"", StringComparison.Ordinal);
 
     private static bool IsMissingOrZeroAmount(string? value)
     {
