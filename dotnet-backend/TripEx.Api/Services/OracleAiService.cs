@@ -613,13 +613,13 @@ EXTRACTION RULES:
 
 CURRENCY: ₱=PHP, ₪=ILS, ฿=THB, $=USD, ₩=KRW, ¥=JPY/CNY (unless context says otherwise).
 {learnedPatternsSection}{expenseTypesSection}{formOfPaymentsSection}
-OUTPUT FORMAT — FIELD ORDER IS MANDATORY (output payment FIRST so critical data is never cut off):
+OUTPUT FORMAT — output fields in EXACTLY this order:
 {{
-  ""payment"": {{ ""amount_paid"": number, ""method"": ""string or null"", ""form_of_payment"": ""credit|cash|bank""{formOfPaymentIdField}, ""card_last4"": ""string or null"", ""card_type"": ""visa|mastercard|amex|diners|isracart|other or null"" }},
   ""document_type"": ""string"",
   ""invoice_number"": ""string or null"",
-  ""invoice_date"": ""YYYY-MM-DD or null"",
   ""currency"": ""string"",
+  ""payment"": {{ ""amount_paid"": number, ""method"": ""string or null"", ""form_of_payment"": ""credit|cash|bank""{formOfPaymentIdField}, ""card_last4"": ""string or null"", ""card_type"": ""visa|mastercard|amex|diners|isracart|other or null"" }},
+  ""invoice_date"": ""YYYY-MM-DD or null"",
   ""expense_type"": ""business_meal|vehicle|entertainment|hotel|internet|parking|other|meal|taxi""{expenseTypeIdField},
   ""merchant"": {{ ""name"": ""string"", ""tin"": ""string or null"", ""address"": ""string or null"", ""city"": ""string or null"" }},
   ""amounts"": {{ ""vatable_sales_amount"": number, ""non_vatable_sales_amount"": 0, ""service_charge_amount"": 0, ""tax_amount"": number }},
