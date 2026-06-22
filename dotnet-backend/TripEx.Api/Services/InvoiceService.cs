@@ -133,14 +133,32 @@ public class InvoiceService
 
             if (!forceRefresh && cacheKey != null && _cache.TryGetValue(cacheKey, out string? cachedRaw) && cachedRaw != null)
             {
-                Console.WriteLine($"[OCR][{source}] Cache HIT ({imageInspection!.Sha256Hash[..16]}...) — skipping OCI call");
-                rawResponse = cachedRaw;
+                // Validate cached response is complete (has amounts + payment).
+                // If it was truncated when originally cached, discard and call OCI again.
+                if (IsCachedResponseComplete(cachedRaw))
+                {
+                    Console.WriteLine($"[OCR][{source}] Cache HIT ({imageInspection!.Sha256Hash[..16]}...) — skipping OCI call");
+                    rawResponse = cachedRaw;
+                }
+                else
+                {
+                    Console.WriteLine($"[OCR][{source}] Cache HIT but response incomplete (truncated) — discarding cache and retrying OCI");
+                    _cache.Remove(cacheKey);
+                }
             }
-            else
+
+            if (rawResponse == null)
             {
                 rawResponse = await _aiService.CallGeminiFlashAsync(imageContent, countryHint, expenseTypes, formOfPayments, ct);
+
+                // Cache only complete responses
                 if (cacheKey != null && !string.IsNullOrEmpty(rawResponse))
-                    _cache.Set(cacheKey, rawResponse, TimeSpan.FromHours(1));
+                {
+                    if (IsCachedResponseComplete(rawResponse))
+                        _cache.Set(cacheKey, rawResponse, TimeSpan.FromHours(1));
+                    else
+                        Console.WriteLine($"[OCR][{source}] Response incomplete — not caching");
+                }
             }
             Console.WriteLine($"[OCR][{source}] Raw response length: {rawResponse?.Length ?? 0}");
 
@@ -248,10 +266,59 @@ public class InvoiceService
         }
         catch (OperationCanceledException)
         {
-            // Early timeout fired before OCI responded — return clean error so the caller
-            // (combtas) receives a valid HTTP response before their own timeout triggers.
             stopwatch.Stop();
-            Console.Error.WriteLine($"[OCR][{source}] Early timeout after {stopwatch.ElapsedMilliseconds}ms — returning fast error to caller");
+            Console.Error.WriteLine($"[OCR][{source}] Early timeout after {stopwatch.ElapsedMilliseconds}ms — attempting to parse best available response");
+
+            // If attempt 1 already returned something (even truncated), try to parse it
+            // rather than returning an empty error response.
+            if (!string.IsNullOrEmpty(rawResponse))
+            {
+                Console.WriteLine($"[OCR][{source}] Timeout but rawResponse has {rawResponse.Length} chars — parsing partial response");
+                try
+                {
+                    var aiJson = OracleAiService.ParseJsonFromAiResponse(rawResponse);
+                    aiJson = ValidateAndFixAmounts(aiJson);
+                    var detectedCurrency = aiJson.TryGetProperty("currency", out var curProp) ? curProp.GetString() : null;
+                    aiJson = ValidateDateByCurrency(aiJson, detectedCurrency, country);
+                    var fields = MapToAlgoTextFields(aiJson);
+                    ResolveOptionIds(fields, aiJson, expenseTypes, formOfPayments);
+
+                    bool missingTotal = IsMissingOrZeroAmount(fields.Total ?? fields.TotalAmount);
+                    if (missingTotal) { fields.Total = "0"; fields.TotalAmount = "0"; }
+
+                    Console.WriteLine($"[OCR][{source}] Partial parse done | Total={fields.Total} {fields.Currency} | Merchant={fields.MerchantName}");
+
+                    try
+                    {
+                        await SaveScanLog(new InvoiceScanLog
+                        {
+                            UserId = userId ?? Guid.Empty,
+                            RawAiResponse = rawResponse,
+                            CountryHint = countryHint,
+                            Status = "EarlyTimeout-Partial",
+                            DurationMs = stopwatch.ElapsedMilliseconds,
+                            HttpStatusCode = 200,
+                            ErrorMessage = "Early timeout — returned partial response",
+                            ErrorType = "EarlyTimeout",
+                            Source = source,
+                            AttemptNumber = 1,
+                            ImageSizeBytes = imageInspection?.DecodedBytes ?? imageSize,
+                            ImageMimeType = imageInspection?.MimeType,
+                            ImageHash = imageInspection?.Sha256Hash,
+                            ImageDebugPath = imageInspection?.DebugFilePath,
+                        });
+                    }
+                    catch { }
+                    return new AnalyzeInvoiceResponse { Success = true, Fields = fields, RawResponse = rawResponse };
+                }
+                catch (Exception parseEx)
+                {
+                    Console.Error.WriteLine($"[OCR][{source}] Partial parse failed: {parseEx.Message}");
+                }
+            }
+
+            // No usable response at all — return clean error
+            Console.Error.WriteLine($"[OCR][{source}] No response available after timeout — returning error");
             try
             {
                 await SaveScanLog(new InvoiceScanLog
@@ -271,7 +338,7 @@ public class InvoiceService
                     ImageDebugPath = imageInspection?.DebugFilePath,
                 });
             }
-            catch { /* never fail the response over a log write */ }
+            catch { }
             return new AnalyzeInvoiceResponse
             {
                 Success = false,
@@ -498,6 +565,13 @@ public class InvoiceService
         ExtraDetails = "{}"
     };
 
+    // A response is considered complete if it contains both "amounts" and "payment" blocks.
+    // Truncated responses lack these blocks and produce total=0.
+    private static bool IsCachedResponseComplete(string raw) =>
+        raw.Contains("\"amounts\"", StringComparison.Ordinal) &&
+        raw.Contains("\"payment\"", StringComparison.Ordinal) &&
+        raw.Contains("\"amount_paid\"", StringComparison.Ordinal);
+
     private static bool IsMissingOrZeroAmount(string? value)
     {
         var amount = ParseAmountSmart(value);
@@ -701,8 +775,9 @@ public class InvoiceService
             }
         }
 
-        // Rule 2: If total exists and subtotal+tax don't add up, recalculate tax
-        if (amountPaid.HasValue && vatableSales.HasValue && tax.HasValue)
+        // Rule 2: If total exists and subtotal+tax don't add up, recalculate tax.
+        // Only run when vatableSales > 0 — if subtotal is unknown (0) we can't derive tax.
+        if (amountPaid.HasValue && vatableSales.HasValue && vatableSales.Value > 0 && tax.HasValue)
         {
             var expectedTotal = vatableSales.Value + tax.Value;
             var tolerance = amountPaid.Value * 0.05m;
@@ -977,12 +1052,24 @@ public class InvoiceService
                       ?? GetDecimalProp(json, "grandTotal");
 
         // Always populate Total — combtas requires the field.
-        // If still no total but we have subtotal+tax, calculate it (last resort)
+        // If still no total but we have subtotal+tax, calculate it.
         if ((!totalValue.HasValue || totalValue.Value == 0) && json.TryGetProperty("amounts", out var amtFinal))
         {
             var st = GetDecimalProp(amtFinal, "vatable_sales_amount") ?? GetDecimalProp(amtFinal, "subtotal") ?? 0;
             var tx = GetDecimalProp(amtFinal, "tax_amount") ?? GetDecimalProp(amtFinal, "vat_amount") ?? 0;
             if (st + tx > 0) totalValue = st + tx;
+        }
+
+        // Last resort: use payment.amount_paid as the total when amounts block gave us nothing.
+        // This happens on text-only PDF responses where the AI puts the total only in payment.
+        if ((!totalValue.HasValue || totalValue.Value == 0) && json.TryGetProperty("payment", out var payFallback))
+        {
+            var paid = GetDecimalProp(payFallback, "amount_paid");
+            if (paid.HasValue && paid.Value > 0)
+            {
+                Console.WriteLine($"[OCR-PARSE] amounts.total missing — using payment.amount_paid ({paid}) as Total");
+                totalValue = paid;
+            }
         }
 
         if (totalValue.HasValue && totalValue.Value > 0)
