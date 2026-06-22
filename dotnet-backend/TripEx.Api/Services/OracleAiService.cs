@@ -106,7 +106,7 @@ public class OracleAiService
                     new() { Role = "system", Content = prompt2 },
                     new() { Role = "user", Content = $"Extract data from this invoice text:\n\n{pdfText}" }
                 };
-                return await ChatAsync(textMessages, 4096, 0.1, ct, forceJsonOutput: true);
+                return await ChatAsync(textMessages, 4096, 0.1, ct, forceJsonOutput: false);
             }
             Console.WriteLine("[OCR] PDF has no embedded text (scanned or PdfPig unavailable) — sending as image to OCI");
         }
