@@ -137,16 +137,12 @@ public class InvoiceService
                 Console.WriteLine($"[OCR][{source}] ForceRefresh=true — cache evicted for {imageInspection?.Sha256Hash[..16]}...");
             }
 
+            // Cache is write-only for user-facing scans: we store results to track what was scanned,
+            // but never serve them back. Every OCR click triggers a real OCI call so the user always
+            // gets a fresh (potentially corrected) result on re-upload.
             if (!forceRefresh && cacheKey != null && _cache.TryGetValue(cacheKey, out string? cachedRaw) && cachedRaw != null)
             {
-                // Validate cached response is complete (has amounts + payment).
-                // If it was truncated when originally cached, discard and call OCI again.
-                if (IsCachedResponseComplete(cachedRaw))
-                {
-                    Console.WriteLine($"[OCR][{source}] Cache HIT ({imageInspection!.Sha256Hash[..16]}...) — skipping OCI call");
-                    rawResponse = cachedRaw;
-                }
-                else
+                if (!IsCachedResponseComplete(cachedRaw))
                 {
                     Console.WriteLine($"[OCR][{source}] Cache HIT but response incomplete (truncated) — discarding cache and retrying OCI");
                     _cache.Remove(cacheKey);
@@ -630,6 +626,12 @@ public class InvoiceService
         if (string.IsNullOrWhiteSpace(value)) return null;
         var str = Regex.Replace(value, @"[₱₪$€£¥₩\s]", "").Trim();
         if (string.IsNullOrEmpty(str)) return null;
+
+        // If there is exactly one dot and exactly 3 digits follow it (e.g. "707.850"),
+        // the dot is a thousands separator (common in Korea, Germany, etc.), not a decimal point.
+        // Strip it so "707.850" → "707850" instead of 707.85.
+        if (Regex.IsMatch(str, @"^\d+\.\d{3}$"))
+            str = str.Replace(".", "");
 
         int lastDot = str.LastIndexOf('.');
         int lastComma = str.LastIndexOf(',');
