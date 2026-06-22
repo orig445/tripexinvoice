@@ -190,6 +190,7 @@ public class InvoiceService
             var aiJson = OracleAiService.ParseJsonFromAiResponse(rawResponse!);
             ValidateJsonCompleteness(aiJson, source, 1);
             aiJson = ValidateAndFixAmounts(aiJson);
+            aiJson = ApplyServerSideCalculations(aiJson);
             var detectedCurrency = aiJson.TryGetProperty("currency", out var curProp) ? curProp.GetString() : null;
             aiJson = ValidateDateByCurrency(aiJson, detectedCurrency, country);
             var fields = MapToAlgoTextFields(aiJson);
@@ -303,6 +304,7 @@ public class InvoiceService
                 {
                     var aiJson = OracleAiService.ParseJsonFromAiResponse(rawResponse);
                     aiJson = ValidateAndFixAmounts(aiJson);
+                    aiJson = ApplyServerSideCalculations(aiJson);
                     var detectedCurrency = aiJson.TryGetProperty("currency", out var curProp) ? curProp.GetString() : null;
                     aiJson = ValidateDateByCurrency(aiJson, detectedCurrency, country);
                     var fields = MapToAlgoTextFields(aiJson);
@@ -825,6 +827,42 @@ public class InvoiceService
         }
 
         return json;
+    }
+
+    /// <summary>
+    /// Calculates vatable_sales_amount server-side as amount_paid − tax_amount.
+    /// This ensures tip and service charge are included in the vatable base (not excluded).
+    /// Runs after ValidateAndFixAmounts so tax_amount is already correct.
+    /// </summary>
+    private static JsonElement ApplyServerSideCalculations(JsonElement json)
+    {
+        decimal? amountPaid = null;
+        if (json.TryGetProperty("payment", out var payment))
+            amountPaid = GetDecimalProp(payment, "amount_paid");
+
+        if (!amountPaid.HasValue || amountPaid.Value <= 0)
+            return json;
+
+        decimal tax = 0;
+        if (json.TryGetProperty("amounts", out var amounts))
+            tax = GetDecimalProp(amounts, "tax_amount") ?? 0;
+
+        var vatable = amountPaid.Value - tax;
+        if (vatable < 0) vatable = 0;
+
+        Console.WriteLine($"[OCR-VALIDATE] Server-side vatable_sales_amount = {amountPaid} - {tax} = {vatable}");
+
+        var dict = JsonSerializer.Deserialize<Dictionary<string, object>>(json.GetRawText()) ?? new();
+        if (!dict.ContainsKey("amounts"))
+            dict["amounts"] = new Dictionary<string, object>();
+
+        var amountsDict = JsonSerializer.Deserialize<Dictionary<string, object>>(
+            JsonSerializer.Serialize(dict["amounts"])) ?? new();
+        amountsDict["vatable_sales_amount"] = vatable;
+        dict["amounts"] = amountsDict;
+
+        var rebuilt = JsonSerializer.SerializeToUtf8Bytes(dict);
+        return JsonDocument.Parse(rebuilt).RootElement.Clone();
     }
 
     private static decimal? GetDecimalProp(JsonElement el, string prop)

@@ -567,6 +567,11 @@ STEP 2 — Use the matching language dictionary below to find each MANDATORY fie
   Symbols: ₪=ILS, $=USD (or PHP/AUD/CAD by context), €=EUR, £=GBP, ¥=JPY/CNY, ₩=KRW, ₱=PHP, ฿=THB, ₹=INR, ₽=RUB
   Country fallback: IL=ILS, US=USD, PH=PHP, GB=GBP, JP=JPY, KR=KRW, TH=THB, EU=EUR, FR=EUR, DE=EUR, IT=EUR, ES=EUR, PT=EUR, CN=CNY, RU=RUB, IN=INR, AU=AUD, CA=CAD
 
+🔴 TAX AMOUNT RULE — tax_amount ONLY for EXPLICIT government tax labels:
+   ALLOWED labels (from the TAX/VAT dictionary above): VAT, TAX, GST, HST, SALES TAX, PST, QST, מע""מ, IVA, TVA, MwSt, Umsatzsteuer, BTW, ΦΠΑ, НДС, KDV, ضريبة, 消費税, 부가세, ภาษีมูลค่าเพิ่ม, 增值税
+   NEVER set tax_amount for: TIP, GRATUITY, SERVICE CHARGE, SERVICE FEE, DISCRETIONARY CHARGE, SURCHARGE, CONVENIENCE FEE, DELIVERY FEE, PLATFORM FEE, CENTRAL LONDON FEE, BOOKING FEE, ADMIN FEE, or ANY charge not labeled as a government tax.
+   If no explicit government tax label is present → set tax_amount to 0.
+
 🔴 MANDATORY FIELDS — NEVER return 0 or null unless receipt is genuinely blank:
    1. payment.amount_paid → MUST be a NUMBER > 0. Use the largest amount near a TOTAL label from the dictionary above.
       • Pick the FINAL/LARGEST total (after tax), not subtotal.
@@ -616,10 +621,10 @@ CURRENCY: ₱=PHP, ₪=ILS, ฿=THB, $=USD, ₩=KRW, ¥=JPY/CNY (unless context 
 OUTPUT FORMAT — output fields in EXACTLY this order:
 {{
   ""document_type"": ""string"",
-  ""invoice_number"": ""string or null"",
   ""currency"": ""string"",
-  ""amounts"": {{ ""vatable_sales_amount"": number, ""non_vatable_sales_amount"": 0, ""service_charge_amount"": 0, ""tax_amount"": number }},
   ""payment"": {{ ""amount_paid"": number, ""method"": ""string or null"", ""form_of_payment"": ""credit|cash|bank""{formOfPaymentIdField}, ""card_last4"": ""string or null"", ""card_type"": ""visa|mastercard|amex|diners|isracart|other or null"" }},
+  ""amounts"": {{ ""vatable_sales_amount"": number, ""non_vatable_sales_amount"": 0, ""service_charge_amount"": 0, ""tax_amount"": number }},
+  ""invoice_number"": ""string or null"",
   ""invoice_date"": ""YYYY-MM-DD or null"",
   ""expense_type"": ""business_meal|vehicle|entertainment|hotel|internet|parking|other|meal|taxi""{expenseTypeIdField},
   ""merchant"": {{ ""name"": ""string"", ""tin"": ""string or null"", ""address"": ""string or null"", ""city"": ""string or null"" }},
