@@ -106,7 +106,7 @@ public class OracleAiService
                     new() { Role = "system", Content = prompt2 },
                     new() { Role = "user", Content = $"Extract data from this invoice text:\n\n{pdfText}" }
                 };
-                return await ChatAsync(textMessages, 4096, 0.1, ct, forceJsonOutput: false);
+                return await ChatAsync(textMessages, 4096, 0.1, ct, forceJsonOutput: true);
             }
             Console.WriteLine("[OCR] PDF has no embedded text (scanned or PdfPig unavailable) — sending as image to OCI");
         }
@@ -613,8 +613,9 @@ EXTRACTION RULES:
 
 CURRENCY: ₱=PHP, ₪=ILS, ฿=THB, $=USD, ₩=KRW, ¥=JPY/CNY (unless context says otherwise).
 {learnedPatternsSection}{expenseTypesSection}{formOfPaymentsSection}
-OUTPUT FORMAT:
+OUTPUT FORMAT — FIELD ORDER IS MANDATORY (output payment FIRST so critical data is never cut off):
 {{
+  ""payment"": {{ ""amount_paid"": number, ""method"": ""string or null"", ""form_of_payment"": ""credit|cash|bank""{formOfPaymentIdField}, ""card_last4"": ""string or null"", ""card_type"": ""visa|mastercard|amex|diners|isracart|other or null"" }},
   ""document_type"": ""string"",
   ""invoice_number"": ""string or null"",
   ""invoice_date"": ""YYYY-MM-DD or null"",
@@ -622,7 +623,6 @@ OUTPUT FORMAT:
   ""expense_type"": ""business_meal|vehicle|entertainment|hotel|internet|parking|other|meal|taxi""{expenseTypeIdField},
   ""merchant"": {{ ""name"": ""string"", ""tin"": ""string or null"", ""address"": ""string or null"", ""city"": ""string or null"" }},
   ""amounts"": {{ ""vatable_sales_amount"": number, ""non_vatable_sales_amount"": 0, ""service_charge_amount"": 0, ""tax_amount"": number }},
-  ""payment"": {{ ""method"": ""string or null"", ""amount_paid"": number, ""form_of_payment"": ""credit|cash|bank""{formOfPaymentIdField}, ""card_last4"": ""string or null"", ""card_type"": ""visa|mastercard|amex|diners|isracart|other or null"" }},
   ""item_count"": number
 }}
 

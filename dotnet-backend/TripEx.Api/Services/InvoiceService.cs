@@ -151,6 +151,31 @@ public class InvoiceService
             {
                 rawResponse = await _aiService.CallGeminiFlashAsync(imageContent, countryHint, expenseTypes, formOfPayments, ct);
 
+                // PDF-specific retry: OCI sometimes truncates text-PDF responses (missing amount_paid).
+                // One retry with a fresh 30s budget often returns the complete response.
+                bool isPdfMime = imageInspection?.MimeType == "application/pdf";
+                if (isPdfMime && !IsCachedResponseComplete(rawResponse) && !ct.IsCancellationRequested)
+                {
+                    Console.WriteLine($"[OCR][{source}] PDF attempt 1 incomplete ({rawResponse?.Length ?? 0} chars) — retrying once");
+                    using var retryCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                    try
+                    {
+                        var retryRaw = await _aiService.CallGeminiFlashAsync(imageContent, countryHint, expenseTypes, formOfPayments, retryCts.Token);
+                        Console.WriteLine($"[OCR][{source}] PDF attempt 2: {retryRaw?.Length ?? 0} chars, complete={IsCachedResponseComplete(retryRaw)}");
+                        if (IsCachedResponseComplete(retryRaw) || (retryRaw?.Length ?? 0) > (rawResponse?.Length ?? 0))
+                        {
+                            rawResponse = retryRaw;
+                            Console.WriteLine($"[OCR][{source}] PDF retry used as final response");
+                        }
+                        else
+                        {
+                            Console.WriteLine($"[OCR][{source}] PDF retry not better — keeping attempt 1");
+                        }
+                    }
+                    catch (OperationCanceledException) { Console.WriteLine($"[OCR][{source}] PDF retry timed out — keeping attempt 1"); }
+                    catch (Exception retryEx) { Console.WriteLine($"[OCR][{source}] PDF retry failed ({retryEx.GetType().Name}) — keeping attempt 1"); }
+                }
+
                 // Cache only complete responses
                 if (cacheKey != null && !string.IsNullOrEmpty(rawResponse))
                 {
@@ -565,12 +590,10 @@ public class InvoiceService
         ExtraDetails = "{}"
     };
 
-    // A response is considered complete if it contains both "amounts" and "payment" blocks.
-    // Truncated responses lack these blocks and produce total=0.
-    private static bool IsCachedResponseComplete(string raw) =>
-        raw.Contains("\"amounts\"", StringComparison.Ordinal) &&
-        raw.Contains("\"payment\"", StringComparison.Ordinal) &&
-        raw.Contains("\"amount_paid\"", StringComparison.Ordinal);
+    // A response is complete when amount_paid is present.
+    // payment is now output first in the prompt, so truncated responses may still have it.
+    private static bool IsCachedResponseComplete(string? raw) =>
+        !string.IsNullOrEmpty(raw) && raw.Contains("\"amount_paid\"", StringComparison.Ordinal);
 
     private static bool IsMissingOrZeroAmount(string? value)
     {
