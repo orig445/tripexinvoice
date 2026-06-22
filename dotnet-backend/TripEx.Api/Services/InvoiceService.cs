@@ -36,6 +36,7 @@ public class InvoiceService
     /// Main entry point — called by InvoiceController and ChatService.
     /// Optionally accepts caller-supplied expense-type and form-of-payment lookup lists
     /// so the AI (and server-side fallback) can return the matching IDs.
+    /// Set forceRefresh=true to bypass the SHA256 response cache.
     /// </summary>
     public async Task<AnalyzeInvoiceResponse> AnalyzeAsync(
         string? imageBase64,
@@ -44,20 +45,43 @@ public class InvoiceService
         Guid? userId = null,
         IList<ExpenseTypeOption>? expenseTypes = null,
         IList<FormOfPaymentOption>? formOfPayments = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool forceRefresh = false)
     {
         return await AnalyzeInternalAsync(imageBase64, imageUrl, country, userId,
-            source: "analyze", expenseTypes: expenseTypes, formOfPayments: formOfPayments, ct: ct);
+            source: "analyze", expenseTypes: expenseTypes, formOfPayments: formOfPayments,
+            ct: ct, forceRefresh: forceRefresh);
+    }
+
+    public void EvictCacheEntry(string sha256)
+    {
+        var key = $"ocr:raw:{sha256}";
+        _cache.Remove(key);
+        Console.WriteLine($"[OCR-CACHE] Evicted cache key for sha256 prefix {sha256[..Math.Min(16, sha256.Length)]}...");
+    }
+
+    public void ClearAllCache()
+    {
+        if (_cache is MemoryCache mc)
+        {
+            mc.Compact(1.0);
+            Console.WriteLine("[OCR-CACHE] Cleared all cache entries (Compact 100%)");
+        }
+        else
+        {
+            Console.WriteLine("[OCR-CACHE] ClearAll: IMemoryCache is not MemoryCache — cannot compact");
+        }
     }
 
     /// <summary>
-    /// Internal scan with retry + detailed logging. Used by both AnalyzeAsync and BulkTrainAsync.
+    /// Internal scan with detailed logging. Used by both AnalyzeAsync and BulkTrainAsync.
     /// </summary>
     private async Task<AnalyzeInvoiceResponse> AnalyzeInternalAsync(
         string? imageBase64, string? imageUrl, string? country, Guid? userId, string source,
         IList<ExpenseTypeOption>? expenseTypes = null,
         IList<FormOfPaymentOption>? formOfPayments = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool forceRefresh = false)
     {
         if (string.IsNullOrEmpty(imageBase64) && string.IsNullOrEmpty(imageUrl))
             return new AnalyzeInvoiceResponse { Success = false, Error = "Either imageBase64 or imageUrl must be provided" };
@@ -101,7 +125,13 @@ public class InvoiceService
                 ? $"ocr:raw:{imageInspection.Sha256Hash}"
                 : null;
 
-            if (cacheKey != null && _cache.TryGetValue(cacheKey, out string? cachedRaw) && cachedRaw != null)
+            if (forceRefresh && cacheKey != null)
+            {
+                _cache.Remove(cacheKey);
+                Console.WriteLine($"[OCR][{source}] ForceRefresh=true — cache evicted for {imageInspection?.Sha256Hash[..16]}...");
+            }
+
+            if (!forceRefresh && cacheKey != null && _cache.TryGetValue(cacheKey, out string? cachedRaw) && cachedRaw != null)
             {
                 // Validate cached response is complete (has amounts + payment).
                 // If it was truncated when originally cached, discard and call OCI again.

@@ -37,18 +37,19 @@ public class InvoiceController : ControllerBase
             // PDFs take longer for Gemini to process — use a separate (longer) timeout for them.
             // Configurable via OCR_EARLY_TIMEOUT_MS (images) and OCR_EARLY_TIMEOUT_PDF_MS (PDFs).
             // PDF default is 40s: one attempt, return whatever OCI managed to extract.
-            // Images default to 12s (they process much faster).
+            // Images default to 20s (some large/complex images take >12s).
             // Configurable via OCR_EARLY_TIMEOUT_PDF_MS / OCR_EARLY_TIMEOUT_MS env vars.
             bool isPdf = IsPdf(request.ImageBase64);
             int earlyMs = isPdf
                 ? int.TryParse(Environment.GetEnvironmentVariable("OCR_EARLY_TIMEOUT_PDF_MS"), out var tp) ? tp : 40000
-                : int.TryParse(Environment.GetEnvironmentVariable("OCR_EARLY_TIMEOUT_MS"),     out var t)  ? t  : 12000;
+                : int.TryParse(Environment.GetEnvironmentVariable("OCR_EARLY_TIMEOUT_MS"),     out var t)  ? t  : 20000;
             using var earlyCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             earlyCts.CancelAfter(earlyMs);
 
             var result = await _invoiceService.AnalyzeAsync(
                 request.ImageBase64, request.ImageUrl, request.Country, userId,
-                request.ExpenseTypes, request.FormOfPayments, earlyCts.Token);
+                request.ExpenseTypes, request.FormOfPayments, earlyCts.Token,
+                forceRefresh: request.ForceRefresh);
 
             // Ensure currency defaults if AI couldn't detect
             if (result.Fields != null && string.IsNullOrEmpty(result.Fields.Currency))
@@ -243,6 +244,28 @@ public class InvoiceController : ControllerBase
         Set(f.ExtraDetails, "ExtraDetails", "extraDetails", "extra_details");
 
         return d;
+    }
+
+    /// <summary>
+    /// Clear the in-memory OCR cache. Pass sha256 to evict a single entry, or clearAll=true to flush everything.
+    /// Use when a cached scan returned wrong results and needs to be re-scanned.
+    /// </summary>
+    [HttpPost("cache/invalidate")]
+    public ActionResult InvalidateCache([FromBody] CacheInvalidateRequest request)
+    {
+        if (request.ClearAll)
+        {
+            _invoiceService.ClearAllCache();
+            return Ok(new { success = true, message = "All cache entries cleared" });
+        }
+
+        if (!string.IsNullOrEmpty(request.Sha256))
+        {
+            _invoiceService.EvictCacheEntry(request.Sha256);
+            return Ok(new { success = true, message = $"Cache entry for sha256 prefix '{request.Sha256[..Math.Min(16, request.Sha256.Length)]}...' evicted" });
+        }
+
+        return BadRequest(new { success = false, error = "Provide either sha256 or clearAll=true" });
     }
 
     /// <summary>
