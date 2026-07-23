@@ -15,7 +15,7 @@ interface ChatWindowProps {
   onToggleFullscreen?: () => void;
 }
 
-export function ChatWindow({ onClose }: ChatWindowProps) {
+export function ChatWindow({ onClose, isFullscreen = false, onToggleFullscreen }: ChatWindowProps) {
   const { messages, isLoading, config, sendMessage, sendImage, startNewSession } = useChatbot();
   const scrollRef = useRef<HTMLDivElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
