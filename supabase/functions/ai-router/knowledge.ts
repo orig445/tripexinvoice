@@ -17,34 +17,47 @@ export const TAS_SYSTEM_KNOWLEDGE = `## Built-in System Knowledge (TAS / ComBTAS
 Use this knowledge to answer the user's SPECIFIC situation directly. Explain what
 is happening and exactly what they should do inside the TripEX/TAS system.
 
-### Travel (Trip) statuses & the flow
-A trip moves through these stages in order:
-- **Draft** — the trip request was started but not yet sent. It is still editable and does NOT appear in most reports.
-- **Sent for approval / Approval** — the trip request was submitted and is waiting for the manager/approver to approve it. It is locked for the traveler while it waits.
-- **Approved** — the manager approved the travel request; the trip can now be handled/booked.
-- **Issued / Ticketed** — flights, hotels or cars were actually booked (ticketed) by the agent or self-booking.
-- **Open / Closed** — invoice/expense states after travel: "Open" = still being processed, "Closed" = fully reconciled.
-- **Cancelled** — the trip or a service was cancelled.
+### Travel (Trip) statuses — the full life-cycle, in order
+A trip moves through these statuses from start to finish:
+1. **Draft** — Once an employee opens a travel request, it is in Draft. Still editable; excluded from most reports.
+2. **TR Approval** — Principle approval for the Travel Request.
+3. **Coordinator Approval** — The Travel Coordinator needs to accept or reject the request.
+4. **Reservation** — From the moment the Travel Coordinator accepts until proposals arrive and are selected from the Travel Agent.
+5. **Proposal Approval** — Round of approvals: the chosen proposals need to be approved.
+6. **Approved** — The entire trip is approved.
+7. **Issued** — After the Coordinator clicks "Travel Issue" on the FINAL screen. The whole trip is correct, approved and ready to go (tickets/bookings issued).
+8. **Active** — The period of time the employee is abroad.
+9. **Travel Completed** — The trip is finished.
+10. **Expense Report** — After the employee declares End-Trip Confirmation, they can send their expenses for approval.
+11. **Expense Approval** — Round of approvals for the travel expenses.
+12. **Expense Approved** — All expenses were approved and a payment was made.
+13. **Closed** — The Coordinator marks that all travel issues were finalized and approved.
 
-### Expense report ("End Trip" / Expense Report) flow
-1. The traveler finishes the trip and fills the **"End Trip Confirmation"** page (this is also where vacation/special days during the trip are declared).
-2. The traveler **sends the expense report for approval**.
-3. The report becomes **"Expense Approved"** once the approver signs it. Only "Expense Approved" data feeds the finance/expense reports.
+Cancellation path (can happen from various stages):
+- **Pending for Cancellation** — When someone cancels a trip, the cancellation request is sent for approval.
+- **Cancelled** — The trip was cancelled.
 
-### Why "I can't submit an expense report while my trip is in 'Approval' status"
-An expense report is submitted at the END of the trip flow, not during it. If the
-travel request itself is still in **Approval** status, it means the manager has not
-yet approved the trip, so the trip has not been approved → issued → travelled, and
-therefore there is nothing to close with an expense report yet. What to do:
-- Wait for (or follow up with) the approving manager to approve the travel request.
-- Once the trip is Approved and the travel actually happens (services Issued), go to
-  the **End Trip Confirmation** page, then send the expense report for approval.
-- If the trip is already over but still stuck in "Approval", the approver still needs
-  to act on it — the expense report unlocks only after the travel request is approved.
+Note: there are SEVERAL distinct approval stages — **TR Approval**, **Coordinator Approval**,
+**Proposal Approval** (all early, about approving the trip itself) and **Expense Approval**
+(late, about approving the money spent). If a user just says "approval", figure out which one
+from context.
+
+### Why "I can't submit an expense report while my trip is in an 'Approval' status"
+The **Expense Report** stage (step 10) comes near the END of the life-cycle — only AFTER
+Approved → Issued → Active → Travel Completed. If the trip is still sitting in an early
+approval stage (TR Approval, Coordinator Approval or Proposal Approval), the trip itself
+isn't approved and issued yet, so there is nothing to close with an expense report — that
+is why the option isn't available yet. What to do:
+- Identify which approval the trip is waiting on and follow up with that approver (the manager
+  for TR/Proposal Approval, or the Travel Coordinator for Coordinator Approval) so the trip can
+  move forward to Approved → Issued.
+- After you actually travel and the trip reaches **Travel Completed**, open the **End-Trip
+  Confirmation** page, then send the expense report for approval — it will move to Expense
+  Approval and then Expense Approved once signed and paid.
 
 ### Statuses that appear in reports
-Most reports exclude **Draft** and **Cancelled** trips. Report data is based on
-Approved / Issued / Closed items and on Approved expense reports.`;
+Most reports exclude **Draft** and **Cancelled** trips. Report data is based on Approved /
+Issued / Closed items and on **Expense Approved** expense reports.`;
 
 export const TAS_REPORTS_KNOWLEDGE = `## Built-in Reports Catalog (TAS Analyst Reports)
 

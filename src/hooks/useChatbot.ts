@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -32,6 +32,14 @@ export function useChatbot() {
   const [isLoading, setIsLoading] = useState(false);
   const [config, setConfig] = useState<ChatbotConfig | null>(null);
 
+  // Mirror of sessionId that updates SYNCHRONOUSLY. When several receipts are
+  // sent in one batch (before React re-renders), each call must reuse the
+  // session created by the first one instead of each opening its own session.
+  const sessionIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
+
   const loadConfig = async () => {
     const { data } = await supabase
       .from("chatbot_config")
@@ -54,7 +62,12 @@ export function useChatbot() {
         .select("*")
         .eq("session_id", sessionId)
         .order("created_at", { ascending: true });
-      if (data) setMessages(data as ChatMessage[]);
+      // Only hydrate from the DB when we don't already have messages on screen.
+      // Otherwise a freshly-created session would wipe the optimistic messages
+      // of receipts still being processed in the same batch.
+      if (data && data.length > 0) {
+        setMessages((prev) => (prev.length > 0 ? prev : (data as ChatMessage[])));
+      }
     };
     loadMessages();
   }, [sessionId]);
@@ -80,12 +93,13 @@ export function useChatbot() {
         const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
         const { data, error } = await sendChatMessage({
-          text, source: "web", sessionToken: sessionId, userDate: userLocalDate, userTime: userLocalTime, userTimezone: timezone,
+          text, source: "web", sessionToken: sessionIdRef.current, userDate: userLocalDate, userTime: userLocalTime, userTimezone: timezone,
         });
 
         if (error) throw error;
 
-        if (data.session_id && !sessionId) {
+        if (data.session_id && !sessionIdRef.current) {
+          sessionIdRef.current = data.session_id;
           setSessionId(data.session_id);
         }
 
@@ -129,12 +143,13 @@ export function useChatbot() {
 
       try {
         const { data, error } = await sendImageForScan({
-          base64, source: "web", sessionToken: sessionId,
+          base64, source: "web", sessionToken: sessionIdRef.current,
         });
 
         if (error) throw error;
 
-        if (data.session_id && !sessionId) {
+        if (data.session_id && !sessionIdRef.current) {
+          sessionIdRef.current = data.session_id;
           setSessionId(data.session_id);
         }
 
@@ -164,6 +179,7 @@ export function useChatbot() {
   );
 
   const startNewSession = useCallback(() => {
+    sessionIdRef.current = null;
     setSessionId(null);
     setMessages([]);
   }, []);
