@@ -1,18 +1,36 @@
 import { useState } from "react";
-import { MessageCircle } from "lucide-react";
 import { ChatWindow } from "./ChatWindow";
 import { useAuth } from "@/hooks/useAuth";
 import myloWaving from "@/assets/mylo-waving.jpeg";
 
 export function ChatbotWidget() {
   const [isOpen, setIsOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const { user } = useAuth();
 
   if (!user) return null;
 
+  if (isOpen && isFullscreen) {
+    return (
+      <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4">
+        <ChatWindow
+          onClose={() => { setIsOpen(false); setIsFullscreen(false); }}
+          isFullscreen
+          onToggleFullscreen={() => setIsFullscreen(false)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="fixed bottom-5 right-5 z-50">
-      {isOpen && <ChatWindow onClose={() => setIsOpen(false)} />}
+      {isOpen && (
+        <ChatWindow
+          onClose={() => setIsOpen(false)}
+          isFullscreen={false}
+          onToggleFullscreen={() => setIsFullscreen(true)}
+        />
+      )}
 
       {!isOpen && (
         <button

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { X, RotateCcw } from "lucide-react";
+import { X, RotateCcw, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
@@ -11,9 +11,11 @@ import myloThinking from "@/assets/mylo-thinking.jpeg";
 
 interface ChatWindowProps {
   onClose: () => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
-export function ChatWindow({ onClose }: ChatWindowProps) {
+export function ChatWindow({ onClose, isFullscreen = false, onToggleFullscreen }: ChatWindowProps) {
   const { messages, isLoading, config, sendMessage, sendImage, startNewSession } = useChatbot();
   const scrollRef = useRef<HTMLDivElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -50,20 +52,22 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
   };
 
   const handleCameraFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const filesList = e.target.files;
+    if (!filesList || filesList.length === 0) return;
+    const files = Array.from(filesList).slice(0, 5);
     e.target.value = "";
-    try {
-      if (file.type === "application/pdf") {
-        const pages = await pdfAllPagesToBase64(file);
-        if (pages.length > 0) sendImage(pages[0]);
-        return;
+    for (const file of files) {
+      try {
+        if (file.type === "application/pdf") {
+          const pages = await pdfAllPagesToBase64(file);
+          if (pages.length > 0) await sendImage(pages[0]);
+          continue;
+        }
+        const base64 = await compressImage(file);
+        await sendImage(base64);
+      } catch (err) {
+        console.error("File processing error:", err);
       }
-
-      const base64 = await compressImage(file);
-      sendImage(base64);
-    } catch (err) {
-      console.error("File processing error:", err);
     }
   };
 
@@ -93,7 +97,11 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
   const welcomeMsg = config?.welcome_message || "Hello! I'm Milo 🦊 How can I help you today?";
 
   return (
-    <div className="flex flex-col w-[360px] h-[500px] sm:w-[380px] sm:h-[520px] bg-background rounded-2xl shadow-xl border overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
+    <div className={
+      isFullscreen
+        ? "flex flex-col w-full h-full sm:max-w-4xl sm:h-[90vh] bg-background sm:rounded-2xl shadow-xl border overflow-hidden animate-in fade-in duration-300"
+        : "flex flex-col w-[360px] h-[500px] sm:w-[380px] sm:h-[520px] bg-background rounded-2xl shadow-xl border overflow-hidden animate-in slide-in-from-bottom-4 duration-300"
+    }>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-primary to-triplex-teal-light text-primary-foreground">
         <div className="flex items-center gap-2.5">
@@ -114,6 +122,17 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
           >
             <RotateCcw className="h-3.5 w-3.5" />
           </Button>
+          {onToggleFullscreen && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
+              onClick={onToggleFullscreen}
+              title={isFullscreen ? "Minimize" : "Maximize"}
+            >
+              {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -171,6 +190,7 @@ export function ChatWindow({ onClose }: ChatWindowProps) {
         ref={cameraInputRef}
         type="file"
         accept="image/*,application/pdf"
+        multiple
         className="hidden"
         onChange={handleCameraFile}
       />
