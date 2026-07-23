@@ -289,7 +289,7 @@ serve(async (req) => {
     const maxTokens = config?.max_tokens || 2048;
     const modelName = config?.model_name || "meta.llama-4-maverick-17b-128e-instruct-fp8";
 
-    const ORACLE_API_KEY = Deno.env.get("oracleapikey_2");
+    const ORACLE_API_KEY = Deno.env.get("oracleapikey_2") || Deno.env.get("oracleapikey") || Deno.env.get("invoice");
     if (!ORACLE_API_KEY) {
       throw new Error("Oracle API key is not configured");
     }
