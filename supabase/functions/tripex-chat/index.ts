@@ -42,7 +42,10 @@ serve(async (req) => {
       });
     }
 
-    const ORACLE_API_KEY = Deno.env.get("oracleapikey_2");
+    const ORACLE_API_KEY =
+      Deno.env.get("oracleapikey") ||
+      Deno.env.get("oracleapikey_2") ||
+      Deno.env.get("invoice");
     if (!ORACLE_API_KEY) {
       throw new Error("Oracle API key is not configured");
     }
