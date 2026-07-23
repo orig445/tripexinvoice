@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { X, RotateCcw } from "lucide-react";
+import { X, RotateCcw, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
@@ -11,6 +11,8 @@ import myloThinking from "@/assets/mylo-thinking.jpeg";
 
 interface ChatWindowProps {
   onClose: () => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 export function ChatWindow({ onClose }: ChatWindowProps) {
