@@ -1,22 +1,22 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { TAS_SYSTEM_KNOWLEDGE, TAS_REPORTS_KNOWLEDGE, TAS_SUPPORT_CASES } from "./knowledge.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 // ── Action Mapping (hardcoded, not AI-dependent) ──
 const ACTION_MAPPING: Record<string, { actions: string[]; redirectPage?: string }> = {
-  help:             { actions: [] },
-  scan:             { actions: ["Camera"] },
-  expense:          { actions: [] },
+  help: { actions: [] },
+  scan: { actions: ["Camera"] },
+  expense: { actions: [] },
   expense_complete: { actions: [] },
-  bi:               { actions: ["DisplayResults"] },
-  online:           { actions: [] },
-  online_complete:  { actions: [] },
-  general:          { actions: [] },
+  bi: { actions: ["DisplayResults"] },
+  online: { actions: [] },
+  online_complete: { actions: [] },
+  general: { actions: [] },
 };
 
 // ── Oracle TAS Stubs (future integration) ──
@@ -56,7 +56,10 @@ serve(async (req) => {
       global: { headers: { Authorization: authHeader } },
     });
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
     if (authError || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
@@ -82,16 +85,21 @@ serve(async (req) => {
     let ipTimezone = "";
     let ipLocalTime = "";
     try {
-      const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-        || req.headers.get("cf-connecting-ip")
-        || req.headers.get("x-real-ip")
-        || "";
+      const clientIp =
+        req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+        req.headers.get("cf-connecting-ip") ||
+        req.headers.get("x-real-ip") ||
+        "";
       if (clientIp && clientIp !== "127.0.0.1" && clientIp !== "::1") {
-        const geoRes = await fetch(`http://ip-api.com/json/${clientIp}?fields=status,country,city,regionName,timezone,lat,lon&lang=he`);
+        const geoRes = await fetch(
+          `http://ip-api.com/json/${clientIp}?fields=status,country,city,regionName,timezone,lat,lon&lang=he`,
+        );
         if (geoRes.ok) {
           const geo = await geoRes.json();
           if (geo.status === "success") {
-            userLocation = `${geo.city || ""}, ${geo.regionName || ""}, ${geo.country || ""}`.replace(/, ,/g, ",").replace(/^, |, $/g, "");
+            userLocation = `${geo.city || ""}, ${geo.regionName || ""}, ${geo.country || ""}`
+              .replace(/, ,/g, ",")
+              .replace(/^, |, $/g, "");
             ipTimezone = geo.timezone || "";
             // Calculate local time at the user's IP location
             if (ipTimezone) {
@@ -151,44 +159,25 @@ serve(async (req) => {
         });
 
         if (!ocrData.success) {
-          return new Response(JSON.stringify({
-            actions: [],
-            text: "Failed to scan receipt. Please try again.",
-            redirectPage: "",
-            data: {},
-            session_id: sessionId,
-          }), {
-            status: 200,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
+          return new Response(
+            JSON.stringify({
+              actions: [],
+              text: "Failed to scan receipt. Please try again.",
+              redirectPage: "",
+              data: {},
+              session_id: sessionId,
+            }),
+            {
+              status: 200,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            },
+          );
         }
 
         // Build a summary of the scanned data using new structured format
         const d = ocrData.data || {};
         const lines: string[] = ["✅ Invoice scanned successfully! Here are the details:"];
-        const merchantName: string = d.merchant?.name || "";
-        const categoryFromMerchant = (name: string, docType?: string): string => {
-          const n = (name || "").toLowerCase();
-          const has = (...keys: string[]) => keys.some((k) => n.includes(k.toLowerCase()));
-          if (has("uber", "gett", "lyft", "bolt", "taxi", "cab", "מונית", "גט", "grab")) return "Taxi";
-          if (has("restaurant", "cafe", "café", "coffee", "pizza", "burger", "sushi", "bistro", "bar", "grill", "kitchen", "מסעדה", "קפה", "פיצה", "בורגר")) return "Restaurant";
-          if (has("hotel", "inn", "resort", "hostel", "airbnb", "booking", "מלון", "אכסניה")) return "Hotel";
-          if (has("airline", "airways", "flight", "elal", "el al", "ryanair", "easyjet", "delta", "united", "lufthansa", "טיסה", "אל על")) return "Flight";
-          if (has("gas", "fuel", "petrol", "shell", "bp ", "delek", "paz", "sonol", "דלק", "פז", "סונול")) return "Fuel";
-          if (has("parking", "park ", "חניון", "חניה")) return "Parking";
-          if (has("rent a car", "rental", "hertz", "avis", "sixt", "budget", "europcar", "השכרת רכב")) return "Car Rental";
-          if (has("train", "rail", "metro", "subway", "bus", "רכבת", "אוטובוס", "מטרו")) return "Transportation";
-          if (has("pharmacy", "drug", "clinic", "hospital", "בית מרקחת", "מרפאה", "בית חולים")) return "Health";
-          if (has("supermarket", "market", "grocery", "shufersal", "rami levy", "victory", "yohananof", "סופר", "רמי לוי", "שופרסל")) return "Grocery";
-          if (has("office", "depot", "staples", "stationery", "משרד")) return "Office Supplies";
-          if (has("amazon", "ebay", "aliexpress", "shop", "store", "mall", "חנות", "קניון")) return "Shopping";
-          if (has("telecom", "cellular", "mobile", "internet", "bezeq", "partner", "cellcom", "hot ", "בזק", "סלולר")) return "Telecom";
-          if (docType === "invoice") return "Invoice";
-          if (docType === "receipt") return "Receipt";
-          return "Other";
-        };
-        const category = categoryFromMerchant(merchantName, d.document_type);
-        lines.push(`📄 Type: ${category}`);
+        if (d.document_type) lines.push(`📄 Type: ${d.document_type.replace(/_/g, " ")}`);
         if (d.merchant?.name) lines.push(`🏪 Merchant: ${d.merchant.name}`);
         if (d.merchant?.tin) lines.push(`🆔 TIN: ${d.merchant.tin}`);
         if (d.merchant?.address) lines.push(`📍 Address: ${d.merchant.address}`);
@@ -196,23 +185,42 @@ serve(async (req) => {
         if (d.invoice_number) lines.push(`🔢 Invoice #: ${d.invoice_number}`);
         if (d.invoice_date) lines.push(`📅 Date: ${d.invoice_date}`);
         const cur = d.currency || "";
-        if (d.amounts?.vatable_sales_amount != null) lines.push(`💵 VATable Sales: ${d.amounts.vatable_sales_amount} ${cur}`);
-        if (d.amounts?.non_vatable_sales_amount != null && d.amounts.non_vatable_sales_amount > 0) lines.push(`💵 Non-VAT Sales: ${d.amounts.non_vatable_sales_amount} ${cur}`);
-        if (d.amounts?.service_charge_amount != null && d.amounts.service_charge_amount > 0) lines.push(`💵 Service Charge: ${d.amounts.service_charge_amount} ${cur}`);
-        if (d.amounts?.tax_amount != null) lines.push(`🧾 VAT: ${d.amounts.tax_amount} ${cur}`);
+        if (d.amounts?.vatable_sales_amount != null)
+          lines.push(`💵 VATable Sales: ${d.amounts.vatable_sales_amount} ${cur}`);
+        if (d.amounts?.non_vatable_sales_amount != null && d.amounts.non_vatable_sales_amount > 0)
+          lines.push(`💵 Non-VAT Sales: ${d.amounts.non_vatable_sales_amount} ${cur}`);
+        if (d.amounts?.service_charge_amount != null && d.amounts.service_charge_amount > 0)
+          lines.push(`💵 Service Charge: ${d.amounts.service_charge_amount} ${cur}`);
+        if (d.amounts?.tax_amount != null) lines.push(`🧾 VAT/Tax: ${d.amounts.tax_amount} ${cur}`);
         if (d.payment?.method) lines.push(`💳 Payment: ${d.payment.method}`);
         // Form of payment details with fallback inference from payment.method
         const paymentText = `${d.payment?.form_of_payment ?? ""} ${d.payment?.method ?? ""}`.toLowerCase();
-        const inferredFop = paymentText.includes("credit") || paymentText.includes("debit") || paymentText.includes("card") || paymentText.includes("visa") || paymentText.includes("master") || paymentText.includes("amex") || paymentText.includes("diners") || paymentText.includes("isracard") || paymentText.includes("ישראכרט") || paymentText.includes("אשראי") || paymentText.includes("כרטיס") || paymentText.includes("סליקה") || paymentText.includes("סליקת") || paymentText.includes("emv") || paymentText.includes("contactless")
-          ? "credit"
-          : paymentText.includes("bank") || paymentText.includes("transfer") || paymentText.includes("העברה")
-            ? "bank"
-            : paymentText.includes("cash") || paymentText.includes("מזומן")
-              ? "cash"
-              : "cash";
+        const inferredFop =
+          paymentText.includes("credit") ||
+          paymentText.includes("debit") ||
+          paymentText.includes("card") ||
+          paymentText.includes("visa") ||
+          paymentText.includes("master") ||
+          paymentText.includes("amex") ||
+          paymentText.includes("diners") ||
+          paymentText.includes("isracard") ||
+          paymentText.includes("ישראכרט") ||
+          paymentText.includes("אשראי") ||
+          paymentText.includes("כרטיס") ||
+          paymentText.includes("סליקה") ||
+          paymentText.includes("סליקת") ||
+          paymentText.includes("emv") ||
+          paymentText.includes("contactless")
+            ? "credit"
+            : paymentText.includes("bank") || paymentText.includes("transfer") || paymentText.includes("העברה")
+              ? "bank"
+              : paymentText.includes("cash") || paymentText.includes("מזומן")
+                ? "cash"
+                : "cash";
         if (inferredFop === "credit") {
           let creditInfo = "💳 Form of Payment: Credit Card";
-          if (d.payment?.card_type) creditInfo += ` (${d.payment.card_type.charAt(0).toUpperCase() + d.payment.card_type.slice(1)})`;
+          if (d.payment?.card_type)
+            creditInfo += ` (${d.payment.card_type.charAt(0).toUpperCase() + d.payment.card_type.slice(1)})`;
           if (d.payment?.card_last4) creditInfo += ` ****${d.payment.card_last4}`;
           lines.push(creditInfo);
         } else if (inferredFop === "bank") {
@@ -240,16 +248,19 @@ serve(async (req) => {
           metadata: { actions: [], scanned_data: ocrData.data },
         });
 
-        return new Response(JSON.stringify({
-          actions: [],
-          text: ocrSummary,
-          redirectPage: "",
-          data: ocrData.data,
-          session_id: sessionId,
-        }), {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({
+            actions: [],
+            text: ocrSummary,
+            redirectPage: "",
+            data: ocrData.data,
+            session_id: sessionId,
+          }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
       } catch (ocrErr) {
         console.error("OCR error:", ocrErr);
         await supabase.from("chatbot_logs").insert({
@@ -258,31 +269,37 @@ serve(async (req) => {
           event_type: "error",
           details: { error: String(ocrErr), phase: "ocr" },
         });
-        return new Response(JSON.stringify({
-          actions: [],
-          text: "Error processing image. Please try again.",
-          redirectPage: "",
-          data: {},
-          session_id: sessionId,
-        }), {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({
+            actions: [],
+            text: "Error processing image. Please try again.",
+            redirectPage: "",
+            data: {},
+            session_id: sessionId,
+          }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
       }
     }
 
     // ── Text flow ──
     if (!text.trim()) {
-      return new Response(JSON.stringify({
-        actions: [],
-        text: "Hello 👋 I'm TripEX AI. How can I assist you today?",
-        redirectPage: "",
-        data: {},
-        session_id: sessionId,
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          actions: [],
+          text: "Hello 👋 I'm TripEX AI. How can I assist you today?",
+          redirectPage: "",
+          data: {},
+          session_id: sessionId,
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     // Save user message
@@ -301,21 +318,13 @@ serve(async (req) => {
       .limit(30);
 
     // ── Load chatbot config ──
-    const { data: config } = await supabase
-      .from("chatbot_config")
-      .select("*")
-      .eq("is_active", true)
-      .limit(1)
-      .single();
+    const { data: config } = await supabase.from("chatbot_config").select("*").eq("is_active", true).limit(1).single();
 
     const temperature = config?.temperature || 0.3;
     const maxTokens = config?.max_tokens || 2048;
     const modelName = config?.model_name || "meta.llama-4-maverick-17b-128e-instruct-fp8";
 
-    const ORACLE_API_KEY =
-      Deno.env.get("oracleapikey") ||
-      Deno.env.get("oracleapikey_2") ||
-      Deno.env.get("invoice");
+    const ORACLE_API_KEY = Deno.env.get("oracleapikey_2");
     if (!ORACLE_API_KEY) {
       throw new Error("Oracle API key is not configured");
     }
@@ -332,7 +341,7 @@ serve(async (req) => {
       // Also search with individual words for better Hebrew matching
       const words = text.split(/\s+/).filter((w: string) => w.length > 2);
       let allChunks = chunks || [];
-      
+
       for (const word of words.slice(0, 3)) {
         const { data: wordChunks } = await supabase.rpc("search_knowledge", {
           query_text: word,
@@ -351,18 +360,9 @@ serve(async (req) => {
       allChunks = allChunks.slice(0, 5);
 
       if (allChunks.length > 0) {
-        // Strip page/chapter/guide/email markers so the AI can't echo
-        // "see page 40 / Chapter 6 / the ComBTAS TAS User Guide / support@combtas.com"
-        // at the user — it must synthesize an answer from the content instead.
-        const stripRefs = (s: string) =>
-          s
-            .replace(/\(?\s*(?:see|refer to|per|as described in|according to)?\s*(?:page|pg\.?|chapter|section|עמוד|פרק)\s*[\dxiv]+\s*\)?/gi, "")
-            .replace(/\b(?:the\s+)?(?:ComBTAS\s+)?(?:TAS\s+)?User\s+Guide\b/gi, "the system")
-            .replace(/\b[\w.+-]+@[\w-]+\.[\w.-]+\b/g, "")
-            .replace(/\s{2,}/g, " ")
-            .trim();
-        knowledgeContext = "\n\n## Knowledge Base Context (extra reference — synthesize into your OWN answer, do NOT quote page/chapter markers, a user guide, a support email, or raw text):\n" +
-          allChunks.map((c: any) => `[${c.file_name}]: ${stripRefs(c.content)}`).join("\n\n");
+        knowledgeContext =
+          "\n\n## Knowledge Base Context (use this to answer the user):\n" +
+          allChunks.map((c: any) => `[${c.file_name}]: ${c.content}`).join("\n\n");
       }
     } catch (ragErr) {
       console.error("RAG search error:", ragErr);
@@ -431,15 +431,14 @@ If the conversation history shows a pending expense summary or scanned invoice s
 - Be conversational and friendly, use emojis occasionally
 
 ## Response Style:
-- **Answer the user's SPECIFIC situation directly.** Read what they actually asked (their status, their report, their trip, their error) and respond to THAT case with concrete steps they can take inside TripEX/TAS — not a generic overview.
-- **NEVER send the user to an external page, user guide, manual, chapter, or page number** — even if a Knowledge Base chunk below literally mentions one. Do NOT write things like "according to the ComBTAS TAS User Guide", "see the user guide", "refer to Chapter 6/7", "page 40", "page x", "check the documentation", "contact support@combtas.com", or "contact your travel manager / finance department". If a chunk says "as described in Chapter 7", take the ACTUAL instructions from that chunk and explain them yourself in plain steps. You ARE the help desk. The only time you may suggest contacting a human is when the action literally requires another person (e.g. "your approving manager still needs to approve the request").
-- Base your answer on the **Built-in System Knowledge**, the **Built-in Reports Catalog**, and any **Knowledge Base Context** below. Synthesize the answer in your own clear words — do NOT quote raw chunks, page markers, or table dumps at the user.
-- When the user asks which report to use or where to find data, name the exact **report code and report name** from the catalog and explain what it shows.
-- **NEVER INVENT OR HALLUCINATE** report codes, statuses, or steps. If the specific detail genuinely isn't in your knowledge, say what you DO know and ask one focused follow-up question to help them — do not deflect to external docs.
-- Be DETAILED and thorough — explain step by step when needed.
-- Use friendly, supportive language; structure long answers with line breaks for readability.
-- Always greet warmly and offer further help at the end.
-- ALWAYS respond in English.
+- **CRITICAL: If "Knowledge Base Context" is provided below, you MUST base your answer ONLY on that content.**
+- **NEVER INVENT OR HALLUCINATE information.**
+- If you don't have enough information, say honestly: "I couldn't find information about that in my knowledge base. I'd be happy to help if you can provide more details."
+- Be DETAILED and thorough — explain step by step when needed
+- Use friendly, supportive language
+- Structure long answers with line breaks for readability
+- Always greet warmly and offer further help at the end
+- ALWAYS respond in English
 
 ## Output format (ONLY this JSON, nothing else):
 {"intent": "<intent>", "text": "<your detailed, friendly answer in English>"}
@@ -449,13 +448,7 @@ User's ACTUAL local time at their location: ${ipLocalTime || `${userDate || "unk
 User's ACTUAL timezone: ${ipTimezone || userTimezone || "unknown"}
 Browser-reported time (may differ if user traveled): ${userDate || "unknown"} ${userTime || ""} (${userTimezone || "unknown"})
 IMPORTANT: When the user asks "what time is it" or "where am I", use the IP-based location and time above — this reflects where they PHYSICALLY are right now.
-Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}
-
-${TAS_SYSTEM_KNOWLEDGE}
-
-${TAS_REPORTS_KNOWLEDGE}
-
-${TAS_SUPPORT_CASES}${knowledgeContext}`;
+Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}${knowledgeContext}`;
 
     const messages = [
       { role: "system", content: systemPrompt },
@@ -477,7 +470,7 @@ ${TAS_SUPPORT_CASES}${knowledgeContext}`;
           max_tokens: maxTokens,
           temperature,
         }),
-      }
+      },
     );
 
     if (!aiResponse.ok) {
@@ -514,8 +507,11 @@ ${TAS_SUPPORT_CASES}${knowledgeContext}`;
 
     try {
       // Clean markdown wrappers
-      let cleaned = rawContent.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      
+      let cleaned = rawContent
+        .replace(/```json\n?/g, "")
+        .replace(/```\n?/g, "")
+        .trim();
+
       // Find the outermost { ... } using brace counting
       const startIdx = cleaned.indexOf("{");
       if (startIdx !== -1) {
@@ -525,12 +521,27 @@ ${TAS_SUPPORT_CASES}${knowledgeContext}`;
         let escapeNext = false;
         for (let i = startIdx; i < cleaned.length; i++) {
           const ch = cleaned[i];
-          if (escapeNext) { escapeNext = false; continue; }
-          if (ch === "\\") { escapeNext = true; continue; }
-          if (ch === '"') { inString = !inString; continue; }
+          if (escapeNext) {
+            escapeNext = false;
+            continue;
+          }
+          if (ch === "\\") {
+            escapeNext = true;
+            continue;
+          }
+          if (ch === '"') {
+            inString = !inString;
+            continue;
+          }
           if (inString) continue;
           if (ch === "{") depth++;
-          else if (ch === "}") { depth--; if (depth === 0) { endIdx = i; break; } }
+          else if (ch === "}") {
+            depth--;
+            if (depth === 0) {
+              endIdx = i;
+              break;
+            }
+          }
         }
         if (endIdx !== -1) {
           cleaned = cleaned.substring(startIdx, endIdx + 1);
@@ -556,12 +567,13 @@ ${TAS_SUPPORT_CASES}${knowledgeContext}`;
         responseText = decodeUnicodeEscapes(responseText);
         intent = intentMatch?.[1] || "general";
       } else {
-        responseText = decodeUnicodeEscapes(rawContent)
-          .replace(/^\s*\{[\s\S]*"text"\s*:\s*"/i, "")
-          .replace(/"\s*\}\s*$/, "")
-          .replace(/\\n/g, "\n")
-          .replace(/\\"/g, '"')
-          .trim() || rawContent;
+        responseText =
+          decodeUnicodeEscapes(rawContent)
+            .replace(/^\s*\{[\s\S]*"text"\s*:\s*"/i, "")
+            .replace(/"\s*\}\s*$/, "")
+            .replace(/\\n/g, "\n")
+            .replace(/\\"/g, '"')
+            .trim() || rawContent;
       }
     }
 
@@ -584,7 +596,13 @@ ${TAS_SUPPORT_CASES}${knowledgeContext}`;
         const scanMsg = recentMsgs?.find((m: any) => m.metadata?.scanned_data);
         if (scanMsg?.metadata?.scanned_data) {
           const original = scanMsg.metadata.scanned_data;
-          const corrections: Array<{ user_id: string; field_name: string; original_value: string; corrected_value: string; context?: string }> = [];
+          const corrections: Array<{
+            user_id: string;
+            field_name: string;
+            original_value: string;
+            corrected_value: string;
+            context?: string;
+          }> = [];
           const ctx = original.vendor_name || original.invoice_number || undefined;
 
           // Find the latest correction summary (assistant message with UPDATED or corrected values)
@@ -604,30 +622,68 @@ ${TAS_SUPPORT_CASES}${knowledgeContext}`;
 
           // Extract values using multiple patterns
           const totalMatch = allText.match(/(?:Total)[:\s]*([0-9,.]+)/i);
-          if (totalMatch && original.total_amount != null && parseFloat(totalMatch[1].replace(",", "")) !== original.total_amount) {
-            corrections.push({ user_id: user.id, field_name: "total_amount", original_value: String(original.total_amount), corrected_value: totalMatch[1].replace(",", ""), context: ctx });
+          if (
+            totalMatch &&
+            original.total_amount != null &&
+            parseFloat(totalMatch[1].replace(",", "")) !== original.total_amount
+          ) {
+            corrections.push({
+              user_id: user.id,
+              field_name: "total_amount",
+              original_value: String(original.total_amount),
+              corrected_value: totalMatch[1].replace(",", ""),
+              context: ctx,
+            });
           }
 
           const taxMatch = allText.match(/(?:VAT|Tax|מע"מ)[:\s]*([0-9,.]+)/i);
-          if (taxMatch && original.tax_amount != null && parseFloat(taxMatch[1].replace(",", "")) !== original.tax_amount) {
-            corrections.push({ user_id: user.id, field_name: "tax_amount", original_value: String(original.tax_amount), corrected_value: taxMatch[1].replace(",", ""), context: ctx });
+          if (
+            taxMatch &&
+            original.tax_amount != null &&
+            parseFloat(taxMatch[1].replace(",", "")) !== original.tax_amount
+          ) {
+            corrections.push({
+              user_id: user.id,
+              field_name: "tax_amount",
+              original_value: String(original.tax_amount),
+              corrected_value: taxMatch[1].replace(",", ""),
+              context: ctx,
+            });
           }
 
           const invoiceNumMatch = allText.match(/(?:Invoice number)[:\s]*([^\n,]+)/i);
           if (invoiceNumMatch && original.invoice_number && invoiceNumMatch[1].trim() !== original.invoice_number) {
-            corrections.push({ user_id: user.id, field_name: "invoice_number", original_value: original.invoice_number, corrected_value: invoiceNumMatch[1].trim(), context: ctx });
+            corrections.push({
+              user_id: user.id,
+              field_name: "invoice_number",
+              original_value: original.invoice_number,
+              corrected_value: invoiceNumMatch[1].trim(),
+              context: ctx,
+            });
           }
 
           // Date: match patterns like DD/MM/YYYY or YYYY-MM-DD
           const dateMatch = allText.match(/(?:Date)[:\s]*([0-9]{1,4}[\/\-][0-9]{1,2}[\/\-][0-9]{2,4})/i);
           if (dateMatch && original.invoice_date && dateMatch[1].trim() !== original.invoice_date) {
-            corrections.push({ user_id: user.id, field_name: "invoice_date", original_value: original.invoice_date, corrected_value: dateMatch[1].trim(), context: ctx });
+            corrections.push({
+              user_id: user.id,
+              field_name: "invoice_date",
+              original_value: original.invoice_date,
+              corrected_value: dateMatch[1].trim(),
+              context: ctx,
+            });
           }
 
           // Category
           const categoryMatch = allText.match(/(?:Category)[:\s]*(?:[\p{Emoji}\s]*)(\w+)/iu);
           if (categoryMatch && original.category && categoryMatch[1].trim().toLowerCase() !== original.category) {
-            corrections.push({ user_id: user.id, field_name: "category", original_value: original.category, corrected_value: categoryMatch[1].trim().toLowerCase(), context: ctx });
+            corrections.push({
+              user_id: user.id,
+              field_name: "category",
+              original_value: original.category,
+              corrected_value: categoryMatch[1].trim().toLowerCase(),
+              context: ctx,
+            });
           }
 
           if (corrections.length > 0) {
@@ -635,10 +691,10 @@ ${TAS_SUPPORT_CASES}${knowledgeContext}`;
             const res = await fetch(`${supabaseUrl}/rest/v1/invoice_corrections`, {
               method: "POST",
               headers: {
-                "apikey": serviceKey,
-                "Authorization": `Bearer ${serviceKey}`,
+                apikey: serviceKey,
+                Authorization: `Bearer ${serviceKey}`,
                 "Content-Type": "application/json",
-                "Prefer": "return=minimal",
+                Prefer: "return=minimal",
               },
               body: JSON.stringify(corrections),
             });
@@ -673,21 +729,24 @@ ${TAS_SUPPORT_CASES}${knowledgeContext}`;
       },
     });
 
-    return new Response(JSON.stringify({
-      actions: mapping.actions,
-      text: finalText,
-      redirectPage: mapping.redirectPage || "",
-      data: {},
-      session_id: sessionId,
-    }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        actions: mapping.actions,
+        text: finalText,
+        redirectPage: mapping.redirectPage || "",
+        data: {},
+        session_id: sessionId,
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   } catch (error) {
     console.error("ai-router error:", error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
