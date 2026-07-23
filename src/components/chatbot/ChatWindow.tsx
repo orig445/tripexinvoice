@@ -52,20 +52,22 @@ export function ChatWindow({ onClose, isFullscreen = false, onToggleFullscreen }
   };
 
   const handleCameraFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const filesList = e.target.files;
+    if (!filesList || filesList.length === 0) return;
+    const files = Array.from(filesList).slice(0, 5);
     e.target.value = "";
-    try {
-      if (file.type === "application/pdf") {
-        const pages = await pdfAllPagesToBase64(file);
-        if (pages.length > 0) sendImage(pages[0]);
-        return;
+    for (const file of files) {
+      try {
+        if (file.type === "application/pdf") {
+          const pages = await pdfAllPagesToBase64(file);
+          if (pages.length > 0) await sendImage(pages[0]);
+          continue;
+        }
+        const base64 = await compressImage(file);
+        await sendImage(base64);
+      } catch (err) {
+        console.error("File processing error:", err);
       }
-
-      const base64 = await compressImage(file);
-      sendImage(base64);
-    } catch (err) {
-      console.error("File processing error:", err);
     }
   };
 
