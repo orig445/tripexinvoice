@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { TAS_SYSTEM_KNOWLEDGE, TAS_REPORTS_KNOWLEDGE } from "./knowledge.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -350,8 +351,15 @@ serve(async (req) => {
       allChunks = allChunks.slice(0, 5);
 
       if (allChunks.length > 0) {
-        knowledgeContext = "\n\n## Knowledge Base Context (use this to answer the user):\n" +
-          allChunks.map((c: any) => `[${c.file_name}]: ${c.content}`).join("\n\n");
+        // Strip page/chapter markers so the AI can't echo "see page 40 / Chapter 6"
+        // at the user — it must synthesize an answer from the content instead.
+        const stripRefs = (s: string) =>
+          s
+            .replace(/\(?\s*(?:see|refer to|per)?\s*(?:page|pg\.?|chapter|section|עמוד|פרק)\s*[\dxiv]+\s*\)?/gi, "")
+            .replace(/\s{2,}/g, " ")
+            .trim();
+        knowledgeContext = "\n\n## Knowledge Base Context (extra reference — synthesize, do NOT quote page/chapter markers or raw text):\n" +
+          allChunks.map((c: any) => `[${c.file_name}]: ${stripRefs(c.content)}`).join("\n\n");
       }
     } catch (ragErr) {
       console.error("RAG search error:", ragErr);
@@ -420,14 +428,15 @@ If the conversation history shows a pending expense summary or scanned invoice s
 - Be conversational and friendly, use emojis occasionally
 
 ## Response Style:
-- **CRITICAL: If "Knowledge Base Context" is provided below, you MUST base your answer ONLY on that content.**
-- **NEVER INVENT OR HALLUCINATE information.**
-- If you don't have enough information, say honestly: "I couldn't find information about that in my knowledge base. I'd be happy to help if you can provide more details."
-- Be DETAILED and thorough — explain step by step when needed
-- Use friendly, supportive language
-- Structure long answers with line breaks for readability
-- Always greet warmly and offer further help at the end
-- ALWAYS respond in English
+- **Answer the user's SPECIFIC situation directly.** Read what they actually asked (their status, their report, their trip, their error) and respond to THAT case with concrete steps they can take inside TripEX/TAS — not a generic overview.
+- **NEVER send the user to an external page, user guide, manual, chapter, or page number.** Do NOT write things like "see the user guide", "refer to Chapter 6", "page 40", "page x", "check the documentation", or "contact your travel manager / finance department". You ARE the help desk — give the answer yourself using the knowledge below. The only time you may suggest contacting a human is when the action literally requires another person (e.g. "your approving manager still needs to approve the request").
+- Base your answer on the **Built-in System Knowledge**, the **Built-in Reports Catalog**, and any **Knowledge Base Context** below. Synthesize the answer in your own clear words — do NOT quote raw chunks, page markers, or table dumps at the user.
+- When the user asks which report to use or where to find data, name the exact **report code and report name** from the catalog and explain what it shows.
+- **NEVER INVENT OR HALLUCINATE** report codes, statuses, or steps. If the specific detail genuinely isn't in your knowledge, say what you DO know and ask one focused follow-up question to help them — do not deflect to external docs.
+- Be DETAILED and thorough — explain step by step when needed.
+- Use friendly, supportive language; structure long answers with line breaks for readability.
+- Always greet warmly and offer further help at the end.
+- ALWAYS respond in English.
 
 ## Output format (ONLY this JSON, nothing else):
 {"intent": "<intent>", "text": "<your detailed, friendly answer in English>"}
@@ -437,7 +446,11 @@ User's ACTUAL local time at their location: ${ipLocalTime || `${userDate || "unk
 User's ACTUAL timezone: ${ipTimezone || userTimezone || "unknown"}
 Browser-reported time (may differ if user traveled): ${userDate || "unknown"} ${userTime || ""} (${userTimezone || "unknown"})
 IMPORTANT: When the user asks "what time is it" or "where am I", use the IP-based location and time above — this reflects where they PHYSICALLY are right now.
-Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}${knowledgeContext}`;
+Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}
+
+${TAS_SYSTEM_KNOWLEDGE}
+
+${TAS_REPORTS_KNOWLEDGE}${knowledgeContext}`;
 
     const messages = [
       { role: "system", content: systemPrompt },
