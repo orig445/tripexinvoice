@@ -134,3 +134,56 @@ up in an external guide.
 - **1013 — Trip Summarizing**: All trips except Draft; data from approved/closed invoices, plus employee expenses/per-diem that entered after the expense report was sent for approval.
 - **1016 — Suits Report**: Number of days each employee is entitled to a suit allowance (custom development).
 - **2011 — Top Destinations**: Number of flight tickets per destination (country/city) with reservation counts, total and average cost — shows the most popular destinations, with a graph.`;
+
+export const TAS_SUPPORT_CASES = `## Built-in Troubleshooting Knowledge (from real support cases)
+
+Common real-world issues coordinators and travel agents run into, and how they are
+resolved. When a user describes one of these, answer with the concrete fix or
+explanation below — don't send them elsewhere.
+
+### A new agent doesn't appear in the "Pass Trip" / "Pass to agent" list
+The Pass-Trip list only shows agents that are (1) linked to the same supplier as the
+current user, (2) NOT in "Blocked" status, and (3) NOT marked "Left the company".
+If a newly created agent is missing from the list, check that the agent is linked to
+the relevant supplier/client and is active (not Blocked, not Left the company). Note
+that the list may also show agents who aren't synced to a specific client — that is
+expected current behavior.
+
+### Train / railway booking asks for an airline, or a train comes in as a flight
+Train and rail services must use the **Transportation** offer type, not the **Flight**
+offer type. The Flight type requires an airline company, which is why a train row won't
+let you close/Issue without one. If a train quote was imported (e.g. from the booster)
+as a Flight offer, change its offer type to **Transportation** — then it will not ask for
+an airline and you can Issue it normally.
+
+### "Approve all matched invoices" (bulk approval) fails with an error
+Bulk-approving matched invoices can hit an error while approving them one-by-one still
+works. Workaround: approve the matched invoices individually for now. This is a known
+issue that gets resolved in a system version update, so once you're on the latest
+version the bulk "Approve all matched invoices" action works again.
+
+### Can't cancel or change a Statement/invoice (button does nothing)
+If clicking **Cancel** or **Change** on a Statement (invoice) does nothing, first log
+out and log back in and try again. To upload a corrected invoice you must first cancel
+the existing statement. If it still won't cancel after re-logging in, it's a known issue
+that is fixed in a system version update.
+
+### An agent can't see a travel request (TAS) that was emailed to them
+By design, when several agents receive the same travel-request email, only ONE agent
+sees that TAS under their "Tasks". This is intentional — it prevents two agents from
+pulling the same offer from the GDS at the same time (which causes GDS errors). To work
+with a TAS that isn't under your tasks: search for the **TAS number** in the search bar
+and open it. To move it under your own Tasks, do a **Pass Trip** from inside the TAS.
+
+### A travel request wasn't auto-sent to the agent ("mail TR to agent")
+If a TAS wasn't automatically sent to the agent, a common cause is that when the TAS was
+approved, the trip's approval round (rotation) was in **Blocked** status, so the
+automatic "mail TR to agent" didn't fire. Changing the rotation AFTER the TAS was
+approved does not apply retroactively. Fix: from the **Travel Request** screen, manually
+send **"mail TR to agent"** so the TAS reaches the agent.
+
+### Changing the default currency (e.g. to EUR)
+The system's default currency can be changed, but it only affects **new** quotes —
+existing quotes keep the currency they were created with (you can still change a quote's
+currency manually). The **Total USD** column is a fixed system column and cannot be
+removed.`;

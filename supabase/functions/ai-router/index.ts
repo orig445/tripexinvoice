@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { TAS_SYSTEM_KNOWLEDGE, TAS_REPORTS_KNOWLEDGE } from "./knowledge.ts";
+import { TAS_SYSTEM_KNOWLEDGE, TAS_REPORTS_KNOWLEDGE, TAS_SUPPORT_CASES } from "./knowledge.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -450,7 +450,9 @@ Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}
 
 ${TAS_SYSTEM_KNOWLEDGE}
 
-${TAS_REPORTS_KNOWLEDGE}${knowledgeContext}`;
+${TAS_REPORTS_KNOWLEDGE}
+
+${TAS_SUPPORT_CASES}${knowledgeContext}`;
 
     const messages = [
       { role: "system", content: systemPrompt },
