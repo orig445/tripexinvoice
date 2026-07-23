@@ -165,7 +165,29 @@ serve(async (req) => {
         // Build a summary of the scanned data using new structured format
         const d = ocrData.data || {};
         const lines: string[] = ["✅ Invoice scanned successfully! Here are the details:"];
-        if (d.document_type) lines.push(`📄 Type: ${d.document_type.replace(/_/g, " ")}`);
+        const merchantName: string = d.merchant?.name || "";
+        const categoryFromMerchant = (name: string, docType?: string): string => {
+          const n = (name || "").toLowerCase();
+          const has = (...keys: string[]) => keys.some((k) => n.includes(k.toLowerCase()));
+          if (has("uber", "gett", "lyft", "bolt", "taxi", "cab", "מונית", "גט", "grab")) return "Taxi";
+          if (has("restaurant", "cafe", "café", "coffee", "pizza", "burger", "sushi", "bistro", "bar", "grill", "kitchen", "מסעדה", "קפה", "פיצה", "בורגר")) return "Restaurant";
+          if (has("hotel", "inn", "resort", "hostel", "airbnb", "booking", "מלון", "אכסניה")) return "Hotel";
+          if (has("airline", "airways", "flight", "elal", "el al", "ryanair", "easyjet", "delta", "united", "lufthansa", "טיסה", "אל על")) return "Flight";
+          if (has("gas", "fuel", "petrol", "shell", "bp ", "delek", "paz", "sonol", "דלק", "פז", "סונול")) return "Fuel";
+          if (has("parking", "park ", "חניון", "חניה")) return "Parking";
+          if (has("rent a car", "rental", "hertz", "avis", "sixt", "budget", "europcar", "השכרת רכב")) return "Car Rental";
+          if (has("train", "rail", "metro", "subway", "bus", "רכבת", "אוטובוס", "מטרו")) return "Transportation";
+          if (has("pharmacy", "drug", "clinic", "hospital", "בית מרקחת", "מרפאה", "בית חולים")) return "Health";
+          if (has("supermarket", "market", "grocery", "shufersal", "rami levy", "victory", "yohananof", "סופר", "רמי לוי", "שופרסל")) return "Grocery";
+          if (has("office", "depot", "staples", "stationery", "משרד")) return "Office Supplies";
+          if (has("amazon", "ebay", "aliexpress", "shop", "store", "mall", "חנות", "קניון")) return "Shopping";
+          if (has("telecom", "cellular", "mobile", "internet", "bezeq", "partner", "cellcom", "hot ", "בזק", "סלולר")) return "Telecom";
+          if (docType === "invoice") return "Invoice";
+          if (docType === "receipt") return "Receipt";
+          return "Other";
+        };
+        const category = categoryFromMerchant(merchantName, d.document_type);
+        lines.push(`📄 Type: ${category}`);
         if (d.merchant?.name) lines.push(`🏪 Merchant: ${d.merchant.name}`);
         if (d.merchant?.tin) lines.push(`🆔 TIN: ${d.merchant.tin}`);
         if (d.merchant?.address) lines.push(`📍 Address: ${d.merchant.address}`);
@@ -176,7 +198,7 @@ serve(async (req) => {
         if (d.amounts?.vatable_sales_amount != null) lines.push(`💵 VATable Sales: ${d.amounts.vatable_sales_amount} ${cur}`);
         if (d.amounts?.non_vatable_sales_amount != null && d.amounts.non_vatable_sales_amount > 0) lines.push(`💵 Non-VAT Sales: ${d.amounts.non_vatable_sales_amount} ${cur}`);
         if (d.amounts?.service_charge_amount != null && d.amounts.service_charge_amount > 0) lines.push(`💵 Service Charge: ${d.amounts.service_charge_amount} ${cur}`);
-        if (d.amounts?.tax_amount != null) lines.push(`🧾 VAT/Tax: ${d.amounts.tax_amount} ${cur}`);
+        if (d.amounts?.tax_amount != null) lines.push(`🧾 VAT: ${d.amounts.tax_amount} ${cur}`);
         if (d.payment?.method) lines.push(`💳 Payment: ${d.payment.method}`);
         // Form of payment details with fallback inference from payment.method
         const paymentText = `${d.payment?.form_of_payment ?? ""} ${d.payment?.method ?? ""}`.toLowerCase();
