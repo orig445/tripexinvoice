@@ -178,6 +178,7 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
         type="file"
         accept="image/*,application/pdf"
         capture="environment"
+        multiple
         className="hidden"
         onChange={handleFileChange}
       />
@@ -189,7 +190,7 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
         className="h-9 w-9 flex-shrink-0 text-muted-foreground hover:text-primary"
         onClick={() => fileRef.current?.click()}
         disabled={isLoading}
-        title="Choose from gallery"
+        title="Choose up to 5 invoices"
       >
         <Paperclip className="h-4 w-4" />
       </Button>
@@ -197,6 +198,7 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
         ref={fileRef}
         type="file"
         accept="image/*,application/pdf"
+        multiple
         className="hidden"
         onChange={handleFileChange}
       />
