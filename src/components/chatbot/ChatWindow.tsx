@@ -190,6 +190,7 @@ export function ChatWindow({ onClose, isFullscreen = false, onToggleFullscreen }
         ref={cameraInputRef}
         type="file"
         accept="image/*,application/pdf"
+        multiple
         className="hidden"
         onChange={handleCameraFile}
       />
