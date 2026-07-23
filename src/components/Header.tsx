@@ -94,11 +94,8 @@ export function Header() {
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-        )}
         </div>
       </div>
     </header>
-  );
-}
   );
 }
