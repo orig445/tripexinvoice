@@ -122,6 +122,17 @@ export function ChatWindow({ onClose, isFullscreen = false, onToggleFullscreen }
           >
             <RotateCcw className="h-3.5 w-3.5" />
           </Button>
+          {onToggleFullscreen && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
+              onClick={onToggleFullscreen}
+              title={isFullscreen ? "Minimize" : "Maximize"}
+            >
+              {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
