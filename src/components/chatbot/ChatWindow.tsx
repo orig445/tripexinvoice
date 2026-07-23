@@ -97,7 +97,11 @@ export function ChatWindow({ onClose, isFullscreen = false, onToggleFullscreen }
   const welcomeMsg = config?.welcome_message || "Hello! I'm Milo 🦊 How can I help you today?";
 
   return (
-    <div className="flex flex-col w-[360px] h-[500px] sm:w-[380px] sm:h-[520px] bg-background rounded-2xl shadow-xl border overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
+    <div className={
+      isFullscreen
+        ? "flex flex-col w-full h-full sm:max-w-4xl sm:h-[90vh] bg-background sm:rounded-2xl shadow-xl border overflow-hidden animate-in fade-in duration-300"
+        : "flex flex-col w-[360px] h-[500px] sm:w-[380px] sm:h-[520px] bg-background rounded-2xl shadow-xl border overflow-hidden animate-in slide-in-from-bottom-4 duration-300"
+    }>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-primary to-triplex-teal-light text-primary-foreground">
         <div className="flex items-center gap-2.5">
