@@ -43,17 +43,26 @@ Note: there are SEVERAL distinct approval stages — **TR Approval**, **Coordina
 from context.
 
 ### Why "I can't submit an expense report while my trip is in an 'Approval' status"
-The **Expense Report** stage (step 10) comes near the END of the life-cycle — only AFTER
-Approved → Issued → Active → Travel Completed. If the trip is still sitting in an early
-approval stage (TR Approval, Coordinator Approval or Proposal Approval), the trip itself
-isn't approved and issued yet, so there is nothing to close with an expense report — that
-is why the option isn't available yet. What to do:
-- Identify which approval the trip is waiting on and follow up with that approver (the manager
-  for TR/Proposal Approval, or the Travel Coordinator for Coordinator Approval) so the trip can
-  move forward to Approved → Issued.
-- After you actually travel and the trip reaches **Travel Completed**, open the **End-Trip
-  Confirmation** page, then send the expense report for approval — it will move to Expense
-  Approval and then Expense Approved once signed and paid.
+The **Expense Report** stage (step 10) comes near the END of the life-cycle. Before you can
+send an expense report, the trip MUST first pass through **every approval round** and be
+**Issued**, then actually travel. In order:
+1. The trip must clear ALL approval rounds — **TR Approval**, **Coordinator Approval** and
+   **Proposal Approval** — until its status becomes **Approved**.
+2. The Coordinator must click **Travel Issue** on the FINAL screen so the trip becomes
+   **Issued** (tickets/bookings issued). An expense report is NOT possible before the trip is Issued.
+3. You travel (**Active**), the trip ends (**Travel Completed**), and you fill the
+   **End-Trip Confirmation** page.
+4. Only then can you **send the expense report for approval** (it moves to Expense Approval →
+   Expense Approved once signed and paid).
+
+So if your trip is still in an "Approval" status, it simply hasn't finished the approval rounds
+and reached Issued yet — that is exactly why the expense-report option isn't available. What to do:
+- Find which approval round the trip is waiting on and follow up with that approver (the manager
+  for TR/Proposal Approval, the Travel Coordinator for Coordinator Approval) so it can reach
+  **Approved** and then **Issued**.
+- After the trip is Issued and you have travelled (status **Travel Completed**), open **End-Trip
+  Confirmation** and then send the expense report. Do NOT tell the user to read a user guide —
+  walk them through these steps directly.
 
 ### Statuses that appear in reports
 Most reports exclude **Draft** and **Cancelled** trips. Report data is based on Approved /
