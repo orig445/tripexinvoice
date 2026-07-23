@@ -135,22 +135,28 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const filesList = e.target.files;
+    if (!filesList || filesList.length === 0) return;
+    const files = Array.from(filesList).slice(0, 5);
+    if (filesList.length > 5) {
+      toast({
+        title: "Maximum 5 files",
+        description: "Only the first 5 files will be scanned.",
+      });
+    }
     e.target.value = "";
-    try {
-      if (file.type === "application/pdf") {
-        const pages = await pdfAllPagesToBase64(file);
-        if (pages.length > 0) {
-          // Send first page for OCR (most receipts are single-page)
-          onImageCapture(pages[0]);
+    for (const file of files) {
+      try {
+        if (file.type === "application/pdf") {
+          const pages = await pdfAllPagesToBase64(file);
+          if (pages.length > 0) onImageCapture(pages[0]);
+        } else {
+          const base64 = await compressImage(file);
+          onImageCapture(base64);
         }
-      } else {
-        const base64 = await compressImage(file);
-        onImageCapture(base64);
+      } catch (err) {
+        console.error("File processing error:", err);
       }
-    } catch (err) {
-      console.error("File processing error:", err);
     }
   };
 
