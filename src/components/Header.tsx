@@ -36,6 +36,17 @@ export function Header() {
           </div>
         </div>
 
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => navigate("/chat")}
+          >
+            <Bot className="h-4 w-4" />
+            <span className="hidden sm:inline">Chat with Milo</span>
+          </Button>
+
         {user && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -83,6 +94,7 @@ export function Header() {
             </DropdownMenuContent>
           </DropdownMenu>
         )}
+        </div>
       </div>
     </header>
   );
