@@ -58,7 +58,22 @@ async function callSupabaseFunction<T = any>(
   body: Record<string, any>,
 ): Promise<{ data: T | null; error: Error | null }> {
   const { data, error } = await supabase.functions.invoke(functionName, { body });
-  return { data: data as T, error: error ? new Error(String(error)) : null };
+  if (!error) return { data: data as T, error: null };
+
+  // supabase.functions.invoke returns a generic "non-2xx status" message and
+  // hides the real reason in error.context (the raw Response). Pull the
+  // function's JSON { error } body so callers can show a useful message.
+  let detail = error.message || String(error);
+  const ctx = (error as any).context;
+  if (ctx && typeof ctx.json === "function") {
+    try {
+      const respBody = await ctx.json();
+      if (respBody?.error) detail = respBody.error;
+    } catch {
+      /* body not JSON / already consumed — keep generic message */
+    }
+  }
+  return { data: null, error: new Error(detail) };
 }
 
 // ─── Public API Methods ───

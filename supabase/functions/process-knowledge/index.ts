@@ -145,7 +145,33 @@ serve(async (req) => {
           console.error("SheetJS extraction failed:", xlsErr);
         }
 
-        // Fallback to AI only if the parser produced nothing usable.
+        // Fallback 1: many "report .xls" exports are really HTML tables (or CSV)
+        // saved with an .xls extension. Decode as text and strip tags.
+        if (!extractedText || extractedText.length < 20) {
+          try {
+            const asText = new TextDecoder("utf-8").decode(uint8);
+            const looksHtml = /<\s*(table|tr|td|html|body)/i.test(asText);
+            if (looksHtml) {
+              const stripped = asText
+                .replace(/<\s*(br|\/tr|\/p)\s*>/gi, "\n")
+                .replace(/<\s*\/td\s*>/gi, "\t")
+                .replace(/<[^>]+>/g, " ")
+                .replace(/&nbsp;/gi, " ")
+                .replace(/&amp;/gi, "&")
+                .replace(/[ \t]+/g, " ")
+                .replace(/\n{2,}/g, "\n")
+                .trim();
+              if (stripped.length > extractedText.length) extractedText = stripped;
+            } else if (asText.trim().length > 20 && /[,;\t]/.test(asText)) {
+              // Looks like delimited/plain text (CSV-ish)
+              extractedText = asText.trim();
+            }
+          } catch (txtErr) {
+            console.error("Text fallback failed:", txtErr);
+          }
+        }
+
+        // Fallback 2: AI vision only if nothing else produced usable text.
         if (!extractedText || extractedText.length < 20) {
           const base64 = base64Encode(uint8);
           const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");

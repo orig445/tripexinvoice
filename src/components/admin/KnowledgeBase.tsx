@@ -181,7 +181,7 @@ export function KnowledgeBase() {
     const { error } = await processKnowledgeDocument(doc.id);
     setReprocessingId(null);
     if (error) {
-      toast.error("שגיאה בעיבוד מחדש");
+      toast.error(`שגיאה בעיבוד: ${error.message}`, { duration: 10000 });
     } else {
       toast.success("העיבוד הושלם");
     }
