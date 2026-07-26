@@ -3,6 +3,7 @@ import {
   listKnowledgeDocuments,
   uploadKnowledgeFile,
   deleteKnowledgeDocument,
+  processKnowledgeDocument,
   type KnowledgeDoc,
 } from "@/lib/api-service";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +31,7 @@ import {
   CheckCircle2,
   AlertCircle,
   UploadCloud,
+  RefreshCw,
 } from "lucide-react";
 
 // Domains (business area) — helps the agent decide WHEN a document is relevant.
@@ -168,6 +170,21 @@ export function KnowledgeBase() {
       return;
     }
     toast.success("הקובץ נמחק");
+    loadDocuments();
+  };
+
+  const [reprocessingId, setReprocessingId] = useState<string | null>(null);
+
+  const handleReprocess = async (doc: KnowledgeDoc) => {
+    setReprocessingId(doc.id);
+    toast.info(`מעבד מחדש את ${doc.file_name}...`);
+    const { error } = await processKnowledgeDocument(doc.id);
+    setReprocessingId(null);
+    if (error) {
+      toast.error("שגיאה בעיבוד מחדש");
+    } else {
+      toast.success("העיבוד הושלם");
+    }
     loadDocuments();
   };
 
@@ -394,7 +411,18 @@ export function KnowledgeBase() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      className="h-8 w-8"
+                      title="עבד מחדש"
+                      disabled={reprocessingId === doc.id}
+                      onClick={() => handleReprocess(doc)}
+                    >
+                      <RefreshCw className={`h-4 w-4 ${reprocessingId === doc.id ? "animate-spin" : ""}`} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       className="h-8 w-8 text-destructive hover:text-destructive"
+                      title="מחק"
                       onClick={() => handleDelete(doc)}
                     >
                       <Trash2 className="h-4 w-4" />
