@@ -9,6 +9,7 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import AdminChatbot from "./pages/AdminChatbot";
 import Chat from "./pages/Chat";
+import KnowledgeUpload from "./pages/KnowledgeUpload";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -31,6 +32,14 @@ const App = () => (
               }
             />
             <Route path="/chat" element={<Chat />} />
+            <Route
+              path="/knowledge"
+              element={
+                <ProtectedRoute>
+                  <KnowledgeUpload />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/admin/chatbot"
               element={

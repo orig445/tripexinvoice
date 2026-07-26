@@ -1,4 +1,5 @@
 using System.Data;
+using System.Data.Common;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -248,59 +249,27 @@ public class ChatService
 
     private async Task<string> SearchKnowledgeBase(string queryText)
     {
-        // Call the search_knowledge database function via raw SQL
-        var chunks = new List<(string FileName, string Content)>();
+        // Call the search_knowledge database function via raw SQL.
+        // Returns file_name + content + tagging (domain / doc_type / description)
+        // so the agent knows WHEN each snippet is relevant.
+        var chunks = new List<KbChunk>();
 
         var connection = _db.Database.GetDbConnection();
         try
         {
             await connection.OpenAsync();
 
-            // Full query search
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = "SELECT file_name, content FROM dbo.search_knowledge(@query, @max)";
-            var queryParam = cmd.CreateParameter();
-            queryParam.ParameterName = "query";
-            queryParam.Value = queryText;
-            cmd.Parameters.Add(queryParam);
-            var maxParam = cmd.CreateParameter();
-            maxParam.ParameterName = "max";
-            maxParam.Value = 5;
-            cmd.Parameters.Add(maxParam);
+            const string sql = "SELECT file_name, content, domain, doc_type, description FROM dbo.search_knowledge(@query, @max)";
 
-            using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-            {
-                chunks.Add((reader.GetString(0), reader.GetString(1)));
-            }
-            await reader.CloseAsync();
+            // Full query search
+            await RunKnowledgeQuery(connection, sql, queryText, 5, chunks);
 
             // Also search individual words for better Hebrew matching
             var words = queryText.Split(' ', StringSplitOptions.RemoveEmptyEntries)
                 .Where(w => w.Length > 2).Take(3);
 
             foreach (var word in words)
-            {
-                using var wordCmd = connection.CreateCommand();
-                wordCmd.CommandText = "SELECT file_name, content FROM dbo.search_knowledge(@query, @max)";
-                var wqp = wordCmd.CreateParameter();
-                wqp.ParameterName = "query";
-                wqp.Value = word;
-                wordCmd.Parameters.Add(wqp);
-                var wmp = wordCmd.CreateParameter();
-                wmp.ParameterName = "max";
-                wmp.Value = 3;
-                wordCmd.Parameters.Add(wmp);
-
-                using var wordReader = await wordCmd.ExecuteReaderAsync();
-                while (await wordReader.ReadAsync())
-                {
-                    var content = wordReader.GetString(1);
-                    if (!chunks.Any(c => c.Content == content))
-                        chunks.Add((wordReader.GetString(0), content));
-                }
-                await wordReader.CloseAsync();
-            }
+                await RunKnowledgeQuery(connection, sql, word, 3, chunks);
         }
         catch (Exception ex)
         {
@@ -316,7 +285,50 @@ public class ChatService
 
         var topChunks = chunks.Take(5);
         return "\n\n## Knowledge Base Context (use this to answer the user):\n" +
-               string.Join("\n\n", topChunks.Select(c => $"[{c.FileName}]: {c.Content}"));
+               "Each snippet is tagged with its domain/type and an optional hint — prefer snippets whose tags match the user's question.\n" +
+               string.Join("\n\n", topChunks.Select(FormatChunk));
+    }
+
+    private readonly record struct KbChunk(string FileName, string Content, string? Domain, string? DocType, string? Description);
+
+    private static async Task RunKnowledgeQuery(DbConnection connection, string sql, string query, int max, List<KbChunk> chunks)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = sql;
+
+        var qp = cmd.CreateParameter();
+        qp.ParameterName = "query";
+        qp.Value = query;
+        cmd.Parameters.Add(qp);
+
+        var mp = cmd.CreateParameter();
+        mp.ParameterName = "max";
+        mp.Value = max;
+        cmd.Parameters.Add(mp);
+
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var content = reader.GetString(1);
+            if (chunks.Any(c => c.Content == content)) continue; // de-dupe
+            chunks.Add(new KbChunk(
+                reader.GetString(0),
+                content,
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetString(4)));
+        }
+        await reader.CloseAsync();
+    }
+
+    private static string FormatChunk(KbChunk c)
+    {
+        var tags = new List<string> { c.FileName };
+        if (!string.IsNullOrWhiteSpace(c.Domain)) tags.Add($"domain: {c.Domain}");
+        if (!string.IsNullOrWhiteSpace(c.DocType)) tags.Add($"type: {c.DocType}");
+        var header = $"[{string.Join(" | ", tags)}]";
+        if (!string.IsNullOrWhiteSpace(c.Description)) header += $" (hint: {c.Description})";
+        return $"{header}: {c.Content}";
     }
 
     private static (string Intent, string Text) ParseAiResponse(string rawContent)

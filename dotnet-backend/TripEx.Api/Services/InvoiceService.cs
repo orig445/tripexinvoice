@@ -681,7 +681,7 @@ public class InvoiceService
         return best > 0 ? FormatAmount(best) : null;
     }
 
-    private static string DefaultCurrencyForCountry(string? country) => country?.ToUpperInvariant() switch
+    private static string? DefaultCurrencyForCountry(string? country) => country?.ToUpperInvariant() switch
     {
         "IL" => "ILS",
         "PH" => "PHP",

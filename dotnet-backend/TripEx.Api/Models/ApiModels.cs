@@ -235,6 +235,35 @@ public class ProcessKnowledgeResponse
     public string? Error { get; set; }
 }
 
+public class UploadKnowledgeResponse
+{
+    public bool Success { get; set; }
+    public string? DocumentId { get; set; }
+    public string? FileName { get; set; }
+    public int ChunksCreated { get; set; }
+    public string? Error { get; set; }
+}
+
+public class KnowledgeDocumentDto
+{
+    public string Id { get; set; } = "";
+    public string FileName { get; set; } = "";
+    public string FileType { get; set; } = "";
+    public int? FileSize { get; set; }
+    public string? Domain { get; set; }
+    public string? DocType { get; set; }
+    public string? Description { get; set; }
+    public string Status { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+}
+
+public class UpdateKnowledgeTagsRequest
+{
+    public string? Domain { get; set; }
+    public string? DocType { get; set; }
+    public string? Description { get; set; }
+}
+
 // ═══════════════════════════════════════
 // Oracle AI Models
 // ═══════════════════════════════════════

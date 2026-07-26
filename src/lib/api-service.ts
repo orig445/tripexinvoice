@@ -183,3 +183,175 @@ export async function processKnowledgeDocument(documentId: string) {
   }
   return callSupabaseFunction("process-knowledge", { document_id: documentId });
 }
+
+// ─── Knowledge Base: upload / list / tag / delete ───
+
+/** Normalized shape used by the admin UI regardless of backend. */
+export interface KnowledgeDoc {
+  id: string;
+  file_name: string;
+  file_type: string;
+  file_size: number | null;
+  domain: string | null;
+  doc_type: string | null;
+  description: string | null;
+  status: string;
+  created_at: string;
+}
+
+/** Map a .NET (camelCase) or Supabase (snake_case) row to the common shape. */
+function normalizeDoc(d: any): KnowledgeDoc {
+  return {
+    id: d.id,
+    file_name: d.fileName ?? d.file_name ?? "",
+    file_type: d.fileType ?? d.file_type ?? "",
+    file_size: d.fileSize ?? d.file_size ?? null,
+    domain: d.domain ?? null,
+    doc_type: d.docType ?? d.doc_type ?? null,
+    description: d.description ?? null,
+    status: d.status ?? "pending",
+    created_at: d.createdAt ?? d.created_at ?? new Date().toISOString(),
+  };
+}
+
+/**
+ * Upload one file to the agent's RAG together with its tags.
+ * Uses the .NET /api/knowledge/upload endpoint when an external backend is
+ * configured; otherwise falls back to Supabase storage + a document row.
+ */
+export async function uploadKnowledgeFile(params: {
+  file: File;
+  domain?: string;
+  docType?: string;
+  description?: string;
+}): Promise<{ data: any; error: Error | null }> {
+  if (isExternalBackend) {
+    try {
+      const token = await getAuthToken();
+      const form = new FormData();
+      form.append("file", params.file);
+      if (params.domain) form.append("domain", params.domain);
+      if (params.docType) form.append("docType", params.docType);
+      if (params.description) form.append("description", params.description);
+
+      const res = await fetch(`${API_BASE_URL}/api/knowledge/upload`, {
+        method: "POST",
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: form,
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        return { data: null, error: new Error(`API error ${res.status}: ${errText}`) };
+      }
+      return { data: await res.json(), error: null };
+    } catch (err: any) {
+      return { data: null, error: err };
+    }
+  }
+
+  // Supabase fallback
+  try {
+    const ext = params.file.name.split(".").pop() || "bin";
+    const filePath = `${crypto.randomUUID()}.${ext}`;
+    const { error: uploadErr } = await supabase.storage.from("knowledge").upload(filePath, params.file);
+    if (uploadErr) return { data: null, error: new Error(uploadErr.message) };
+
+    const { data: doc, error: docErr } = await supabase
+      .from("knowledge_documents")
+      .insert({
+        file_name: params.file.name,
+        file_type: params.file.type,
+        file_url: filePath,
+        file_size: params.file.size,
+        domain: params.domain || null,
+        doc_type: params.docType || null,
+        description: params.description || null,
+        uploaded_by: (await supabase.auth.getUser()).data.user?.id,
+      })
+      .select("id")
+      .single();
+    if (docErr) return { data: null, error: new Error(docErr.message) };
+
+    await processKnowledgeDocument(doc.id).catch(() => {});
+    return { data: { success: true, documentId: doc.id, fileName: params.file.name }, error: null };
+  } catch (err: any) {
+    return { data: null, error: err };
+  }
+}
+
+/** List all knowledge documents (normalized). */
+export async function listKnowledgeDocuments(): Promise<{ data: KnowledgeDoc[]; error: Error | null }> {
+  if (isExternalBackend) {
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`${API_BASE_URL}/api/knowledge/documents`, {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      if (!res.ok) return { data: [], error: new Error(`API error ${res.status}`) };
+      const rows = await res.json();
+      return { data: (rows || []).map(normalizeDoc), error: null };
+    } catch (err: any) {
+      return { data: [], error: err };
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("knowledge_documents")
+    .select("*")
+    .order("created_at", { ascending: false });
+  return {
+    data: (data || []).map(normalizeDoc),
+    error: error ? new Error(String(error)) : null,
+  };
+}
+
+/** Delete a knowledge document (file + chunks + row). */
+export async function deleteKnowledgeDocument(id: string, fileUrl?: string): Promise<{ error: Error | null }> {
+  if (isExternalBackend) {
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`${API_BASE_URL}/api/knowledge/documents/${id}`, {
+        method: "DELETE",
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      if (!res.ok) return { error: new Error(`API error ${res.status}`) };
+      return { error: null };
+    } catch (err: any) {
+      return { error: err };
+    }
+  }
+
+  if (fileUrl) await supabase.storage.from("knowledge").remove([fileUrl]).catch(() => {});
+  const { error } = await supabase.from("knowledge_documents").delete().eq("id", id);
+  return { error: error ? new Error(String(error)) : null };
+}
+
+/** Update the tags (domain / type / description) of an existing document. */
+export async function updateKnowledgeTags(
+  id: string,
+  tags: { domain?: string; docType?: string; description?: string },
+): Promise<{ error: Error | null }> {
+  if (isExternalBackend) {
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`${API_BASE_URL}/api/knowledge/documents/${id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ domain: tags.domain, docType: tags.docType, description: tags.description }),
+      });
+      if (!res.ok) return { error: new Error(`API error ${res.status}`) };
+      return { error: null };
+    } catch (err: any) {
+      return { error: err };
+    }
+  }
+
+  const { error } = await supabase
+    .from("knowledge_documents")
+    .update({ domain: tags.domain || null, doc_type: tags.docType || null, description: tags.description || null })
+    .eq("id", id);
+  return { error: error ? new Error(String(error)) : null };
+}

@@ -1,4 +1,4 @@
-import { Receipt, LogOut, User, Shield, Bot } from "lucide-react";
+import { Receipt, LogOut, User, Shield, Bot, Brain } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,18 @@ export function Header() {
         </div>
 
         <div className="flex items-center gap-2">
+          {user && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => navigate("/knowledge")}
+            >
+              <Brain className="h-4 w-4" />
+              <span className="hidden sm:inline">בסיס ידע</span>
+            </Button>
+          )}
+
           <Button
             variant="outline"
             size="sm"

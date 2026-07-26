@@ -150,6 +150,10 @@ public class KnowledgeDocument
     [Column("file_size")] public int? FileSize { get; set; }
     [Column("uploaded_by")] public Guid? UploadedBy { get; set; }
     [Column("status")] public string Status { get; set; } = "pending";
+    // ── Tagging: help the agent decide WHEN to use this document ──
+    [Column("domain")] public string? Domain { get; set; }          // business area, e.g. "expenses", "travel", "policy"
+    [Column("doc_type")] public string? DocType { get; set; }        // kind of content, e.g. "faq", "guide", "policy", "reference"
+    [Column("description")] public string? Description { get; set; } // optional short human hint guiding the agent
     [Column("created_at")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     [Column("updated_at")] public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
