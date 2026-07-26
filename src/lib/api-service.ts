@@ -256,27 +256,50 @@ export async function uploadKnowledgeFile(params: {
     const { error: uploadErr } = await supabase.storage.from("knowledge").upload(filePath, params.file);
     if (uploadErr) return { data: null, error: new Error(uploadErr.message) };
 
-    const { data: doc, error: docErr } = await supabase
+    const userId = (await supabase.auth.getUser()).data.user?.id;
+    const baseRow = {
+      file_name: params.file.name,
+      file_type: params.file.type,
+      file_url: filePath,
+      file_size: params.file.size,
+      uploaded_by: userId,
+    };
+    const tagRow = {
+      domain: params.domain || null,
+      doc_type: params.docType || null,
+      description: params.description || null,
+    };
+
+    // Try with tags; if the DB doesn't have the tag columns yet (schema not
+    // migrated), retry without them so the upload + RAG still succeed.
+    let insert = await supabase
       .from("knowledge_documents")
-      .insert({
-        file_name: params.file.name,
-        file_type: params.file.type,
-        file_url: filePath,
-        file_size: params.file.size,
-        domain: params.domain || null,
-        doc_type: params.docType || null,
-        description: params.description || null,
-        uploaded_by: (await supabase.auth.getUser()).data.user?.id,
-      })
+      .insert({ ...baseRow, ...tagRow })
       .select("id")
       .single();
-    if (docErr) return { data: null, error: new Error(docErr.message) };
 
-    await processKnowledgeDocument(doc.id).catch(() => {});
-    return { data: { success: true, documentId: doc.id, fileName: params.file.name }, error: null };
+    if (insert.error && isMissingColumnError(insert.error)) {
+      insert = await supabase
+        .from("knowledge_documents")
+        .insert(baseRow)
+        .select("id")
+        .single();
+    }
+
+    if (insert.error) return { data: null, error: new Error(insert.error.message) };
+
+    await processKnowledgeDocument(insert.data.id).catch(() => {});
+    return { data: { success: true, documentId: insert.data.id, fileName: params.file.name }, error: null };
   } catch (err: any) {
     return { data: null, error: err };
   }
+}
+
+/** True when a PostgREST error is caused by a column missing from the schema cache. */
+function isMissingColumnError(error: any): boolean {
+  const code = error?.code;
+  const msg = (error?.message || "").toLowerCase();
+  return code === "PGRST204" || (msg.includes("column") && msg.includes("schema cache"));
 }
 
 /** List all knowledge documents (normalized). */
@@ -353,5 +376,7 @@ export async function updateKnowledgeTags(
     .from("knowledge_documents")
     .update({ domain: tags.domain || null, doc_type: tags.docType || null, description: tags.description || null })
     .eq("id", id);
+  // If the tag columns don't exist yet, treat it as a no-op rather than an error.
+  if (error && isMissingColumnError(error)) return { error: null };
   return { error: error ? new Error(String(error)) : null };
 }
