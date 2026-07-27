@@ -329,10 +329,8 @@ serve(async (req) => {
       || Deno.env.get("invoice");
     if (!ORACLE_API_KEY) {
       throw new Error("Oracle API key is not configured");
-
-    if (!ORACLE_API_KEY) {
-      throw new Error("Oracle API key is not configured");
     }
+
 
     // ── RAG: Search knowledge base ──
     let knowledgeContext = "";
