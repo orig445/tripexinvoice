@@ -86,6 +86,7 @@ export async function sendChatMessage(params: {
   userDate?: string;
   userTime?: string;
   userTimezone?: string;
+  audience?: KnowledgeAudience;
 }) {
   const body = {
     text: params.text,
@@ -95,6 +96,7 @@ export async function sendChatMessage(params: {
     userDate: params.userDate || "",
     userTime: params.userTime || "",
     userTimezone: params.userTimezone || "",
+    audience: params.audience || "external",
   };
 
   if (isExternalBackend) {
@@ -108,12 +110,14 @@ export async function sendImageForScan(params: {
   base64: string;
   source?: string;
   sessionToken?: string | null;
+  audience?: KnowledgeAudience;
 }) {
   const body = {
     text: params.base64,
     type: "image",
     source: params.source || "web",
     sessionToken: params.sessionToken || null,
+    audience: params.audience || "external",
   };
 
   if (isExternalBackend) {

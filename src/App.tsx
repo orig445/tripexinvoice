@@ -11,6 +11,7 @@ import AdminChatbot from "./pages/AdminChatbot";
 import Chat from "./pages/Chat";
 import KnowledgeUpload from "./pages/KnowledgeUpload";
 import KnowledgeUploadInternal from "./pages/KnowledgeUploadInternal";
+import ChatInternal from "./pages/ChatInternal";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -46,6 +47,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <KnowledgeUploadInternal />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/chat-internal"
+              element={
+                <ProtectedRoute>
+                  <ChatInternal />
                 </ProtectedRoute>
               }
             />

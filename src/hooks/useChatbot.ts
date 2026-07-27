@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { sendChatMessage, sendImageForScan } from "@/lib/api-service";
+import { sendChatMessage, sendImageForScan, type KnowledgeAudience } from "@/lib/api-service";
 
 export interface ChatMessage {
   id: string;
@@ -25,7 +25,9 @@ interface ChatbotConfig {
   is_active: boolean;
 }
 
-export function useChatbot() {
+export function useChatbot(options?: { audience?: KnowledgeAudience; source?: string }) {
+  const audience: KnowledgeAudience = options?.audience || "external";
+  const source = options?.source || "web";
   const { user } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -93,7 +95,7 @@ export function useChatbot() {
         const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
         const { data, error } = await sendChatMessage({
-          text, source: "web", sessionToken: sessionIdRef.current, userDate: userLocalDate, userTime: userLocalTime, userTimezone: timezone,
+          text, source, sessionToken: sessionIdRef.current, userDate: userLocalDate, userTime: userLocalTime, userTimezone: timezone, audience,
         });
 
         if (error) throw error;
@@ -143,7 +145,7 @@ export function useChatbot() {
 
       try {
         const { data, error } = await sendImageForScan({
-          base64, source: "web", sessionToken: sessionIdRef.current,
+          base64, source, sessionToken: sessionIdRef.current, audience,
         });
 
         if (error) throw error;
