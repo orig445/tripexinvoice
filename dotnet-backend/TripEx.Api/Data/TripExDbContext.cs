@@ -155,6 +155,11 @@ public class KnowledgeDocument
     [Column("doc_type")] public string? DocType { get; set; }        // kind of content, e.g. "faq", "guide", "policy", "reference"
     [Column("description")] public string? Description { get; set; } // optional short human hint guiding the agent
     [Column("audience")] public string? Audience { get; set; }       // which bot: "external" (customers) or "internal" (staff)
+    // ── Source tracking (external connectors: SharePoint / Zoho CRM) ──
+    [Column("source")] public string Source { get; set; } = "upload"; // "upload" | "sharepoint" | "zoho_crm"
+    [Column("external_id")] public string? ExternalId { get; set; }
+    [Column("external_url")] public string? ExternalUrl { get; set; }
+    [Column("external_modified")] public DateTime? ExternalModified { get; set; }
     [Column("created_at")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     [Column("updated_at")] public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

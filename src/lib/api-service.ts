@@ -215,6 +215,8 @@ export interface KnowledgeDoc {
   doc_type: string | null;
   description: string | null;
   audience: string | null;
+  source: string;
+  external_url: string | null;
   status: string;
   created_at: string;
 }
@@ -233,9 +235,19 @@ function normalizeDoc(d: any): KnowledgeDoc {
     doc_type: d.docType ?? d.doc_type ?? null,
     description: d.description ?? null,
     audience: d.audience ?? null,
+    source: d.source ?? "upload",
+    external_url: d.externalUrl ?? d.external_url ?? null,
     status: d.status ?? "pending",
     created_at: d.createdAt ?? d.created_at ?? new Date().toISOString(),
   };
+}
+
+/** Trigger an on-demand sync of the external knowledge sources (SharePoint / Zoho CRM).
+ *  Runs against the internal knowledge base. Returns the per-source summary. */
+export async function triggerKnowledgeSync(
+  sources?: Array<"sharepoint" | "zoho_crm">,
+): Promise<{ data: any; error: Error | null }> {
+  return callSupabaseFunction("sync-knowledge-sources", sources ? { sources } : {});
 }
 
 /**

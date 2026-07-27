@@ -4,6 +4,7 @@ import {
   uploadKnowledgeFile,
   deleteKnowledgeDocument,
   processKnowledgeDocument,
+  triggerKnowledgeSync,
   type KnowledgeDoc,
   type KnowledgeAudience,
 } from "@/lib/api-service";
@@ -33,6 +34,7 @@ import {
   AlertCircle,
   UploadCloud,
   RefreshCw,
+  CloudDownload,
 } from "lucide-react";
 
 // Domains (business area) — helps the agent decide WHEN a document is relevant.
@@ -176,6 +178,29 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
   };
 
   const [reprocessingId, setReprocessingId] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    toast.info("מסנכרן מ-SharePoint ו-Zoho CRM...");
+    const { data, error } = await triggerKnowledgeSync();
+    setIsSyncing(false);
+    if (error) {
+      toast.error(`שגיאת סנכרון: ${error.message}`, { duration: 10000 });
+    } else {
+      const sums = (data?.summaries || []) as Array<any>;
+      const totals = sums.reduce(
+        (a, s) => ({ created: a.created + (s.created || 0), updated: a.updated + (s.updated || 0), errors: a.errors + (s.errors || 0) }),
+        { created: 0, updated: 0, errors: 0 },
+      );
+      toast.success(`סנכרון הושלם: ${totals.created} חדשים, ${totals.updated} עודכנו${totals.errors ? `, ${totals.errors} שגיאות` : ""}`);
+      // Surface per-source problems (e.g. "not configured") so setup gaps are visible.
+      sums.filter((s) => !s.ok || s.message).forEach((s) => {
+        if (s.message) toast.warning(`${s.source}: ${s.message}`, { duration: 12000 });
+      });
+    }
+    loadDocuments();
+  };
 
   const handleReprocess = async (doc: KnowledgeDoc) => {
     setReprocessingId(doc.id);
@@ -371,7 +396,15 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
       {/* ── Existing documents ── */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">קבצים בבסיס הידע ({documents.length})</CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-lg">קבצים בבסיס הידע ({documents.length})</CardTitle>
+            {audience === "internal" && (
+              <Button variant="outline" size="sm" className="gap-2" onClick={handleSync} disabled={isSyncing}>
+                <CloudDownload className={`h-4 w-4 ${isSyncing ? "animate-pulse" : ""}`} />
+                {isSyncing ? "מסנכרן..." : "סנכרן מ-SharePoint / Zoho"}
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {documents.length === 0 ? (
@@ -391,6 +424,12 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">{doc.file_name}</p>
                       <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                        {doc.source && doc.source !== "upload" && (
+                          <Badge className="text-[10px] bg-blue-600 hover:bg-blue-600 gap-1">
+                            <CloudDownload className="h-2.5 w-2.5" />
+                            {doc.source === "sharepoint" ? "SharePoint" : doc.source === "zoho_crm" ? "Zoho CRM" : doc.source}
+                          </Badge>
+                        )}
                         {doc.domain && (
                           <Badge variant="secondary" className="text-[10px]">
                             {labelFor(DOMAINS, doc.domain)}

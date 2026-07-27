@@ -309,11 +309,15 @@ export type Database = {
           description: string | null
           doc_type: string | null
           domain: string | null
+          external_id: string | null
+          external_modified: string | null
+          external_url: string | null
           file_name: string
           file_size: number | null
           file_type: string
           file_url: string
           id: string
+          source: string
           status: string
           updated_at: string
           uploaded_by: string | null
@@ -324,11 +328,15 @@ export type Database = {
           description?: string | null
           doc_type?: string | null
           domain?: string | null
+          external_id?: string | null
+          external_modified?: string | null
+          external_url?: string | null
           file_name: string
           file_size?: number | null
           file_type: string
           file_url: string
           id?: string
+          source?: string
           status?: string
           updated_at?: string
           uploaded_by?: string | null
@@ -339,11 +347,15 @@ export type Database = {
           description?: string | null
           doc_type?: string | null
           domain?: string | null
+          external_id?: string | null
+          external_modified?: string | null
+          external_url?: string | null
           file_name?: string
           file_size?: number | null
           file_type?: string
           file_url?: string
           id?: string
+          source?: string
           status?: string
           updated_at?: string
           uploaded_by?: string | null

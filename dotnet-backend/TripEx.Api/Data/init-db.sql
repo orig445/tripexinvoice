@@ -129,6 +129,10 @@ CREATE TABLE [dbo].[knowledge_documents] (
     [doc_type]    NVARCHAR(100)  NULL,
     [description] NVARCHAR(1000) NULL,
     [audience]    NVARCHAR(50)   NOT NULL DEFAULT 'external',
+    [source]      NVARCHAR(50)   NOT NULL DEFAULT 'upload',
+    [external_id] NVARCHAR(200)  NULL,
+    [external_url] NVARCHAR(2048) NULL,
+    [external_modified] DATETIME2 NULL,
     [created_at]  DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
     [updated_at]  DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
 );
@@ -146,6 +150,19 @@ GO
 -- audience separates the customer-facing ('external') and staff ('internal') bots.
 IF COL_LENGTH('dbo.knowledge_documents', 'audience') IS NULL
     ALTER TABLE [dbo].[knowledge_documents] ADD [audience] NVARCHAR(50) NOT NULL DEFAULT 'external';
+GO
+-- source tracking for external connectors (SharePoint / Zoho CRM).
+IF COL_LENGTH('dbo.knowledge_documents', 'source') IS NULL
+    ALTER TABLE [dbo].[knowledge_documents] ADD [source] NVARCHAR(50) NOT NULL DEFAULT 'upload';
+GO
+IF COL_LENGTH('dbo.knowledge_documents', 'external_id') IS NULL
+    ALTER TABLE [dbo].[knowledge_documents] ADD [external_id] NVARCHAR(200) NULL;
+GO
+IF COL_LENGTH('dbo.knowledge_documents', 'external_url') IS NULL
+    ALTER TABLE [dbo].[knowledge_documents] ADD [external_url] NVARCHAR(2048) NULL;
+GO
+IF COL_LENGTH('dbo.knowledge_documents', 'external_modified') IS NULL
+    ALTER TABLE [dbo].[knowledge_documents] ADD [external_modified] DATETIME2 NULL;
 GO
 
 -- ── knowledge_chunks ───────────────────────────────────────────────

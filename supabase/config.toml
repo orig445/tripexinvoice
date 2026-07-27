@@ -5,3 +5,8 @@ verify_jwt = false
 
 [functions.process-knowledge]
 verify_jwt = false
+
+# Scheduled by pg_cron and also triggered manually from the admin UI.
+# Auth is enforced inside the function (SYNC_SECRET header or a signed-in user).
+[functions.sync-knowledge-sources]
+verify_jwt = false
