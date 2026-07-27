@@ -128,6 +128,7 @@ CREATE TABLE [dbo].[knowledge_documents] (
     [domain]      NVARCHAR(100)  NULL,
     [doc_type]    NVARCHAR(100)  NULL,
     [description] NVARCHAR(1000) NULL,
+    [audience]    NVARCHAR(50)   NOT NULL DEFAULT 'external',
     [created_at]  DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
     [updated_at]  DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
 );
@@ -141,6 +142,10 @@ IF COL_LENGTH('dbo.knowledge_documents', 'doc_type') IS NULL
 GO
 IF COL_LENGTH('dbo.knowledge_documents', 'description') IS NULL
     ALTER TABLE [dbo].[knowledge_documents] ADD [description] NVARCHAR(1000) NULL;
+GO
+-- audience separates the customer-facing ('external') and staff ('internal') bots.
+IF COL_LENGTH('dbo.knowledge_documents', 'audience') IS NULL
+    ALTER TABLE [dbo].[knowledge_documents] ADD [audience] NVARCHAR(50) NOT NULL DEFAULT 'external';
 GO
 
 -- ── knowledge_chunks ───────────────────────────────────────────────
@@ -260,7 +265,7 @@ GO
 -- other Unicode because content is NVARCHAR. ChatService.cs also issues
 -- per-word queries to improve multilingual recall.
 -- ════════════════════════════════════════════════════════════════════
-CREATE OR ALTER FUNCTION [dbo].[search_knowledge] (@query_text NVARCHAR(4000), @max_results INT)
+CREATE OR ALTER FUNCTION [dbo].[search_knowledge] (@query_text NVARCHAR(4000), @max_results INT, @audience NVARCHAR(50) = 'external')
 RETURNS TABLE
 AS
 RETURN
@@ -281,6 +286,8 @@ RETURN
       AND @query_text IS NOT NULL
       AND LEN(@query_text) > 0
       AND CHARINDEX(LOWER(@query_text), LOWER(kc.[content])) > 0
+      -- Audience isolation: 'internal' is exact; 'external' also matches legacy NULLs.
+      AND (kd.[audience] = @audience OR (@audience = 'external' AND kd.[audience] IS NULL))
     ORDER BY rank DESC
 );
 GO

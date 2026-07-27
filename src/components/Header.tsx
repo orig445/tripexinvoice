@@ -1,4 +1,4 @@
-import { Receipt, LogOut, User, Shield, Bot, Brain } from "lucide-react";
+import { Receipt, LogOut, User, Shield, Bot, Brain, Lock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -45,7 +45,19 @@ export function Header() {
               onClick={() => navigate("/knowledge")}
             >
               <Brain className="h-4 w-4" />
-              <span className="hidden sm:inline">בסיס ידע</span>
+              <span className="hidden sm:inline">ידע לקוחות</span>
+            </Button>
+          )}
+
+          {user && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => navigate("/knowledge-internal")}
+            >
+              <Lock className="h-4 w-4" />
+              <span className="hidden sm:inline">ידע פנימי</span>
             </Button>
           )}
 

@@ -154,6 +154,7 @@ public class KnowledgeDocument
     [Column("domain")] public string? Domain { get; set; }          // business area, e.g. "expenses", "travel", "policy"
     [Column("doc_type")] public string? DocType { get; set; }        // kind of content, e.g. "faq", "guide", "policy", "reference"
     [Column("description")] public string? Description { get; set; } // optional short human hint guiding the agent
+    [Column("audience")] public string? Audience { get; set; }       // which bot: "external" (customers) or "internal" (staff)
     [Column("created_at")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     [Column("updated_at")] public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

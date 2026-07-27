@@ -28,7 +28,8 @@ public class KnowledgeService
         string? domain,
         string? docType,
         string? description,
-        Guid? uploadedBy)
+        Guid? uploadedBy,
+        string? audience = "external")
     {
         if (fileBytes.Length == 0)
             return (false, Guid.Empty, 0, "Empty file");
@@ -51,6 +52,7 @@ public class KnowledgeService
             Domain = string.IsNullOrWhiteSpace(domain) ? null : domain.Trim(),
             DocType = string.IsNullOrWhiteSpace(docType) ? null : docType.Trim(),
             Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim(),
+            Audience = audience == "internal" ? "internal" : "external",
             UploadedBy = uploadedBy,
             Status = "pending"
         };

@@ -5,6 +5,7 @@ import {
   deleteKnowledgeDocument,
   processKnowledgeDocument,
   type KnowledgeDoc,
+  type KnowledgeAudience,
 } from "@/lib/api-service";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -72,20 +73,20 @@ interface StagedFile {
 
 const MAX_SIZE = 25 * 1024 * 1024;
 
-export function KnowledgeBase() {
+export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeAudience }) {
   const [documents, setDocuments] = useState<KnowledgeDoc[]>([]);
   const [staged, setStaged] = useState<StagedFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
   const loadDocuments = useCallback(async () => {
-    const { data, error } = await listKnowledgeDocuments();
+    const { data, error } = await listKnowledgeDocuments(audience);
     if (error) {
       console.error("Failed to load documents:", error);
       return;
     }
     setDocuments(data);
-  }, []);
+  }, [audience]);
 
   useEffect(() => {
     loadDocuments();
@@ -140,6 +141,7 @@ export function KnowledgeBase() {
         domain: item.domain,
         docType: item.docType,
         description: item.description.trim() || undefined,
+        audience,
       });
 
       if (error || data?.success === false) {

@@ -20,15 +20,15 @@ const KnowledgeUpload = () => {
             <Brain className="h-6 w-6 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold">מרכז הידע של הסוכן</h1>
+            <h1 className="text-2xl font-bold">מרכז הידע — סוכן הלקוחות</h1>
             <p className="text-muted-foreground">
-              העלו כאן מסמכים והם ייכנסו אוטומטית ל-RAG של הסוכן. תייגו כל קובץ לתחום ולסוג
-              והוסיפו הסבר קצר — כך הסוכן ידע מתי להשתמש בכל מסמך כשעונה ללקוחות.
+              בסיס הידע של הצ'אטבוט <strong>הפונה ללקוחות</strong>. העלו מסמכים והם ייכנסו אוטומטית
+              ל-RAG. תייגו כל קובץ לתחום ולסוג והוסיפו הסבר קצר — כך הסוכן ידע מתי להשתמש בכל מסמך.
             </p>
           </div>
         </div>
 
-        <KnowledgeBase />
+        <KnowledgeBase audience="external" />
       </main>
     </div>
   );

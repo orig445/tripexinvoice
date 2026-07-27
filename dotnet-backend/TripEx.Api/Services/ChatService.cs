@@ -247,11 +247,12 @@ public class ChatService
         };
     }
 
-    private async Task<string> SearchKnowledgeBase(string queryText)
+    private async Task<string> SearchKnowledgeBase(string queryText, string audience = "external")
     {
         // Call the search_knowledge database function via raw SQL.
         // Returns file_name + content + tagging (domain / doc_type / description)
-        // so the agent knows WHEN each snippet is relevant.
+        // so the agent knows WHEN each snippet is relevant. The audience filter
+        // keeps the customer ('external') and staff ('internal') knowledge bases apart.
         var chunks = new List<KbChunk>();
 
         var connection = _db.Database.GetDbConnection();
@@ -259,17 +260,17 @@ public class ChatService
         {
             await connection.OpenAsync();
 
-            const string sql = "SELECT file_name, content, domain, doc_type, description FROM dbo.search_knowledge(@query, @max)";
+            const string sql = "SELECT file_name, content, domain, doc_type, description FROM dbo.search_knowledge(@query, @max, @audience)";
 
             // Full query search
-            await RunKnowledgeQuery(connection, sql, queryText, 5, chunks);
+            await RunKnowledgeQuery(connection, sql, queryText, 5, audience, chunks);
 
             // Also search individual words for better Hebrew matching
             var words = queryText.Split(' ', StringSplitOptions.RemoveEmptyEntries)
                 .Where(w => w.Length > 2).Take(3);
 
             foreach (var word in words)
-                await RunKnowledgeQuery(connection, sql, word, 3, chunks);
+                await RunKnowledgeQuery(connection, sql, word, 3, audience, chunks);
         }
         catch (Exception ex)
         {
@@ -291,7 +292,7 @@ public class ChatService
 
     private readonly record struct KbChunk(string FileName, string Content, string? Domain, string? DocType, string? Description);
 
-    private static async Task RunKnowledgeQuery(DbConnection connection, string sql, string query, int max, List<KbChunk> chunks)
+    private static async Task RunKnowledgeQuery(DbConnection connection, string sql, string query, int max, string audience, List<KbChunk> chunks)
     {
         using var cmd = connection.CreateCommand();
         cmd.CommandText = sql;
@@ -305,6 +306,11 @@ public class ChatService
         mp.ParameterName = "max";
         mp.Value = max;
         cmd.Parameters.Add(mp);
+
+        var ap = cmd.CreateParameter();
+        ap.ParameterName = "audience";
+        ap.Value = string.IsNullOrWhiteSpace(audience) ? "external" : audience;
+        cmd.Parameters.Add(ap);
 
         using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())

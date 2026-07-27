@@ -210,9 +210,13 @@ export interface KnowledgeDoc {
   domain: string | null;
   doc_type: string | null;
   description: string | null;
+  audience: string | null;
   status: string;
   created_at: string;
 }
+
+/** Which chatbot a knowledge base belongs to. */
+export type KnowledgeAudience = "external" | "internal";
 
 /** Map a .NET (camelCase) or Supabase (snake_case) row to the common shape. */
 function normalizeDoc(d: any): KnowledgeDoc {
@@ -224,6 +228,7 @@ function normalizeDoc(d: any): KnowledgeDoc {
     domain: d.domain ?? null,
     doc_type: d.docType ?? d.doc_type ?? null,
     description: d.description ?? null,
+    audience: d.audience ?? null,
     status: d.status ?? "pending",
     created_at: d.createdAt ?? d.created_at ?? new Date().toISOString(),
   };
@@ -239,7 +244,10 @@ export async function uploadKnowledgeFile(params: {
   domain?: string;
   docType?: string;
   description?: string;
+  audience?: KnowledgeAudience;
 }): Promise<{ data: any; error: Error | null }> {
+  const audience: KnowledgeAudience = params.audience || "external";
+
   if (isExternalBackend) {
     try {
       const token = await getAuthToken();
@@ -248,6 +256,7 @@ export async function uploadKnowledgeFile(params: {
       if (params.domain) form.append("domain", params.domain);
       if (params.docType) form.append("docType", params.docType);
       if (params.description) form.append("description", params.description);
+      form.append("audience", audience);
 
       const res = await fetch(`${API_BASE_URL}/api/knowledge/upload`, {
         method: "POST",
@@ -283,6 +292,7 @@ export async function uploadKnowledgeFile(params: {
       domain: params.domain || null,
       doc_type: params.docType || null,
       description: params.description || null,
+      audience,
     };
 
     // Try with tags; if the DB doesn't have the tag columns yet (schema not
@@ -294,6 +304,17 @@ export async function uploadKnowledgeFile(params: {
       .single();
 
     if (insert.error && isMissingColumnError(insert.error)) {
+      // SAFETY: an internal document with no audience column would default to
+      // external and could leak to the customer bot. Refuse rather than
+      // silently mis-scope it — tell the user to run the migration.
+      if (audience === "internal") {
+        return {
+          data: null,
+          error: new Error(
+            "בסיס הידע הפנימי דורש עדכון סכימה (עמודת audience). הריצו את ה-SQL שסופק ב-Supabase ואז נסו שוב.",
+          ),
+        };
+      }
       insert = await supabase
         .from("knowledge_documents")
         .insert(baseRow)
@@ -317,12 +338,14 @@ function isMissingColumnError(error: any): boolean {
   return code === "PGRST204" || (msg.includes("column") && msg.includes("schema cache"));
 }
 
-/** List all knowledge documents (normalized). */
-export async function listKnowledgeDocuments(): Promise<{ data: KnowledgeDoc[]; error: Error | null }> {
+/** List knowledge documents for one audience (normalized). */
+export async function listKnowledgeDocuments(
+  audience: KnowledgeAudience = "external",
+): Promise<{ data: KnowledgeDoc[]; error: Error | null }> {
   if (isExternalBackend) {
     try {
       const token = await getAuthToken();
-      const res = await fetch(`${API_BASE_URL}/api/knowledge/documents`, {
+      const res = await fetch(`${API_BASE_URL}/api/knowledge/documents?audience=${audience}`, {
         headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       });
       if (!res.ok) return { data: [], error: new Error(`API error ${res.status}`) };
@@ -333,10 +356,25 @@ export async function listKnowledgeDocuments(): Promise<{ data: KnowledgeDoc[]; 
     }
   }
 
-  const { data, error } = await supabase
-    .from("knowledge_documents")
-    .select("*")
-    .order("created_at", { ascending: false });
+  // Supabase: external includes legacy rows with a NULL audience; internal is exact.
+  let query = supabase.from("knowledge_documents").select("*").order("created_at", { ascending: false });
+  query =
+    audience === "internal"
+      ? query.eq("audience", "internal")
+      : query.or("audience.eq.external,audience.is.null");
+
+  let { data, error } = await query;
+
+  // If the audience column doesn't exist yet, fall back gracefully:
+  // external → show all existing docs; internal → empty (none can exist yet).
+  if (error && isMissingColumnError(error)) {
+    if (audience === "internal") return { data: [], error: null };
+    ({ data, error } = await supabase
+      .from("knowledge_documents")
+      .select("*")
+      .order("created_at", { ascending: false }));
+  }
+
   return {
     data: (data || []).map(normalizeDoc),
     error: error ? new Error(String(error)) : null,

@@ -38,7 +38,8 @@ public class KnowledgeController : ControllerBase
         [FromForm] IFormFile? file,
         [FromForm] string? domain,
         [FromForm] string? docType,
-        [FromForm] string? description)
+        [FromForm] string? description,
+        [FromForm] string? audience)
     {
         if (file == null || file.Length == 0)
             return BadRequest(new UploadKnowledgeResponse { Success = false, Error = "No file provided" });
@@ -63,7 +64,8 @@ public class KnowledgeController : ControllerBase
                 domain,
                 docType,
                 description,
-                GetUserId());
+                GetUserId(),
+                audience);
 
             return Ok(new UploadKnowledgeResponse
             {
@@ -89,9 +91,17 @@ public class KnowledgeController : ControllerBase
     /// List all knowledge documents (for the admin upload page).
     /// </summary>
     [HttpGet("documents")]
-    public async Task<ActionResult<List<KnowledgeDocumentDto>>> ListDocuments()
+    public async Task<ActionResult<List<KnowledgeDocumentDto>>> ListDocuments([FromQuery] string? audience)
     {
-        var docs = await _db.KnowledgeDocuments
+        var query = _db.KnowledgeDocuments.AsQueryable();
+
+        // Filter by audience: internal is exact; external also includes legacy NULLs.
+        if (audience == "internal")
+            query = query.Where(d => d.Audience == "internal");
+        else
+            query = query.Where(d => d.Audience == "external" || d.Audience == null);
+
+        var docs = await query
             .OrderByDescending(d => d.CreatedAt)
             .Select(d => new KnowledgeDocumentDto
             {
@@ -102,6 +112,7 @@ public class KnowledgeController : ControllerBase
                 Domain = d.Domain,
                 DocType = d.DocType,
                 Description = d.Description,
+                Audience = d.Audience,
                 Status = d.Status,
                 CreatedAt = d.CreatedAt
             })

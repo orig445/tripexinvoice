@@ -304,6 +304,7 @@ export type Database = {
       }
       knowledge_documents: {
         Row: {
+          audience: string | null
           created_at: string
           description: string | null
           doc_type: string | null
@@ -318,6 +319,7 @@ export type Database = {
           uploaded_by: string | null
         }
         Insert: {
+          audience?: string | null
           created_at?: string
           description?: string | null
           doc_type?: string | null
@@ -332,6 +334,7 @@ export type Database = {
           uploaded_by?: string | null
         }
         Update: {
+          audience?: string | null
           created_at?: string
           description?: string | null
           doc_type?: string | null

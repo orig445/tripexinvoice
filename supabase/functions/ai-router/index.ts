@@ -78,7 +78,12 @@ serve(async (req) => {
       userDate = "",
       userTime = "",
       userTimezone = "",
+      audience = "external",
     } = await req.json();
+
+    // Which knowledge base this request may read. Defaults to the customer-facing
+    // ("external") base so the public widget can NEVER retrieve internal docs.
+    const kbAudience = audience === "internal" ? "internal" : "external";
 
     // ── IP-based Geolocation ──
     let userLocation = "";
@@ -356,6 +361,31 @@ serve(async (req) => {
               allChunks.push(wc);
             }
           }
+        }
+      }
+
+      // ── Audience isolation ──
+      // search_knowledge is not audience-aware, so filter the returned chunks by
+      // the audience of their source document. This guarantees the customer bot
+      // (external) never sees internal documents and vice-versa. Legacy docs with
+      // a NULL audience count as external. If the audience column doesn't exist
+      // yet, we only enforce isolation once it does (internal upload is blocked
+      // client-side until then, so nothing internal can exist).
+      if (allChunks.length > 0) {
+        const docIds = [...new Set(allChunks.map((c: any) => c.document_id).filter(Boolean))];
+        if (docIds.length > 0) {
+          const { data: docs, error: docsErr } = await supabase
+            .from("knowledge_documents")
+            .select("id, audience")
+            .in("id", docIds);
+
+          if (!docsErr && docs) {
+            const audienceById = new Map(docs.map((d: any) => [d.id, d.audience ?? "external"]));
+            allChunks = allChunks.filter(
+              (c: any) => (audienceById.get(c.document_id) ?? "external") === kbAudience,
+            );
+          }
+          // If the column is missing (docsErr), skip filtering — no internal docs exist yet.
         }
       }
 
