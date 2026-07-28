@@ -3,6 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { encode as base64Encode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 // Official SheetJS ESM build (recommended for Deno / Supabase Edge Functions).
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
+// Local PDF text extraction (no AI, no quota) — ideal for text-based PDFs.
+import { extractText as pdfExtractText, getDocumentProxy } from "https://esm.sh/unpdf@0.12.1";
 
 
 const corsHeaders = {
@@ -77,6 +79,70 @@ async function aiFetchWithRetry(url: string, init: RequestInit, tries = 4): Prom
   return fetch(url, init);
 }
 
+// ── Oracle OCI Generative AI (replaces the Lovable AI gateway) ──
+const OCI_ENDPOINT =
+  "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions";
+const OCI_MODEL = Deno.env.get("OCI_MODEL") || "meta.llama-4-maverick-17b-128e-instruct-fp8";
+
+function ociKey(): string | undefined {
+  return Deno.env.get("oracleapikey_2") || Deno.env.get("oracleapikey") || Deno.env.get("invoice");
+}
+
+/** Text-only chat completion via OCI. */
+async function ociChatText(prompt: string, maxTokens = 4096): Promise<string> {
+  const key = ociKey();
+  if (!key) throw new Error("Oracle API key not configured (oracleapikey_2 / oracleapikey / invoice)");
+  const res = await aiFetchWithRetry(OCI_ENDPOINT, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: OCI_MODEL,
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: maxTokens,
+      temperature: 0,
+    }),
+  });
+  if (!res.ok) throw new Error(`OCI AI error: ${res.status} - ${await res.text()}`);
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "";
+}
+
+/** Vision chat completion via OCI (image data URL). */
+async function ociVision(instruction: string, dataUrl: string, maxTokens = 4096): Promise<string> {
+  const key = ociKey();
+  if (!key) throw new Error("Oracle API key not configured");
+  const res = await aiFetchWithRetry(OCI_ENDPOINT, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: OCI_MODEL,
+      messages: [
+        { role: "user", content: [
+          { type: "text", text: instruction },
+          { type: "image_url", image_url: { url: dataUrl } },
+        ] },
+      ],
+      max_tokens: maxTokens,
+      temperature: 0,
+    }),
+  });
+  if (!res.ok) throw new Error(`OCI vision error: ${res.status} - ${await res.text()}`);
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "";
+}
+
+/** Extract text from a PDF locally (no AI). Returns "" if the PDF has no embedded text. */
+async function extractPdfTextLocal(bytes: Uint8Array): Promise<string> {
+  try {
+    const pdf = await getDocumentProxy(bytes);
+    const { text } = await pdfExtractText(pdf, { mergePages: true });
+    return (Array.isArray(text) ? text.join("\n") : text || "").trim();
+  } catch (e) {
+    console.error("[pdf] local extraction failed:", e);
+    return "";
+  }
+}
+
 interface Normalized {
   audience?: "external" | "internal";
   domain?: string;
@@ -92,9 +158,9 @@ interface Normalized {
  * (internal) base by relevance. Non-support docs are kept but still scrubbed.
  * Falls back to a plain PII scrub if the AI is unavailable or fails.
  */
-async function normalizeKnowledge(rawText: string, lovableApiKey?: string): Promise<Normalized> {
+async function normalizeKnowledge(rawText: string): Promise<Normalized> {
   const disabled = Deno.env.get("KNOWLEDGE_DISTILL") === "false";
-  if (disabled || !lovableApiKey) {
+  if (disabled || !ociKey()) {
     return { content: scrubPII(rawText), distilled: false };
   }
 
@@ -117,22 +183,7 @@ ${rawText.slice(0, 24000)}
 """`;
 
   try {
-    const resp = await aiFetchWithRetry("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 4096,
-        temperature: 0,
-      }),
-    });
-    if (!resp.ok) {
-      console.error("[normalize] AI error:", resp.status);
-      return { content: scrubPII(rawText), distilled: false };
-    }
-    const data = await resp.json();
-    let raw = data.choices?.[0]?.message?.content || "";
+    let raw = await ociChatText(prompt, 4096);
     // Strip markdown fences if present
     raw = raw.replace(/^```(json)?/i, "").replace(/```$/i, "").trim();
     const start = raw.indexOf("{");
@@ -287,37 +338,18 @@ serve(async (req) => {
           }
         }
 
-        // Fallback 2: AI vision only if nothing else produced usable text.
-        if (!extractedText || extractedText.length < 20) {
-          const base64 = base64Encode(uint8);
-          const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-          if (LOVABLE_API_KEY) {
-            const resp = await aiFetchWithRetry("https://ai.gateway.lovable.dev/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${LOVABLE_API_KEY}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                model: "google/gemini-2.5-flash",
-                messages: [
-                  {
-                    role: "user",
-                    content: [
-                      { type: "text", text: "Extract ALL text and data from this spreadsheet. Output every sheet, every row, every cell as plain text. Do NOT summarize." },
-                      { type: "image_url", image_url: { url: `data:${doc.file_type};base64,${base64}` } },
-                    ],
-                  },
-                ],
-                max_tokens: 8192,
-                temperature: 0,
-              }),
-            });
-            if (resp.ok) {
-              const aiData = await resp.json();
-              const aiText = aiData.choices?.[0]?.message?.content || "";
-              if (aiText.length > extractedText.length) extractedText = aiText;
-            }
+        // Fallback 2: OCI vision only if nothing else produced usable text.
+        if ((!extractedText || extractedText.length < 20) && ociKey()) {
+          try {
+            const base64 = base64Encode(uint8);
+            const aiText = await ociVision(
+              "Extract ALL text and data from this spreadsheet. Output every sheet, every row, every cell as plain text. Do NOT summarize.",
+              `data:${doc.file_type};base64,${base64}`,
+              8192,
+            );
+            if (aiText.length > extractedText.length) extractedText = aiText;
+          } catch (e) {
+            console.error("[xls] OCI vision fallback failed:", e);
           }
         }
 
@@ -329,53 +361,34 @@ serve(async (req) => {
       } else if (fileType.includes("text") || fileType.includes("csv") || fileType.includes("json") || fileType.includes("xml") || fileType.includes("markdown")) {
         // Plain text files
         extractedText = await fileData.text();
-      } else if (fileType.includes("pdf") || fileType.includes("word") || fileType.includes("document")) {
-        // For PDF/Word, use Lovable AI (Gemini) which handles documents better
+      } else if (fileType.includes("pdf") || /\.pdf$/.test(fileName)) {
+        // PDF: extract embedded text locally (no AI / no quota). Most support
+        // emails are text-based, so this covers them for free.
+        const bytes = new Uint8Array(await fileData.arrayBuffer());
+        extractedText = await extractPdfTextLocal(bytes);
+
+        // Scanned PDF (no embedded text) → OCI vision as a fallback.
+        if (extractedText.length < 20 && ociKey()) {
+          try {
+            const base64 = base64Encode(bytes);
+            extractedText = await ociVision(
+              "Extract ALL text content from this document. Return ONLY the raw text, preserving structure.",
+              `data:application/pdf;base64,${base64}`,
+              4096,
+            );
+          } catch (e) {
+            console.error("[pdf] OCI vision fallback failed:", e);
+          }
+        }
+      } else if (fileType.includes("word") || fileType.includes("document") || /\.docx?$/.test(fileName)) {
+        // Word document → OCI vision (best effort).
         const buffer = await fileData.arrayBuffer();
         const base64 = base64Encode(new Uint8Array(buffer));
-
-        const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-        if (!LOVABLE_API_KEY) {
-          throw new Error("LOVABLE_API_KEY not configured");
-        }
-
-        const response = await aiFetchWithRetry("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
-            messages: [
-              {
-                role: "system",
-                content: "Extract ALL text content from this document. Return ONLY the raw text, preserving paragraphs and structure. No summaries, no analysis - just the full text content.",
-              },
-              {
-                role: "user",
-                content: [
-                  { type: "text", text: "Extract all text from this document:" },
-                  {
-                    type: "image_url",
-                    image_url: { url: `data:${doc.file_type};base64,${base64}` },
-                  },
-                ],
-              },
-            ],
-            max_tokens: 4096,
-            temperature: 0,
-          }),
-        });
-
-        if (!response.ok) {
-          const errText = await response.text();
-          console.error("Lovable AI error for PDF:", response.status, errText);
-          throw new Error(`AI error processing document: ${response.status}`);
-        }
-
-        const pdfData = await response.json();
-        extractedText = pdfData.choices?.[0]?.message?.content || "";
+        extractedText = await ociVision(
+          "Extract ALL text content from this document. Return ONLY the raw text, preserving paragraphs and structure.",
+          `data:${doc.file_type};base64,${base64}`,
+          4096,
+        );
       } else if (fileType.includes("image")) {
         // Use Oracle AI to describe image content
         const ORACLE_API_KEY =
@@ -440,8 +453,7 @@ serve(async (req) => {
       }
 
       // ── Normalize: strip PII, distill support threads, classify audience ──
-      const distillKey = Deno.env.get("LOVABLE_API_KEY") || undefined;
-      const norm = await normalizeKnowledge(extractedText, distillKey);
+      const norm = await normalizeKnowledge(extractedText);
       const finalText = norm.content || extractedText;
 
       // Persist the AI's audience/domain/type classification (route by relevance).

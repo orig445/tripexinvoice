@@ -3,9 +3,40 @@
 // already-deployed process-knowledge function.
 
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
+import { extractText as pdfExtractText, getDocumentProxy } from "https://esm.sh/unpdf@0.12.1";
 
 const CHUNK_SIZE = 1000;
 const CHUNK_OVERLAP = 200;
+
+// ── Oracle OCI Generative AI (used instead of the Lovable AI gateway) ──
+const OCI_ENDPOINT =
+  "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions";
+const OCI_MODEL = Deno.env.get("OCI_MODEL") || "meta.llama-4-maverick-17b-128e-instruct-fp8";
+
+function ociKey(): string | undefined {
+  return Deno.env.get("oracleapikey_2") || Deno.env.get("oracleapikey") || Deno.env.get("invoice");
+}
+
+async function ociVision(instruction: string, dataUrl: string, maxTokens = 4096): Promise<string> {
+  const key = ociKey();
+  if (!key) return "";
+  const res = await fetch(OCI_ENDPOINT, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: OCI_MODEL,
+      messages: [{ role: "user", content: [
+        { type: "text", text: instruction },
+        { type: "image_url", image_url: { url: dataUrl } },
+      ] }],
+      max_tokens: maxTokens,
+      temperature: 0,
+    }),
+  });
+  if (!res.ok) { console.error("[ingest] OCI error:", res.status); return ""; }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "";
+}
 
 export function chunkText(text: string): string[] {
   const chunks: string[] = [];
@@ -34,7 +65,6 @@ export async function extractText(
   bytes: Uint8Array,
   fileName: string,
   fileType: string,
-  lovableApiKey?: string,
 ): Promise<string> {
   const type = (fileType || "").toLowerCase();
   const name = (fileName || "").toLowerCase();
@@ -73,29 +103,27 @@ export async function extractText(
 
   if (isText) return new TextDecoder("utf-8").decode(bytes);
 
-  if (isDoc && lovableApiKey) {
-    const base64 = base64Encode(bytes);
-    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: "Extract ALL text content from this document. Return ONLY the raw text, preserving structure. No summaries." },
-          { role: "user", content: [
-            { type: "text", text: "Extract all text from this document:" },
-            { type: "image_url", image_url: { url: `data:${fileType};base64,${base64}` } },
-          ] },
-        ],
-        max_tokens: 4096, temperature: 0,
-      }),
-    });
-    if (resp.ok) {
-      const data = await resp.json();
-      return data.choices?.[0]?.message?.content || "";
+  if (isDoc) {
+    // PDF: local text extraction first (no AI); OCI vision only for scanned PDFs.
+    if (type.includes("pdf") || /\.pdf$/.test(name)) {
+      try {
+        const pdf = await getDocumentProxy(bytes);
+        const { text } = await pdfExtractText(pdf, { mergePages: true });
+        const local = (Array.isArray(text) ? text.join("\n") : text || "").trim();
+        if (local.length >= 20) return local;
+      } catch (e) {
+        console.error("[ingest] local PDF extraction failed:", e);
+      }
+      return await ociVision(
+        "Extract ALL text content from this document. Return ONLY the raw text.",
+        `data:application/pdf;base64,${base64Encode(bytes)}`,
+      );
     }
-    console.error("[ingest] AI extraction failed:", resp.status);
-    return "";
+    // Word / other documents: OCI vision (best effort).
+    return await ociVision(
+      "Extract ALL text content from this document. Return ONLY the raw text, preserving structure.",
+      `data:${fileType};base64,${base64Encode(bytes)}`,
+    );
   }
 
   // Last resort: try UTF-8
@@ -134,7 +162,6 @@ export type IngestAction = "created" | "updated" | "skipped" | "error";
 export async function ingestDocument(
   supabase: any,
   item: IngestItem,
-  lovableApiKey?: string,
 ): Promise<{ action: IngestAction; chunks: number; error?: string }> {
   // Look up an existing row for this source item.
   const { data: existing } = await supabase
@@ -168,7 +195,7 @@ export async function ingestDocument(
       .from("knowledge")
       .upload(path, item.bytes, { upsert: true, contentType: item.fileType || "application/octet-stream" });
     if (!upErr) fileUrl = path;
-    text = await extractText(item.bytes, item.fileName, item.fileType, lovableApiKey);
+    text = await extractText(item.bytes, item.fileName, item.fileType);
   }
 
   text = (text || "").replace(/\u0000/g, "").trim();

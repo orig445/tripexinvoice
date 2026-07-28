@@ -47,8 +47,6 @@ serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, serviceKey);
-    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY") || undefined;
-
     let sources: string[] = ["sharepoint", "zoho_crm"];
     try {
       const body = await req.json();
@@ -56,7 +54,7 @@ serve(async (req) => {
     } catch { /* no body → sync all */ }
 
     const summaries: SyncSummary[] = [];
-    if (sources.includes("sharepoint")) summaries.push(await syncSharePoint(supabase, lovableApiKey));
+    if (sources.includes("sharepoint")) summaries.push(await syncSharePoint(supabase));
     if (sources.includes("zoho_crm")) summaries.push(await syncZohoCrm(supabase));
 
     // Record the run for the admin UI / debugging.
@@ -82,7 +80,7 @@ serve(async (req) => {
 // ─────────────────────────────────────────────────────────────
 // SharePoint (Microsoft Graph, app-only / client credentials)
 // ─────────────────────────────────────────────────────────────
-async function syncSharePoint(supabase: any, lovableApiKey?: string): Promise<SyncSummary> {
+async function syncSharePoint(supabase: any): Promise<SyncSummary> {
   const s: SyncSummary = { source: "sharepoint", ok: false, created: 0, updated: 0, skipped: 0, errors: 0 };
   try {
     const tenant = Deno.env.get("SHAREPOINT_TENANT_ID");
@@ -161,7 +159,7 @@ async function syncSharePoint(supabase: any, lovableApiKey?: string): Promise<Sy
               audience: AUDIENCE,
               domain: "sharepoint",
               bytes,
-            }, lovableApiKey);
+            });
             tally(s, r.action);
           } catch (e) {
             console.error("[sharepoint] item error:", e);
