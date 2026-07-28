@@ -179,6 +179,24 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
 
   const [reprocessingId, setReprocessingId] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [bulk, setBulk] = useState<{ done: number; total: number } | null>(null);
+
+  // Re-run the ingest pipeline (PII scrub + distill + auto-classify) on every
+  // document currently listed — used to clean up files uploaded before distillation.
+  const handleReprocessAll = async () => {
+    const docs = [...documents];
+    if (docs.length === 0) return;
+    setBulk({ done: 0, total: docs.length });
+    let ok = 0;
+    for (let i = 0; i < docs.length; i++) {
+      const { error } = await processKnowledgeDocument(docs[i].id);
+      if (!error) ok++;
+      setBulk({ done: i + 1, total: docs.length });
+    }
+    setBulk(null);
+    toast.success(`זוקקו ${ok}/${docs.length} קבצים (נוקו וסווגו מחדש)`);
+    loadDocuments();
+  };
 
   const handleSync = async () => {
     setIsSyncing(true);
@@ -396,14 +414,22 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
       {/* ── Existing documents ── */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
             <CardTitle className="text-lg">קבצים בבסיס הידע ({documents.length})</CardTitle>
-            {audience === "internal" && (
-              <Button variant="outline" size="sm" className="gap-2" onClick={handleSync} disabled={isSyncing}>
-                <CloudDownload className={`h-4 w-4 ${isSyncing ? "animate-pulse" : ""}`} />
-                {isSyncing ? "מסנכרן..." : "סנכרן מ-SharePoint / Zoho"}
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {documents.length > 0 && (
+                <Button variant="outline" size="sm" className="gap-2" onClick={handleReprocessAll} disabled={!!bulk}>
+                  <RefreshCw className={`h-4 w-4 ${bulk ? "animate-spin" : ""}`} />
+                  {bulk ? `מזקק ${bulk.done}/${bulk.total}...` : "נקה וזקק הכל"}
+                </Button>
+              )}
+              {audience === "internal" && (
+                <Button variant="outline" size="sm" className="gap-2" onClick={handleSync} disabled={isSyncing}>
+                  <CloudDownload className={`h-4 w-4 ${isSyncing ? "animate-pulse" : ""}`} />
+                  {isSyncing ? "מסנכרן..." : "סנכרן מ-SharePoint / Zoho"}
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>

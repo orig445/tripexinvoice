@@ -38,6 +38,104 @@ function chunkText(text: string): string[] {
   return chunks;
 }
 
+// ── PII scrubbing (deterministic safety net) ──
+// Masks the identifiers that show up in Glassix support threads regardless of
+// what the AI distiller does. Applied to the final text before chunking.
+function scrubPII(text: string): string {
+  let t = text;
+  // Email addresses
+  t = t.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, "[email]");
+  // Phone numbers (Israeli / international, 7+ digits with optional separators)
+  t = t.replace(/(?:\+?\d[\d\-\s().]{6,}\d)/g, (m) => (m.replace(/\D/g, "").length >= 7 ? "[phone]" : m));
+  // Email header lines that carry names/addresses
+  t = t.replace(/^\s*(From|To|Cc|Bcc|Sent|Subject|On .* wrote:)\s*:?.*$/gim, "");
+  // Glassix / TAS identifiers
+  t = t.replace(/\bTicket\s*#?\s*:?\s*\d+/gi, "[ticket]");
+  t = t.replace(/\b(TAS)\s*0*\d+[A-Z]?\b/gi, "[TAS]");
+  t = t.replace(/\bמספר פנייה\s*\d+/g, "[פנייה]");
+  t = t.replace(/\b(trip|נסיעה|travel)\s*#?\s*\d{2,}\b/gi, "$1 [id]");
+  t = t.replace(/\bשיחה מזוהה\s*\d+/g, "[מזוהה]");
+  // Collapse blank lines left behind
+  return t.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+interface Normalized {
+  audience?: "external" | "internal";
+  domain?: string;
+  docType?: string;
+  content: string;
+  distilled: boolean;
+}
+
+/**
+ * Turn raw extracted text into clean, de-identified knowledge and classify it.
+ * For support email threads (Glassix) this distills the thread into a generic
+ * problem→solution note and routes it to the customer (external) or staff
+ * (internal) base by relevance. Non-support docs are kept but still scrubbed.
+ * Falls back to a plain PII scrub if the AI is unavailable or fails.
+ */
+async function normalizeKnowledge(rawText: string, lovableApiKey?: string): Promise<Normalized> {
+  const disabled = Deno.env.get("KNOWLEDGE_DISTILL") === "false";
+  if (disabled || !lovableApiKey) {
+    return { content: scrubPII(rawText), distilled: false };
+  }
+
+  const prompt = `You normalize a raw document into clean knowledge for a TripEX/TAS travel & expense support assistant.
+
+Rules:
+1. REMOVE all personal / customer-identifying data: person names, company/customer names, email addresses, phone numbers, ticket numbers, TAS/trip numbers, signatures, email headers (From/To/Sent/Subject). Never keep them.
+2. If the document is a SUPPORT EMAIL THREAD, distill it into a GENERIC, reusable note: the problem/question and the resolution/answer, written as instructions that apply to ANY customer. Drop small talk, greetings, auto-replies.
+3. If it is a guide/policy/reference, keep the substantive content but still remove identifiers.
+4. Decide "audience":
+   - "external" = safe & useful for END CUSTOMERS (how-to, general product answers).
+   - "internal" = for SUPPORT STAFF only (internal troubleshooting, system/config/back-office steps, anything customer-specific or operational).
+5. Pick "domain" (short slug like travel, expenses, invoices, billing, policy, technical, general) and "doc_type" (faq, guide, troubleshooting, policy, reference, other).
+
+Return ONLY compact JSON: {"audience":"external|internal","domain":"...","doc_type":"...","content":"<clean text>"}.
+
+RAW DOCUMENT:
+"""
+${rawText.slice(0, 24000)}
+"""`;
+
+  try {
+    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 4096,
+        temperature: 0,
+      }),
+    });
+    if (!resp.ok) {
+      console.error("[normalize] AI error:", resp.status);
+      return { content: scrubPII(rawText), distilled: false };
+    }
+    const data = await resp.json();
+    let raw = data.choices?.[0]?.message?.content || "";
+    // Strip markdown fences if present
+    raw = raw.replace(/^```(json)?/i, "").replace(/```$/i, "").trim();
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    if (start === -1 || end === -1) return { content: scrubPII(rawText), distilled: false };
+    const parsed = JSON.parse(raw.slice(start, end + 1));
+    const content = scrubPII(String(parsed.content || "").trim());
+    if (content.length < 5) return { content: scrubPII(rawText), distilled: false };
+    return {
+      audience: parsed.audience === "internal" ? "internal" : "external",
+      domain: typeof parsed.domain === "string" ? parsed.domain : undefined,
+      docType: typeof parsed.doc_type === "string" ? parsed.doc_type : undefined,
+      content,
+      distilled: true,
+    };
+  } catch (e) {
+    console.error("[normalize] failed:", e);
+    return { content: scrubPII(rawText), distilled: false };
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -323,8 +421,23 @@ serve(async (req) => {
         throw new Error("No text could be extracted from the file");
       }
 
-      // Chunk the text
-      const chunks = chunkText(extractedText);
+      // ── Normalize: strip PII, distill support threads, classify audience ──
+      const distillKey = Deno.env.get("LOVABLE_API_KEY") || undefined;
+      const norm = await normalizeKnowledge(extractedText, distillKey);
+      const finalText = norm.content || extractedText;
+
+      // Persist the AI's audience/domain/type classification (route by relevance).
+      const metaUpdate: Record<string, unknown> = {};
+      if (norm.audience) metaUpdate.audience = norm.audience;
+      if (norm.domain) metaUpdate.domain = norm.domain;
+      if (norm.docType) metaUpdate.doc_type = norm.docType;
+      if (Object.keys(metaUpdate).length > 0) {
+        await supabase.from("knowledge_documents").update(metaUpdate).eq("id", document_id);
+      }
+      console.log(`[process] distilled=${norm.distilled} audience=${norm.audience ?? "(kept)"} textLen=${finalText.length}`);
+
+      // Chunk the cleaned text
+      const chunks = chunkText(finalText);
 
       // Delete existing chunks for this document
       await supabase
@@ -354,7 +467,9 @@ serve(async (req) => {
       return new Response(JSON.stringify({
         success: true,
         chunks_created: chunks.length,
-        text_length: extractedText.length,
+        text_length: finalText.length,
+        distilled: norm.distilled,
+        audience: norm.audience,
       }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
