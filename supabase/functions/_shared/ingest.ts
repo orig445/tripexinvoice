@@ -3,7 +3,8 @@
 // already-deployed process-knowledge function.
 
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
-import { extractText as pdfExtractText, getDocumentProxy } from "https://esm.sh/unpdf@0.12.1";
+// unpdf is imported dynamically inside the PDF branch (below) so a bundling
+// issue with it can never block this shared module / its functions from deploying.
 
 const CHUNK_SIZE = 1000;
 const CHUNK_OVERLAP = 200;
@@ -107,6 +108,7 @@ export async function extractText(
     // PDF: local text extraction first (no AI); OCI vision only for scanned PDFs.
     if (type.includes("pdf") || /\.pdf$/.test(name)) {
       try {
+        const { getDocumentProxy, extractText: pdfExtractText } = await import("https://esm.sh/unpdf@0.12.1");
         const pdf = await getDocumentProxy(bytes);
         const { text } = await pdfExtractText(pdf, { mergePages: true });
         const local = (Array.isArray(text) ? text.join("\n") : text || "").trim();

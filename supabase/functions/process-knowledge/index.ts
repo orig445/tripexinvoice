@@ -3,8 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { encode as base64Encode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 // Official SheetJS ESM build (recommended for Deno / Supabase Edge Functions).
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
-// Local PDF text extraction (no AI, no quota) — ideal for text-based PDFs.
-import { extractText as pdfExtractText, getDocumentProxy } from "https://esm.sh/unpdf@0.12.1";
+// NOTE: unpdf is imported DYNAMICALLY inside extractPdfTextLocal (not a static
+// top-level import) so a bundling issue with it can never block deployment.
 
 
 const corsHeaders = {
@@ -134,8 +134,10 @@ async function ociVision(instruction: string, dataUrl: string, maxTokens = 4096)
 /** Extract text from a PDF locally (no AI). Returns "" if the PDF has no embedded text. */
 async function extractPdfTextLocal(bytes: Uint8Array): Promise<string> {
   try {
+    // Dynamic import so a bundling problem with unpdf never blocks deployment.
+    const { getDocumentProxy, extractText } = await import("https://esm.sh/unpdf@0.12.1");
     const pdf = await getDocumentProxy(bytes);
-    const { text } = await pdfExtractText(pdf, { mergePages: true });
+    const { text } = await extractText(pdf, { mergePages: true });
     return (Array.isArray(text) ? text.join("\n") : text || "").trim();
   } catch (e) {
     console.error("[pdf] local extraction failed:", e);
