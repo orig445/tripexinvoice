@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, RefreshCw, Mail } from "lucide-react";
+import { Loader2, RefreshCw, Mail, Send } from "lucide-react";
 
 type Cfg = {
   id: string;
@@ -38,6 +38,23 @@ export function OutlookAgent() {
   const [emails, setEmails] = useState<EmailRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [sendingId, setSendingId] = useState<string | null>(null);
+
+  // Manually (re)generate and SEND a reply for one email — for testing.
+  async function sendTestReply(e: EmailRow) {
+    setSendingId(e.id);
+    const { data, error } = await supabase.functions.invoke("outlook-support-agent", {
+      body: { message_id: e.message_id, mode: "auto_reply" },
+    });
+    setSendingId(null);
+    const result = (data as any)?.single;
+    if (error || result?.status === "failed") {
+      toast.error(`Send failed: ${result?.error || error?.message || "unknown error"}`, { duration: 10000 });
+    } else {
+      toast.success("Reply sent ✅");
+    }
+    load();
+  }
 
   async function load() {
     setLoading(true);
@@ -206,7 +223,20 @@ export function OutlookAgent() {
                         From {e.from_name || e.from_address} · {new Date(e.created_at).toLocaleString()}
                       </div>
                     </div>
-                    <Badge variant={statusColor(e.status) as any}>{e.status}</Badge>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <Badge variant={statusColor(e.status) as any}>{e.status}</Badge>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5"
+                        disabled={sendingId === e.id}
+                        onClick={() => sendTestReply(e)}
+                        title="Generate a reply now and send it (test)"
+                      >
+                        {sendingId === e.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                        Send reply
+                      </Button>
+                    </div>
                   </div>
                   {e.body_preview && (
                     <div className="text-sm bg-muted/50 rounded p-2 line-clamp-2">

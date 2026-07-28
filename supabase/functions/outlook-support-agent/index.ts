@@ -137,12 +137,122 @@ Write the reply email body (plain text, no headers).`;
   return j.choices?.[0]?.message?.content?.trim() ?? "";
 }
 
+// Fetch a single Outlook message by id (for the manual "send test reply" button).
+async function fetchMessage(msgId: string): Promise<any | null> {
+  const url = `${GATEWAY}/me/messages/${msgId}?$select=id,conversationId,subject,bodyPreview,body,from,receivedDateTime,isRead`;
+  const resp = await fetch(url, { headers: gwHeaders() });
+  if (!resp.ok) return null;
+  return await resp.json();
+}
+
+// Process one message: generate a reply and draft/send it. Used by both the
+// polling loop and the manual per-email button (force=true bypasses the
+// "already processed" skip so an email can be retried).
+async function processOne(
+  supabase: any,
+  cfg: any,
+  m: any,
+  opts: { force?: boolean; mode?: string } = {},
+): Promise<{ status: string; error?: string; reply?: string }> {
+  const force = opts.force ?? false;
+  const mode = opts.mode ?? cfg.mode ?? "draft";
+  const signature = cfg.signature || "Best regards,\nMilo — TripEX Support";
+
+  const msgId = m.id;
+  const from = m.from?.emailAddress?.address ?? "";
+  const fromName = m.from?.emailAddress?.name ?? "";
+  const subject = m.subject ?? "(no subject)";
+  const receivedAt = m.receivedDateTime;
+  const rawBody = m.body?.contentType === "html"
+    ? stripHtml(m.body?.content ?? "")
+    : (m.body?.content ?? m.bodyPreview ?? "");
+
+  const { data: existing } = await supabase
+    .from("outlook_processed_emails")
+    .select("id")
+    .eq("message_id", msgId)
+    .maybeSingle();
+
+  if (existing && !force) return { status: "skipped" };
+
+  // Reuse the existing row on retry; otherwise insert a fresh pending row.
+  let rowId: string;
+  if (existing) {
+    rowId = existing.id;
+    await supabase.from("outlook_processed_emails")
+      .update({ status: "pending", error_message: null }).eq("id", rowId);
+  } else {
+    const { data: row } = await supabase
+      .from("outlook_processed_emails")
+      .insert({
+        message_id: msgId,
+        conversation_id: m.conversationId,
+        from_address: from,
+        from_name: fromName,
+        subject,
+        received_at: receivedAt,
+        body_preview: rawBody.slice(0, 500),
+        status: "pending",
+      })
+      .select("id")
+      .single();
+    rowId = row!.id;
+  }
+
+  try {
+    const query = `${subject}\n${rawBody}`.slice(0, 800);
+    const kb = await searchKB(supabase, query);
+    const reply = await generateReply(subject, rawBody, fromName, kb, signature);
+    if (!reply) throw new Error("Empty AI reply");
+
+    if (mode === "auto_reply") {
+      const replyResp = await fetch(`${GATEWAY}/me/messages/${msgId}/reply`, {
+        method: "POST",
+        headers: gwHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ comment: reply }),
+      });
+      if (!replyResp.ok) throw new Error(`Outlook reply failed ${replyResp.status}: ${await replyResp.text()}`);
+      await fetch(`${GATEWAY}/me/messages/${msgId}`, {
+        method: "PATCH",
+        headers: gwHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ isRead: true }),
+      });
+      await supabase.from("outlook_processed_emails")
+        .update({ reply_text: reply, status: "sent" }).eq("id", rowId);
+      return { status: "sent", reply };
+    } else {
+      const draftResp = await fetch(`${GATEWAY}/me/messages/${msgId}/createReply`, {
+        method: "POST",
+        headers: gwHeaders({ "Content-Type": "application/json" }),
+      });
+      if (!draftResp.ok) throw new Error(`Outlook createReply failed ${draftResp.status}: ${await draftResp.text()}`);
+      const draft = await draftResp.json();
+      const bodyHtml = reply.split("\n").map((l) => `<p>${l.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`).join("");
+      const patchResp = await fetch(`${GATEWAY}/me/messages/${draft.id}`, {
+        method: "PATCH",
+        headers: gwHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ body: { contentType: "HTML", content: bodyHtml } }),
+      });
+      if (!patchResp.ok) throw new Error(`Outlook draft update failed ${patchResp.status}: ${await patchResp.text()}`);
+      await supabase.from("outlook_processed_emails")
+        .update({ reply_text: reply, status: "draft_created" }).eq("id", rowId);
+      return { status: "draft_created", reply };
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await supabase.from("outlook_processed_emails")
+      .update({ status: "failed", error_message: msg }).eq("id", rowId);
+    return { status: "failed", error: msg };
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
   const summary = { fetched: 0, processed: 0, sent: 0, drafts: 0, skipped: 0, errors: 0 as number };
   const details: any[] = [];
+  const reqBody = await req.json().catch(() => ({} as any));
 
   try {
     // Load config
@@ -166,8 +276,21 @@ serve(async (req) => {
     }
 
     const folder = cfg.folder || "inbox";
-    const mode = cfg.mode || "draft";
-    const signature = cfg.signature || "Best regards,\nMilo — TripEX Support";
+
+    // ── Manual single-email processing (the per-email "send test reply" button) ──
+    if (reqBody?.message_id) {
+      const one = await fetchMessage(reqBody.message_id);
+      if (!one) {
+        return new Response(JSON.stringify({ error: "Message not found in mailbox" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const r = await processOne(supabase, cfg, one, { force: true, mode: reqBody.mode || cfg.mode });
+      return new Response(JSON.stringify({ single: r }), {
+        status: r.status === "failed" ? 500 : 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Fetch unread messages
     const listUrl = `${GATEWAY}/me/mailFolders/${folder}/messages?$filter=isRead eq false&$top=10&$orderby=receivedDateTime desc&$select=id,conversationId,subject,bodyPreview,body,from,receivedDateTime,isRead`;
@@ -184,109 +307,13 @@ serve(async (req) => {
     summary.fetched = messages.length;
 
     for (const m of messages) {
-      const msgId = m.id;
-      const from = m.from?.emailAddress?.address ?? "";
-      const fromName = m.from?.emailAddress?.name ?? "";
-      const subject = m.subject ?? "(no subject)";
-      const receivedAt = m.receivedDateTime;
-      const rawBody = m.body?.contentType === "html"
-        ? stripHtml(m.body?.content ?? "")
-        : (m.body?.content ?? m.bodyPreview ?? "");
-
-      // Idempotency
-      const { data: existing } = await supabase
-        .from("outlook_processed_emails")
-        .select("id")
-        .eq("message_id", msgId)
-        .maybeSingle();
-      if (existing) {
-        summary.skipped++;
-        continue;
-      }
-
-      // Insert pending row
-      const { data: row } = await supabase
-        .from("outlook_processed_emails")
-        .insert({
-          message_id: msgId,
-          conversation_id: m.conversationId,
-          from_address: from,
-          from_name: fromName,
-          subject,
-          received_at: receivedAt,
-          body_preview: rawBody.slice(0, 500),
-          status: "pending",
-        })
-        .select("id")
-        .single();
-
-      try {
-        const query = `${subject}\n${rawBody}`.slice(0, 800);
-        const kb = await searchKB(supabase, query);
-        const reply = await generateReply(subject, rawBody, fromName, kb, signature);
-
-        if (!reply) throw new Error("Empty AI reply");
-
-        if (mode === "auto_reply") {
-          const replyResp = await fetch(`${GATEWAY}/me/messages/${msgId}/reply`, {
-            method: "POST",
-            headers: gwHeaders({ "Content-Type": "application/json" }),
-            body: JSON.stringify({ comment: reply }),
-          });
-          if (!replyResp.ok) {
-            const t = await replyResp.text();
-            throw new Error(`Outlook reply failed ${replyResp.status}: ${t}`);
-          }
-          // Mark as read
-          await fetch(`${GATEWAY}/me/messages/${msgId}`, {
-            method: "PATCH",
-            headers: gwHeaders({ "Content-Type": "application/json" }),
-            body: JSON.stringify({ isRead: true }),
-          });
-          await supabase
-            .from("outlook_processed_emails")
-            .update({ reply_text: reply, status: "sent" })
-            .eq("id", row!.id);
-          summary.sent++;
-        } else {
-          // Create draft reply
-          const draftResp = await fetch(`${GATEWAY}/me/messages/${msgId}/createReply`, {
-            method: "POST",
-            headers: gwHeaders({ "Content-Type": "application/json" }),
-          });
-          if (!draftResp.ok) {
-            const t = await draftResp.text();
-            throw new Error(`Outlook createReply failed ${draftResp.status}: ${t}`);
-          }
-          const draft = await draftResp.json();
-          // Update draft body
-          const bodyHtml = reply.split("\n").map(l => `<p>${l.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`).join("");
-          const patchResp = await fetch(`${GATEWAY}/me/messages/${draft.id}`, {
-            method: "PATCH",
-            headers: gwHeaders({ "Content-Type": "application/json" }),
-            body: JSON.stringify({ body: { contentType: "HTML", content: bodyHtml } }),
-          });
-          if (!patchResp.ok) {
-            const t = await patchResp.text();
-            throw new Error(`Outlook draft update failed ${patchResp.status}: ${t}`);
-          }
-          await supabase
-            .from("outlook_processed_emails")
-            .update({ reply_text: reply, status: "draft_created" })
-            .eq("id", row!.id);
-          summary.drafts++;
-        }
-        summary.processed++;
-        details.push({ subject, from, status: mode === "auto_reply" ? "sent" : "draft_created" });
-      } catch (err) {
-        summary.errors++;
-        const msg = err instanceof Error ? err.message : String(err);
-        await supabase
-          .from("outlook_processed_emails")
-          .update({ status: "failed", error_message: msg })
-          .eq("id", row!.id);
-        details.push({ subject, from, status: "failed", error: msg });
-      }
+      const r = await processOne(supabase, cfg, m);
+      if (r.status === "sent") summary.sent++;
+      else if (r.status === "draft_created") summary.drafts++;
+      else if (r.status === "skipped") summary.skipped++;
+      else if (r.status === "failed") summary.errors++;
+      if (r.status !== "skipped") summary.processed++;
+      details.push({ subject: m.subject, from: m.from?.emailAddress?.address, status: r.status, error: r.error });
     }
 
     await supabase
