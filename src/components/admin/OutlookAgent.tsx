@@ -172,10 +172,6 @@ export function OutlookAgent() {
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Save settings
             </Button>
-            <Button variant="secondary" onClick={runNow} disabled={running}>
-              {running ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
-              Run now
-            </Button>
             <Button variant="ghost" onClick={load}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
