@@ -129,7 +129,8 @@ ${kb || "(no relevant knowledge base entries found)"}`;
       model: OCI_MODEL,
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: `Customer${senderName ? ` (${senderName})` : ""} asks (respond in English):\n${question}` },
+        ...history.map((h) => ({ role: h.role, content: h.content })),
+        { role: "user", content: `${senderName ? `[${senderName}] ` : ""}${question}` },
       ],
       max_tokens: 1024,
       temperature: 0.3,
