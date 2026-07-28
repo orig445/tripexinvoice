@@ -16,6 +16,15 @@ const OUTLOOK_KEY = Deno.env.get("MICROSOFT_OUTLOOK_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+// AI reply generation runs on Oracle OCI (same key the chat uses), NOT the
+// Lovable AI gateway — the Lovable gateway ran out of credits (HTTP 402).
+const OCI_ENDPOINT =
+  "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions";
+const OCI_MODEL = Deno.env.get("OCI_MODEL") || "meta.llama-4-maverick-17b-128e-instruct-fp8";
+function ociKey(): string {
+  return Deno.env.get("oracleapikey_2") || Deno.env.get("oracleapikey") || Deno.env.get("invoice") || "";
+}
+
 function gwHeaders(extra: Record<string, string> = {}) {
   return {
     Authorization: `Bearer ${LOVABLE_API_KEY}`,
@@ -41,10 +50,28 @@ async function searchKB(supabase: any, query: string): Promise<string> {
   try {
     const { data } = await supabase.rpc("search_knowledge", {
       query_text: query,
-      max_results: 5,
+      max_results: 8,
     });
     if (!data || data.length === 0) return "";
+
+    // Email replies go to CUSTOMERS → only external (or legacy untagged) docs.
+    const ids = [...new Set(data.map((d: any) => d.document_id).filter(Boolean))];
+    let allowed = new Set<string>(ids);
+    if (ids.length > 0) {
+      const { data: docs, error } = await supabase
+        .from("knowledge_documents")
+        .select("id, audience")
+        .in("id", ids);
+      if (!error && docs) {
+        allowed = new Set(
+          docs.filter((d: any) => (d.audience ?? "external") === "external").map((d: any) => d.id),
+        );
+      }
+    }
+
     return data
+      .filter((d: any) => allowed.has(d.document_id))
+      .slice(0, 5)
       .map((d: any) => `[${d.file_name}]: ${d.content}`)
       .join("\n\n");
   } catch {
@@ -82,25 +109,29 @@ ${body}
 
 Write the reply email body (plain text, no headers).`;
 
-  const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const key = ociKey();
+  if (!key) throw new Error("Oracle API key not configured (oracleapikey_2 / oracleapikey / invoice)");
+
+  const resp = await fetch(OCI_ENDPOINT, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
+      Authorization: `Bearer ${key}`,
     },
     body: JSON.stringify({
-      model: "openai/gpt-5.6-sol",
-      reasoning_effort: "none",
+      model: OCI_MODEL,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
+      max_tokens: 2048,
+      temperature: 0.3,
     }),
   });
 
   if (!resp.ok) {
     const t = await resp.text();
-    throw new Error(`AI gateway ${resp.status}: ${t}`);
+    throw new Error(`OCI AI ${resp.status}: ${t}`);
   }
   const j = await resp.json();
   return j.choices?.[0]?.message?.content?.trim() ?? "";
