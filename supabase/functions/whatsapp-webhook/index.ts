@@ -48,7 +48,11 @@ async function searchKB(supabase: any, query: string): Promise<string> {
   }
 }
 
-async function generateReply(question: string, senderName: string, kb: string): Promise<string> {
+const SUPPORT_EMAIL = Deno.env.get("SUPPORT_EMAIL") || "support@tripex.co.il";
+// Marker the model uses to signal "I can't answer from the KB — escalate".
+const ESCALATE_TAG = "[[ESCALATE]]";
+
+async function generateReply(question: string, senderName: string, kb: string): Promise<{ reply: string; escalate: boolean }> {
   const key = ociKey();
   if (!key) throw new Error("Oracle API key not configured");
 
@@ -56,9 +60,9 @@ async function generateReply(question: string, senderName: string, kb: string): 
 RULES:
 - Reply in the SAME LANGUAGE the customer used (Hebrew if they wrote Hebrew).
 - Ground your answer STRICTLY in the Knowledge Base Context below. Never invent facts, prices, features or policies.
-- If the Knowledge Base doesn't contain the answer, say so politely and offer to connect a human agent.
 - PRIVACY: never reveal other customers' personal data — names, emails, phone numbers, company names, ticket/TAS/trip numbers.
 - Keep it concise and friendly for chat (short paragraphs, no email headers/signature).
+- ESCALATION: if the request is too complex, requires account-specific action, involves billing/refund/legal/security, or the Knowledge Base does NOT contain a clear answer — reply with a short polite message telling the customer you'll route them to human support at ${SUPPORT_EMAIL}, and END your reply with the exact token ${ESCALATE_TAG} on its own line. Do not include ${ESCALATE_TAG} when you were able to answer from the KB.
 
 Knowledge Base Context:
 ${kb || "(no relevant knowledge base entries found)"}`;
@@ -78,7 +82,20 @@ ${kb || "(no relevant knowledge base entries found)"}`;
   });
   if (!resp.ok) throw new Error(`OCI AI ${resp.status}: ${await resp.text()}`);
   const j = await resp.json();
-  return j.choices?.[0]?.message?.content?.trim() ?? "";
+  const raw = (j.choices?.[0]?.message?.content ?? "").trim();
+  const escalate = raw.includes(ESCALATE_TAG) || !kb;
+  const reply = raw.replace(ESCALATE_TAG, "").trim();
+  return { reply, escalate };
+}
+
+function isHebrew(s: string): boolean {
+  return /[\u0590-\u05FF]/.test(s);
+}
+
+function escalationSuffix(question: string): string {
+  return isHebrew(question)
+    ? `\n\n📩 לפנייה מפורטת יותר, אנא כתבו לנו למייל: ${SUPPORT_EMAIL} — נציג אנושי יחזור אליכם בהקדם.`
+    : `\n\n📩 For a more detailed request, please email us at: ${SUPPORT_EMAIL} — a human agent will get back to you shortly.`;
 }
 
 async function sendWhatsApp(chatId: string, message: string): Promise<void> {
@@ -134,20 +151,32 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
     let reply = "";
+    let escalated = false;
     try {
       const kb = await searchKB(supabase, text.slice(0, 800));
-      reply = await generateReply(text, senderName, kb);
+      const out = await generateReply(text, senderName, kb);
+      reply = out.reply;
+      escalated = out.escalate;
     } catch (e) {
       console.error("[whatsapp] generate failed:", e);
-      reply = "מצטער, יש כרגע תקלה זמנית. נציג אנושי יחזור אליך בהקדם. 🙏";
+      reply = isHebrew(text)
+        ? "מצטער, יש כרגע תקלה זמנית."
+        : "Sorry, we're having a temporary issue.";
+      escalated = true;
     }
-    if (!reply) reply = "לא הצלחתי למצוא תשובה מדויקת. אעביר את פנייתך לנציג אנושי. 🙏";
+    if (!reply) {
+      reply = isHebrew(text)
+        ? "לא הצלחתי למצוא תשובה מדויקת."
+        : "I couldn't find a precise answer.";
+      escalated = true;
+    }
+    if (escalated) reply += escalationSuffix(text);
 
     await sendWhatsApp(chatId, reply);
 
     await supabase.from("chatbot_logs").insert({
       event_type: "whatsapp_reply",
-      details: { chatId, senderName, question: text.slice(0, 500), reply: reply.slice(0, 1000) },
+      details: { chatId, senderName, escalated, question: text.slice(0, 500), reply: reply.slice(0, 1000) },
     }).catch(() => {});
 
     return ok();
