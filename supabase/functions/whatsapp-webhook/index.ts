@@ -151,20 +151,32 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
     let reply = "";
+    let escalated = false;
     try {
       const kb = await searchKB(supabase, text.slice(0, 800));
-      reply = await generateReply(text, senderName, kb);
+      const out = await generateReply(text, senderName, kb);
+      reply = out.reply;
+      escalated = out.escalate;
     } catch (e) {
       console.error("[whatsapp] generate failed:", e);
-      reply = "מצטער, יש כרגע תקלה זמנית. נציג אנושי יחזור אליך בהקדם. 🙏";
+      reply = isHebrew(text)
+        ? "מצטער, יש כרגע תקלה זמנית."
+        : "Sorry, we're having a temporary issue.";
+      escalated = true;
     }
-    if (!reply) reply = "לא הצלחתי למצוא תשובה מדויקת. אעביר את פנייתך לנציג אנושי. 🙏";
+    if (!reply) {
+      reply = isHebrew(text)
+        ? "לא הצלחתי למצוא תשובה מדויקת."
+        : "I couldn't find a precise answer.";
+      escalated = true;
+    }
+    if (escalated) reply += escalationSuffix(text);
 
     await sendWhatsApp(chatId, reply);
 
     await supabase.from("chatbot_logs").insert({
       event_type: "whatsapp_reply",
-      details: { chatId, senderName, question: text.slice(0, 500), reply: reply.slice(0, 1000) },
+      details: { chatId, senderName, escalated, question: text.slice(0, 500), reply: reply.slice(0, 1000) },
     }).catch(() => {});
 
     return ok();
