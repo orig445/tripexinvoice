@@ -13,3 +13,7 @@ verify_jwt = false
 
 [functions.outlook-support-agent]
 verify_jwt = false
+
+# Public webhook — Green API POSTs incoming WhatsApp messages here (no JWT).
+[functions.whatsapp-webhook]
+verify_jwt = false
