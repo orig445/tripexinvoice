@@ -38,7 +38,6 @@ export function OutlookAgent() {
   const [emails, setEmails] = useState<EmailRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [running, setRunning] = useState(false);
 
   async function load() {
     setLoading(true);
