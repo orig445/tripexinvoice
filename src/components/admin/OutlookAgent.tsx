@@ -102,8 +102,8 @@ export function OutlookAgent() {
             Outlook Customer Support Agent
           </CardTitle>
           <CardDescription>
-            Milo reads unread emails from your connected Outlook mailbox and either drafts a reply
-            or auto-sends it, grounded in your knowledge base.
+            Milo runs automatically every 2 minutes, reading unread emails from your connected Outlook mailbox
+            and either drafting a reply or auto-sending it, grounded in your knowledge base.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
