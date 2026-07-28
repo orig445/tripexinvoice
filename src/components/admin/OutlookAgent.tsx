@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, RefreshCw, Mail, Play } from "lucide-react";
+import { Loader2, RefreshCw, Mail } from "lucide-react";
 
 type Cfg = {
   id: string;
@@ -38,7 +38,6 @@ export function OutlookAgent() {
   const [emails, setEmails] = useState<EmailRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [running, setRunning] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -76,28 +75,6 @@ export function OutlookAgent() {
     else toast.success("Settings saved");
   }
 
-  async function runNow() {
-    setRunning(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("outlook-support-agent", {
-        body: {},
-      });
-      if (error) throw error;
-      const s = (data as any)?.summary;
-      if (s) {
-        toast.success(
-          `Fetched ${s.fetched}, processed ${s.processed}, sent ${s.sent}, drafts ${s.drafts}, errors ${s.errors}`,
-        );
-      } else if ((data as any)?.skipped) {
-        toast.info("Agent is disabled");
-      }
-      await load();
-    } catch (err: any) {
-      toast.error("Run failed: " + (err?.message || String(err)));
-    } finally {
-      setRunning(false);
-    }
-  }
 
   if (loading || !cfg) {
     return (
@@ -125,8 +102,8 @@ export function OutlookAgent() {
             Outlook Customer Support Agent
           </CardTitle>
           <CardDescription>
-            Milo reads unread emails from your connected Outlook mailbox and either drafts a reply
-            or auto-sends it, grounded in your knowledge base.
+            Milo runs automatically every 2 minutes, reading unread emails from your connected Outlook mailbox
+            and either drafting a reply or auto-sending it, grounded in your knowledge base.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -194,10 +171,6 @@ export function OutlookAgent() {
             <Button onClick={save} disabled={saving}>
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Save settings
-            </Button>
-            <Button variant="secondary" onClick={runNow} disabled={running}>
-              {running ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
-              Run now
             </Button>
             <Button variant="ghost" onClick={load}>
               <RefreshCw className="h-4 w-4 mr-2" />

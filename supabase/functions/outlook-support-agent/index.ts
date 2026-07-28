@@ -89,12 +89,12 @@ Write the reply email body (plain text, no headers).`;
       Authorization: `Bearer ${LOVABLE_API_KEY}`,
     },
     body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
+      model: "openai/gpt-5.6-sol",
+      reasoning_effort: "none",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      temperature: 0.3,
     }),
   });
 
