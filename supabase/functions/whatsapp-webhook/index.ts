@@ -215,8 +215,11 @@ serve(async (req) => {
     let reply = "";
     let escalated = false;
     try {
-      const kb = await searchKB(supabase, text.slice(0, 800));
-      const out = await generateReply(text, senderName, kb);
+      const [kb, history] = await Promise.all([
+        searchKB(supabase, text.slice(0, 800)),
+        loadHistory(supabase, chatId, 30),
+      ]);
+      const out = await generateReply(text, senderName, kb, history);
       reply = out.reply;
       escalated = out.escalate;
     } catch (e) {
@@ -231,6 +234,10 @@ serve(async (req) => {
     if (escalated) reply += escalationSuffix();
 
     await sendWhatsApp(chatId, reply);
+
+    // Persist both sides of the turn for long-term per-chat memory.
+    await saveTurn(supabase, chatId, senderName, "user", text);
+    await saveTurn(supabase, chatId, senderName, "assistant", reply);
 
     try {
       await supabase.from("chatbot_logs").insert({
