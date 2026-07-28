@@ -75,28 +75,6 @@ export function OutlookAgent() {
     else toast.success("Settings saved");
   }
 
-  async function runNow() {
-    setRunning(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("outlook-support-agent", {
-        body: {},
-      });
-      if (error) throw error;
-      const s = (data as any)?.summary;
-      if (s) {
-        toast.success(
-          `Fetched ${s.fetched}, processed ${s.processed}, sent ${s.sent}, drafts ${s.drafts}, errors ${s.errors}`,
-        );
-      } else if ((data as any)?.skipped) {
-        toast.info("Agent is disabled");
-      }
-      await load();
-    } catch (err: any) {
-      toast.error("Run failed: " + (err?.message || String(err)));
-    } finally {
-      setRunning(false);
-    }
-  }
 
   if (loading || !cfg) {
     return (
