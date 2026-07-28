@@ -181,22 +181,37 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
   const [isSyncing, setIsSyncing] = useState(false);
   const [bulk, setBulk] = useState<{ done: number; total: number } | null>(null);
 
-  // Re-run the ingest pipeline (PII scrub + distill + auto-classify) on every
-  // document currently listed — used to clean up files uploaded before distillation.
-  const handleReprocessAll = async () => {
-    const docs = [...documents];
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  // Process a list of docs sequentially, throttled, with one backoff retry per
+  // file — avoids hammering the AI gateway (rate limits) when running in bulk.
+  const runBatch = async (docs: KnowledgeDoc[], label: string) => {
     if (docs.length === 0) return;
     setBulk({ done: 0, total: docs.length });
     let ok = 0;
     for (let i = 0; i < docs.length; i++) {
-      const { error } = await processKnowledgeDocument(docs[i].id);
+      let { error } = await processKnowledgeDocument(docs[i].id);
+      if (error) {
+        // one retry after a short backoff (helps with transient 429s)
+        await sleep(3000);
+        ({ error } = await processKnowledgeDocument(docs[i].id));
+      }
       if (!error) ok++;
       setBulk({ done: i + 1, total: docs.length });
+      await sleep(800); // throttle between files
     }
     setBulk(null);
-    toast.success(`זוקקו ${ok}/${docs.length} קבצים (נוקו וסווגו מחדש)`);
+    toast.success(`${label}: ${ok}/${docs.length} הצליחו${ok < docs.length ? `, ${docs.length - ok} עדיין נכשלו` : ""}`,
+      { duration: 8000 });
     loadDocuments();
   };
+
+  // Re-run the ingest pipeline (PII scrub + distill + auto-classify) on every
+  // document currently listed — used to clean up files uploaded before distillation.
+  const handleReprocessAll = () => runBatch([...documents], "זוקקו");
+
+  // Retry only the documents that ended in "error".
+  const handleRetryFailed = () => runBatch(documents.filter((d) => d.status === "error"), "שוחזרו");
 
   const handleSync = async () => {
     setIsSyncing(true);
@@ -417,6 +432,12 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <CardTitle className="text-lg">קבצים בבסיס הידע ({documents.length})</CardTitle>
             <div className="flex items-center gap-2">
+              {documents.some((d) => d.status === "error") && (
+                <Button variant="outline" size="sm" className="gap-2 text-amber-700 border-amber-300" onClick={handleRetryFailed} disabled={!!bulk}>
+                  <RefreshCw className={`h-4 w-4 ${bulk ? "animate-spin" : ""}`} />
+                  {bulk ? `משחזר ${bulk.done}/${bulk.total}...` : `נסה שוב את השגיאות (${documents.filter((d) => d.status === "error").length})`}
+                </Button>
+              )}
               {documents.length > 0 && (
                 <Button variant="outline" size="sm" className="gap-2" onClick={handleReprocessAll} disabled={!!bulk}>
                   <RefreshCw className={`h-4 w-4 ${bulk ? "animate-spin" : ""}`} />

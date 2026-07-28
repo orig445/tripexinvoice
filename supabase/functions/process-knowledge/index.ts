@@ -59,6 +59,24 @@ function scrubPII(text: string): string {
   return t.replace(/\n{3,}/g, "\n\n").trim();
 }
 
+// Fetch that retries on rate limit (429) / transient (503) with exponential
+// backoff, honoring Retry-After when present. Prevents bulk reprocessing from
+// failing the whole batch when the AI gateway throttles.
+async function aiFetchWithRetry(url: string, init: RequestInit, tries = 4): Promise<Response> {
+  let delay = 1500;
+  for (let attempt = 1; attempt <= tries; attempt++) {
+    const res = await fetch(url, init);
+    if (res.status !== 429 && res.status !== 503) return res;
+    if (attempt === tries) return res;
+    const retryAfter = Number(res.headers.get("retry-after"));
+    const wait = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : delay;
+    console.warn(`[ai] ${res.status} — backing off ${wait}ms (attempt ${attempt}/${tries})`);
+    await new Promise((r) => setTimeout(r, wait));
+    delay *= 2;
+  }
+  return fetch(url, init);
+}
+
 interface Normalized {
   audience?: "external" | "internal";
   domain?: string;
@@ -99,7 +117,7 @@ ${rawText.slice(0, 24000)}
 """`;
 
   try {
-    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const resp = await aiFetchWithRetry("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -274,7 +292,7 @@ serve(async (req) => {
           const base64 = base64Encode(uint8);
           const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
           if (LOVABLE_API_KEY) {
-            const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            const resp = await aiFetchWithRetry("https://ai.gateway.lovable.dev/v1/chat/completions", {
               method: "POST",
               headers: {
                 Authorization: `Bearer ${LOVABLE_API_KEY}`,
@@ -321,7 +339,7 @@ serve(async (req) => {
           throw new Error("LOVABLE_API_KEY not configured");
         }
 
-        const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        const response = await aiFetchWithRetry("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${LOVABLE_API_KEY}`,
