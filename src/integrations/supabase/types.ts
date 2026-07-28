@@ -422,6 +422,81 @@ export type Database = {
         }
         Relationships: []
       }
+      outlook_agent_config: {
+        Row: {
+          enabled: boolean
+          folder: string
+          id: string
+          last_run_at: string | null
+          mode: string
+          signature: string
+          updated_at: string
+        }
+        Insert: {
+          enabled?: boolean
+          folder?: string
+          id?: string
+          last_run_at?: string | null
+          mode?: string
+          signature?: string
+          updated_at?: string
+        }
+        Update: {
+          enabled?: boolean
+          folder?: string
+          id?: string
+          last_run_at?: string | null
+          mode?: string
+          signature?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      outlook_processed_emails: {
+        Row: {
+          body_preview: string | null
+          conversation_id: string | null
+          created_at: string
+          error_message: string | null
+          from_address: string | null
+          from_name: string | null
+          id: string
+          message_id: string
+          received_at: string | null
+          reply_text: string | null
+          status: string
+          subject: string | null
+        }
+        Insert: {
+          body_preview?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          from_address?: string | null
+          from_name?: string | null
+          id?: string
+          message_id: string
+          received_at?: string | null
+          reply_text?: string | null
+          status?: string
+          subject?: string | null
+        }
+        Update: {
+          body_preview?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          from_address?: string | null
+          from_name?: string | null
+          id?: string
+          message_id?: string
+          received_at?: string | null
+          reply_text?: string | null
+          status?: string
+          subject?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
