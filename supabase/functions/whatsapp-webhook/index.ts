@@ -75,7 +75,37 @@ const SUPPORT_EMAIL = Deno.env.get("SUPPORT_EMAIL") || "support@tripex.co.il";
 // Marker the model uses to signal "I can't answer from the KB — escalate".
 const ESCALATE_TAG = "[[ESCALATE]]";
 
-async function generateReply(question: string, senderName: string, kb: string): Promise<{ reply: string; escalate: boolean }> {
+type ChatTurn = { role: "user" | "assistant"; content: string };
+
+async function loadHistory(supabase: any, chatId: string, limit = 30): Promise<ChatTurn[]> {
+  try {
+    const { data } = await supabase
+      .from("whatsapp_messages")
+      .select("role, content, created_at")
+      .eq("chat_id", chatId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (!data) return [];
+    return data.reverse().map((r: any) => ({ role: r.role, content: r.content }));
+  } catch {
+    return [];
+  }
+}
+
+async function saveTurn(supabase: any, chatId: string, senderName: string, role: "user" | "assistant", content: string) {
+  try {
+    await supabase.from("whatsapp_messages").insert({
+      chat_id: chatId,
+      sender_name: senderName || null,
+      role,
+      content: content.slice(0, 4000),
+    });
+  } catch (e) {
+    console.error("[whatsapp] saveTurn failed:", e);
+  }
+}
+
+async function generateReply(question: string, senderName: string, kb: string, history: ChatTurn[]): Promise<{ reply: string; escalate: boolean }> {
   const key = ociKey();
   if (!key) throw new Error("Oracle API key not configured");
 
