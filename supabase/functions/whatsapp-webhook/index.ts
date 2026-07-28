@@ -179,18 +179,14 @@ serve(async (req) => {
       escalated = out.escalate;
     } catch (e) {
       console.error("[whatsapp] generate failed:", e);
-      reply = isHebrew(text)
-        ? "מצטער, יש כרגע תקלה זמנית."
-        : "Sorry, we're having a temporary issue.";
+      reply = "Sorry, we're having a temporary issue.";
       escalated = true;
     }
     if (!reply) {
-      reply = isHebrew(text)
-        ? "לא הצלחתי למצוא תשובה מדויקת."
-        : "I couldn't find a precise answer.";
+      reply = "I couldn't find a precise answer.";
       escalated = true;
     }
-    if (escalated) reply += escalationSuffix(text);
+    if (escalated) reply += escalationSuffix();
 
     await sendWhatsApp(chatId, reply);
 
