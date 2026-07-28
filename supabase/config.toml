@@ -10,3 +10,6 @@ verify_jwt = false
 # Auth is enforced inside the function (SYNC_SECRET header or a signed-in user).
 [functions.sync-knowledge-sources]
 verify_jwt = false
+
+[functions.outlook-support-agent]
+verify_jwt = false
