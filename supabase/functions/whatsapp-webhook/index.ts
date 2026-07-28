@@ -192,38 +192,95 @@ serve(async (req) => {
   const ok = () =>
     new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+  const startedAt = Date.now();
+  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
+  const log = async (event_type: string, details: Record<string, unknown>) => {
+    try {
+      console.log(`[whatsapp][${event_type}]`, JSON.stringify(details));
+      await supabase.from("chatbot_logs").insert({ event_type, details });
+    } catch (e) {
+      console.error("[whatsapp] log failed:", e);
+    }
+  };
+
   try {
     const body = await req.json().catch(() => ({} as any));
 
     // Only react to inbound customer messages — ignore delivery statuses, our own
     // outgoing messages, instance-state changes, etc. (prevents reply loops).
-    if (body?.typeWebhook !== "incomingMessageReceived") return ok();
+    if (body?.typeWebhook !== "incomingMessageReceived") {
+      await log("whatsapp_webhook_skip", { typeWebhook: body?.typeWebhook });
+      return ok();
+    }
 
     const chatId: string = body?.senderData?.chatId ?? "";
     const senderName: string = body?.senderData?.senderName ?? "";
     const md = body?.messageData ?? {};
-    const text: string =
+    const typeMessage: string = md?.typeMessage ?? "";
+
+    await log("whatsapp_incoming", {
+      chatId, senderName, typeMessage,
+      hasText: !!(md?.textMessageData?.textMessage ?? md?.extendedTextMessageData?.text),
+      hasFile: !!(md?.fileMessageData?.downloadUrl),
+      mimeType: md?.fileMessageData?.mimeType,
+      fileName: md?.fileMessageData?.fileName,
+    });
+
+    if (!chatId || !chatId.endsWith("@c.us")) {
+      await log("whatsapp_webhook_skip", { reason: "not_1to1_chat", chatId });
+      return ok();
+    }
+
+    let text: string =
       md?.textMessageData?.textMessage ??
       md?.extendedTextMessageData?.text ??
+      md?.fileMessageData?.caption ??
       "";
 
-    // Only handle 1:1 text messages for now (skip groups and non-text).
-    if (!chatId || !chatId.endsWith("@c.us") || !text.trim()) return ok();
+    // Voice / audio message → transcribe via Lovable AI (Gemini accepts audio).
+    const isAudio = typeMessage === "audioMessage" ||
+      (md?.fileMessageData?.mimeType ?? "").toLowerCase().startsWith("audio/");
+    if (!text.trim() && isAudio) {
+      const downloadUrl: string = md?.fileMessageData?.downloadUrl ?? "";
+      const mimeType: string = md?.fileMessageData?.mimeType ?? "audio/ogg";
+      await log("whatsapp_audio_received", { chatId, mimeType, downloadUrl: downloadUrl ? "present" : "missing" });
+      if (downloadUrl) {
+        try {
+          text = await transcribeAudio(downloadUrl, mimeType);
+          await log("whatsapp_audio_transcribed", { chatId, chars: text.length, preview: text.slice(0, 200) });
+        } catch (e) {
+          await log("whatsapp_audio_transcribe_failed", { chatId, error: String(e) });
+        }
+      }
+      if (!text.trim()) {
+        const fallback = "Sorry, I couldn't understand the voice note. Could you please type your question?";
+        await sendWhatsApp(chatId, fallback);
+        await saveTurn(supabase, chatId, senderName, "assistant", fallback);
+        return ok();
+      }
+    }
 
-    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
+    if (!text.trim()) {
+      await log("whatsapp_webhook_skip", { reason: "unsupported_or_empty", typeMessage });
+      return ok();
+    }
 
     let reply = "";
     let escalated = false;
+    let kbChars = 0;
+    let historyCount = 0;
     try {
       const [kb, history] = await Promise.all([
         searchKB(supabase, text.slice(0, 800)),
         loadHistory(supabase, chatId, 30),
       ]);
+      kbChars = kb.length;
+      historyCount = history.length;
       const out = await generateReply(text, senderName, kb, history);
       reply = out.reply;
       escalated = out.escalate;
     } catch (e) {
-      console.error("[whatsapp] generate failed:", e);
+      await log("whatsapp_generate_failed", { chatId, error: String(e) });
       reply = "Sorry, we're having a temporary issue.";
       escalated = true;
     }
@@ -239,19 +296,67 @@ serve(async (req) => {
     await saveTurn(supabase, chatId, senderName, "user", text);
     await saveTurn(supabase, chatId, senderName, "assistant", reply);
 
-    try {
-      await supabase.from("chatbot_logs").insert({
-        event_type: "whatsapp_reply",
-        details: { chatId, senderName, escalated, question: text.slice(0, 500), reply: reply.slice(0, 1000) },
-      });
-    } catch (e) {
-      console.error("[whatsapp] log insert failed:", e);
-    }
+    await log("whatsapp_reply", {
+      chatId, senderName, escalated,
+      typeMessage, kbChars, historyCount,
+      elapsedMs: Date.now() - startedAt,
+      question: text.slice(0, 500),
+      reply: reply.slice(0, 1000),
+    });
 
     return ok();
   } catch (err) {
-    console.error("[whatsapp] webhook error:", err);
+    await log("whatsapp_webhook_error", { error: String(err), stack: (err as Error)?.stack });
     // Return 200 so Green API doesn't retry-storm on our internal errors.
     return ok();
   }
 });
+
+// ---------- Audio transcription (Lovable AI Gateway / Gemini) ----------
+async function transcribeAudio(downloadUrl: string, mimeType: string): Promise<string> {
+  const LOVABLE_KEY = Deno.env.get("LOVABLE_API_KEY") || "";
+  if (!LOVABLE_KEY) throw new Error("LOVABLE_API_KEY not configured");
+
+  const audioResp = await fetch(downloadUrl);
+  if (!audioResp.ok) throw new Error(`download audio ${audioResp.status}`);
+  const audioBuf = new Uint8Array(await audioResp.arrayBuffer());
+
+  // base64 encode
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < audioBuf.length; i += chunk) {
+    binary += String.fromCharCode(...audioBuf.subarray(i, i + chunk));
+  }
+  const b64 = btoa(binary);
+
+  // Map mime → format hint accepted by chat input_audio
+  const mt = mimeType.toLowerCase();
+  let format = "ogg";
+  if (mt.includes("mpeg") || mt.includes("mp3")) format = "mp3";
+  else if (mt.includes("wav")) format = "wav";
+  else if (mt.includes("webm")) format = "webm";
+  else if (mt.includes("mp4") || mt.includes("m4a") || mt.includes("aac")) format = "m4a";
+  else if (mt.includes("flac")) format = "flac";
+  else if (mt.includes("ogg") || mt.includes("opus")) format = "ogg";
+
+  const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_KEY}` },
+    body: JSON.stringify({
+      model: "google/gemini-3.6-flash",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Transcribe this voice note verbatim. Output ONLY the transcript text, no commentary, no translation." },
+            { type: "input_audio", input_audio: { data: b64, format } },
+          ],
+        },
+      ],
+    }),
+  });
+  if (!resp.ok) throw new Error(`transcribe ${resp.status}: ${await resp.text()}`);
+  const j = await resp.json();
+  return (j.choices?.[0]?.message?.content ?? "").trim();
+}
+
