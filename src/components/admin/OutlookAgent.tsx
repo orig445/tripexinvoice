@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, RefreshCw, Mail, Play } from "lucide-react";
+import { Loader2, RefreshCw, Mail } from "lucide-react";
 
 type Cfg = {
   id: string;
