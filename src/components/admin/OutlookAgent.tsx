@@ -51,7 +51,7 @@ export function OutlookAgent() {
     if (error || result?.status === "failed") {
       toast.error(`Send failed: ${result?.error || error?.message || "unknown error"}`, { duration: 10000 });
     } else {
-      toast.success("Reply sent ✅");
+      toast.success(`Reply sent ✅${result?.to ? ` → ${result.to}` : ""}`, { duration: 8000 });
     }
     load();
   }

@@ -153,7 +153,7 @@ async function processOne(
   cfg: any,
   m: any,
   opts: { force?: boolean; mode?: string } = {},
-): Promise<{ status: string; error?: string; reply?: string }> {
+): Promise<{ status: string; error?: string; reply?: string; to?: string }> {
   const force = opts.force ?? false;
   const mode = opts.mode ?? cfg.mode ?? "draft";
   const signature = cfg.signature || "Best regards,\nMilo — TripEX Support";
@@ -205,21 +205,43 @@ async function processOne(
     const reply = await generateReply(subject, rawBody, fromName, kb, signature);
     if (!reply) throw new Error("Empty AI reply");
 
+    const bodyHtmlFor = (txt: string) =>
+      txt.split("\n").map((l) => `<p>${l.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`).join("");
+
     if (mode === "auto_reply") {
-      const replyResp = await fetch(`${GATEWAY}/me/messages/${msgId}/reply`, {
+      // Reliable send: createReply (draft with correct recipients + threading) →
+      // set the body → explicitly /send. The connector's one-shot /reply was
+      // returning OK without actually delivering the mail.
+      const draftResp = await fetch(`${GATEWAY}/me/messages/${msgId}/createReply`, {
         method: "POST",
         headers: gwHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ comment: reply }),
       });
-      if (!replyResp.ok) throw new Error(`Outlook reply failed ${replyResp.status}: ${await replyResp.text()}`);
+      if (!draftResp.ok) throw new Error(`Outlook createReply failed ${draftResp.status}: ${await draftResp.text()}`);
+      const draft = await draftResp.json();
+
+      const patchResp = await fetch(`${GATEWAY}/me/messages/${draft.id}`, {
+        method: "PATCH",
+        headers: gwHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ body: { contentType: "HTML", content: bodyHtmlFor(reply) } }),
+      });
+      if (!patchResp.ok) throw new Error(`Outlook draft update failed ${patchResp.status}: ${await patchResp.text()}`);
+
+      const sendResp = await fetch(`${GATEWAY}/me/messages/${draft.id}/send`, {
+        method: "POST",
+        headers: gwHeaders({ "Content-Type": "application/json" }),
+      });
+      if (!sendResp.ok) throw new Error(`Outlook send failed ${sendResp.status}: ${await sendResp.text()}`);
+
       await fetch(`${GATEWAY}/me/messages/${msgId}`, {
         method: "PATCH",
         headers: gwHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ isRead: true }),
       });
+
+      const to = (draft.toRecipients ?? []).map((r: any) => r.emailAddress?.address).filter(Boolean).join(", ");
       await supabase.from("outlook_processed_emails")
         .update({ reply_text: reply, status: "sent" }).eq("id", rowId);
-      return { status: "sent", reply };
+      return { status: "sent", reply, to };
     } else {
       const draftResp = await fetch(`${GATEWAY}/me/messages/${msgId}/createReply`, {
         method: "POST",
