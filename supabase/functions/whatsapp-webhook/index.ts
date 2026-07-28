@@ -174,10 +174,14 @@ serve(async (req) => {
 
     await sendWhatsApp(chatId, reply);
 
-    await supabase.from("chatbot_logs").insert({
-      event_type: "whatsapp_reply",
-      details: { chatId, senderName, escalated, question: text.slice(0, 500), reply: reply.slice(0, 1000) },
-    }).catch(() => {});
+    try {
+      await supabase.from("chatbot_logs").insert({
+        event_type: "whatsapp_reply",
+        details: { chatId, senderName, escalated, question: text.slice(0, 500), reply: reply.slice(0, 1000) },
+      });
+    } catch (e) {
+      console.error("[whatsapp] log insert failed:", e);
+    }
 
     return ok();
   } catch (err) {
