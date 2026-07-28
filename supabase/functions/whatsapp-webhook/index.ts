@@ -75,7 +75,37 @@ const SUPPORT_EMAIL = Deno.env.get("SUPPORT_EMAIL") || "support@tripex.co.il";
 // Marker the model uses to signal "I can't answer from the KB — escalate".
 const ESCALATE_TAG = "[[ESCALATE]]";
 
-async function generateReply(question: string, senderName: string, kb: string): Promise<{ reply: string; escalate: boolean }> {
+type ChatTurn = { role: "user" | "assistant"; content: string };
+
+async function loadHistory(supabase: any, chatId: string, limit = 30): Promise<ChatTurn[]> {
+  try {
+    const { data } = await supabase
+      .from("whatsapp_messages")
+      .select("role, content, created_at")
+      .eq("chat_id", chatId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (!data) return [];
+    return data.reverse().map((r: any) => ({ role: r.role, content: r.content }));
+  } catch {
+    return [];
+  }
+}
+
+async function saveTurn(supabase: any, chatId: string, senderName: string, role: "user" | "assistant", content: string) {
+  try {
+    await supabase.from("whatsapp_messages").insert({
+      chat_id: chatId,
+      sender_name: senderName || null,
+      role,
+      content: content.slice(0, 4000),
+    });
+  } catch (e) {
+    console.error("[whatsapp] saveTurn failed:", e);
+  }
+}
+
+async function generateReply(question: string, senderName: string, kb: string, history: ChatTurn[]): Promise<{ reply: string; escalate: boolean }> {
   const key = ociKey();
   if (!key) throw new Error("Oracle API key not configured");
 
@@ -99,7 +129,8 @@ ${kb || "(no relevant knowledge base entries found)"}`;
       model: OCI_MODEL,
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: `Customer${senderName ? ` (${senderName})` : ""} asks (respond in English):\n${question}` },
+        ...history.map((h) => ({ role: h.role, content: h.content })),
+        { role: "user", content: `${senderName ? `[${senderName}] ` : ""}${question}` },
       ],
       max_tokens: 1024,
       temperature: 0.3,
@@ -184,8 +215,11 @@ serve(async (req) => {
     let reply = "";
     let escalated = false;
     try {
-      const kb = await searchKB(supabase, text.slice(0, 800));
-      const out = await generateReply(text, senderName, kb);
+      const [kb, history] = await Promise.all([
+        searchKB(supabase, text.slice(0, 800)),
+        loadHistory(supabase, chatId, 30),
+      ]);
+      const out = await generateReply(text, senderName, kb, history);
       reply = out.reply;
       escalated = out.escalate;
     } catch (e) {
@@ -200,6 +234,10 @@ serve(async (req) => {
     if (escalated) reply += escalationSuffix();
 
     await sendWhatsApp(chatId, reply);
+
+    // Persist both sides of the turn for long-term per-chat memory.
+    await saveTurn(supabase, chatId, senderName, "user", text);
+    await saveTurn(supabase, chatId, senderName, "assistant", reply);
 
     try {
       await supabase.from("chatbot_logs").insert({
