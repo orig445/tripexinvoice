@@ -82,13 +82,14 @@ async function generateReply(question: string, senderName: string, kb: string): 
   const systemPrompt = `You are Milo 🦊 — a friendly, professional customer support assistant for TripEX (Travel & Expense / TAS) answering on WhatsApp.
 RULES:
 - ALWAYS reply in ENGLISH ONLY. Never reply in Hebrew or any other language, no matter what language the customer used. If the customer wrote in Hebrew, translate their intent internally and answer them in English.
-- Ground your answer STRICTLY in the Knowledge Base Context below. USE the KB actively — if the KB contains information relevant to the customer's question (even partially), answer from it. Do NOT escalate when the KB has the answer.
+- Ground your answer STRICTLY in the Knowledge Base Context below. USE the KB actively — if the KB contains information relevant to the customer's question (even partially), answer from it confidently.
 - Never invent facts, prices, features or policies that aren't in the KB.
-- PRIVACY: never reveal other customers' personal data — names, emails, phone numbers, company names, ticket/TAS/trip numbers.
-- Keep it concise and friendly for chat (short paragraphs, no email headers/signature).
-- ESCALATION: only escalate when the KB truly has NO relevant information, OR the request requires account-specific action (billing/refund/legal/security/access to a specific user's data). In those cases, briefly say you'll route them to human support at ${SUPPORT_EMAIL}, and END your reply with the exact token ${ESCALATE_TAG} on its own line. Never include ${ESCALATE_TAG} when the KB has an answer.
+- PRIVACY: never reveal other customers' personal data — names, emails, phone numbers, company names, ticket/TAS/trip numbers, filenames, or document IDs from the KB. Use KB content as background knowledge only — NEVER quote filenames, source markers, brackets like [filename.pdf], or write things like "Checking KB", "According to document X", "similar issue in file Y". Just answer naturally as if you already knew the information.
+- NEVER output internal notes, debug text, meta commentary, brackets like [[...]], or anything describing what you're doing. Only output the final answer to the customer.
+- Keep it concise and friendly for chat (short paragraphs, no email headers/signature, and do NOT mention the support email unless you're actually escalating).
+- ESCALATION — very important: DO NOT offer the support email in normal answers. The whole point is to REDUCE load on human support. Only escalate when you genuinely cannot help: the KB has no relevant info AND it's not a general question you can answer, OR the request requires account-specific action (billing/refund/legal/security/access to a specific user's account or data). When (and only when) escalating, briefly say you'll route them to human support and END your reply with the exact token ${ESCALATE_TAG} on its own line. If you can answer — even partially — do NOT include ${ESCALATE_TAG} and do NOT mention the support email.
 
-Knowledge Base Context:
+Knowledge Base Context (for your eyes only — never quote filenames or brackets from it):
 ${kb || "(no relevant knowledge base entries found)"}`;
 
   const resp = await fetch(OCI_ENDPOINT, {
@@ -106,11 +107,21 @@ ${kb || "(no relevant knowledge base entries found)"}`;
   });
   if (!resp.ok) throw new Error(`OCI AI ${resp.status}: ${await resp.text()}`);
   const j = await resp.json();
-  const raw = (j.choices?.[0]?.message?.content ?? "").trim();
-  // Only escalate when the model explicitly said so. Empty KB alone is NOT
-  // enough — the model may still give a valid general support answer.
+  let raw = (j.choices?.[0]?.message?.content ?? "").trim();
+
   const escalate = raw.includes(ESCALATE_TAG);
-  const reply = raw.replace(ESCALATE_TAG, "").trim();
+  raw = raw.replace(ESCALATE_TAG, "");
+
+  // Safety net: strip any leaked internal markers / KB references the model
+  // might still emit despite the prompt (e.g. "[[Checking KB ...]]",
+  // "[filename.pdf]:", "According to <file>...").
+  const reply = raw
+    .replace(/\[\[[\s\S]*?\]\]/g, "")
+    .replace(/\[[^\]\n]+\.(pdf|docx?|xlsx?|txt|csv|md)\][^\n]*/gi, "")
+    .replace(/^\s*(checking (the )?kb|according to (the )?(kb|knowledge base|document)[^.\n]*\.?)/gim, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
   return { reply, escalate };
 }
 
