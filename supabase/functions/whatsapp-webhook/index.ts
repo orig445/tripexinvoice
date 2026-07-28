@@ -30,9 +30,24 @@ function ociKey(): string {
 // Retrieve external (customer) knowledge only — never internal docs.
 async function searchKB(supabase: any, query: string): Promise<string> {
   try {
-    const { data } = await supabase.rpc("search_knowledge", { query_text: query, max_results: 8 });
-    if (!data || data.length === 0) return "";
-    const ids = [...new Set(data.map((d: any) => d.document_id).filter(Boolean))];
+    // Fire multiple queries (full text + a few salient keywords) so Hebrew /
+    // multi-word questions still hit the KB. Merge & de-dupe by chunk_id.
+    const queries = new Set<string>([query]);
+    const keywords = query
+      .replace(/[^\p{L}\p{N}\s]/gu, " ")
+      .split(/\s+/)
+      .filter((w) => w.length >= 3);
+    // Add up to 5 longest keywords as individual searches.
+    keywords.sort((a, b) => b.length - a.length).slice(0, 5).forEach((k) => queries.add(k));
+
+    const results: any[] = [];
+    for (const q of queries) {
+      const { data } = await supabase.rpc("search_knowledge", { query_text: q, max_results: 8 });
+      if (data) results.push(...data);
+    }
+    if (results.length === 0) return "";
+
+    const ids = [...new Set(results.map((d: any) => d.document_id).filter(Boolean))];
     let allowed = new Set<string>(ids);
     if (ids.length > 0) {
       const { data: docs, error } = await supabase
@@ -41,8 +56,16 @@ async function searchKB(supabase: any, query: string): Promise<string> {
         allowed = new Set(docs.filter((d: any) => (d.audience ?? "external") === "external").map((d: any) => d.id));
       }
     }
-    return data.filter((d: any) => allowed.has(d.document_id)).slice(0, 5)
-      .map((d: any) => `[${d.file_name}]: ${d.content}`).join("\n\n");
+
+    // De-dupe by chunk_id, keep top 8 by rank.
+    const seen = new Set<string>();
+    const unique = results
+      .filter((d: any) => allowed.has(d.document_id))
+      .filter((d: any) => { if (seen.has(d.chunk_id)) return false; seen.add(d.chunk_id); return true; })
+      .sort((a: any, b: any) => (b.rank ?? 0) - (a.rank ?? 0))
+      .slice(0, 8);
+
+    return unique.map((d: any) => `[${d.file_name}]: ${d.content}`).join("\n\n");
   } catch {
     return "";
   }
@@ -58,11 +81,12 @@ async function generateReply(question: string, senderName: string, kb: string): 
 
   const systemPrompt = `You are Milo 🦊 — a friendly, professional customer support assistant for TripEX (Travel & Expense / TAS) answering on WhatsApp.
 RULES:
-- Reply in the SAME LANGUAGE the customer used (Hebrew if they wrote Hebrew).
-- Ground your answer STRICTLY in the Knowledge Base Context below. Never invent facts, prices, features or policies.
+- ALWAYS reply in ENGLISH ONLY. Never reply in Hebrew or any other language, no matter what language the customer used. If the customer wrote in Hebrew, translate their intent internally and answer them in English.
+- Ground your answer STRICTLY in the Knowledge Base Context below. USE the KB actively — if the KB contains information relevant to the customer's question (even partially), answer from it. Do NOT escalate when the KB has the answer.
+- Never invent facts, prices, features or policies that aren't in the KB.
 - PRIVACY: never reveal other customers' personal data — names, emails, phone numbers, company names, ticket/TAS/trip numbers.
 - Keep it concise and friendly for chat (short paragraphs, no email headers/signature).
-- ESCALATION: if the request is too complex, requires account-specific action, involves billing/refund/legal/security, or the Knowledge Base does NOT contain a clear answer — reply with a short polite message telling the customer you'll route them to human support at ${SUPPORT_EMAIL}, and END your reply with the exact token ${ESCALATE_TAG} on its own line. Do not include ${ESCALATE_TAG} when you were able to answer from the KB.
+- ESCALATION: only escalate when the KB truly has NO relevant information, OR the request requires account-specific action (billing/refund/legal/security/access to a specific user's data). In those cases, briefly say you'll route them to human support at ${SUPPORT_EMAIL}, and END your reply with the exact token ${ESCALATE_TAG} on its own line. Never include ${ESCALATE_TAG} when the KB has an answer.
 
 Knowledge Base Context:
 ${kb || "(no relevant knowledge base entries found)"}`;
@@ -74,7 +98,7 @@ ${kb || "(no relevant knowledge base entries found)"}`;
       model: OCI_MODEL,
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: `Customer${senderName ? ` (${senderName})` : ""} asks:\n${question}` },
+        { role: "user", content: `Customer${senderName ? ` (${senderName})` : ""} asks (respond in English):\n${question}` },
       ],
       max_tokens: 1024,
       temperature: 0.3,
@@ -83,19 +107,15 @@ ${kb || "(no relevant knowledge base entries found)"}`;
   if (!resp.ok) throw new Error(`OCI AI ${resp.status}: ${await resp.text()}`);
   const j = await resp.json();
   const raw = (j.choices?.[0]?.message?.content ?? "").trim();
-  const escalate = raw.includes(ESCALATE_TAG) || !kb;
+  // Only escalate when the model explicitly said so. Empty KB alone is NOT
+  // enough — the model may still give a valid general support answer.
+  const escalate = raw.includes(ESCALATE_TAG);
   const reply = raw.replace(ESCALATE_TAG, "").trim();
   return { reply, escalate };
 }
 
-function isHebrew(s: string): boolean {
-  return /[\u0590-\u05FF]/.test(s);
-}
-
-function escalationSuffix(question: string): string {
-  return isHebrew(question)
-    ? `\n\n📩 לפנייה מפורטת יותר, אנא כתבו לנו למייל: ${SUPPORT_EMAIL} — נציג אנושי יחזור אליכם בהקדם.`
-    : `\n\n📩 For a more detailed request, please email us at: ${SUPPORT_EMAIL} — a human agent will get back to you shortly.`;
+function escalationSuffix(): string {
+  return `\n\n📩 For a more detailed request, please email us at: ${SUPPORT_EMAIL} — a human agent will get back to you shortly.`;
 }
 
 async function sendWhatsApp(chatId: string, message: string): Promise<void> {
