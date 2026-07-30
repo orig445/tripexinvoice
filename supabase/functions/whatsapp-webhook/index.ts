@@ -174,10 +174,25 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   // Green API only POSTs; a GET is handy for a quick "is it alive" check.
   if (req.method === "GET") {
+    const url = new URL(req.url);
+    if (url.searchParams.get("diag") === "1") {
+      const base = `${GREEN_BASE}/waInstance${GREEN_ID}`;
+      const get = async (p: string) => {
+        try {
+          const r = await fetch(`${base}/${p}/${GREEN_TOKEN}`);
+          return { status: r.status, body: await r.json().catch(() => null) };
+        } catch (e) { return { error: String(e) }; }
+      };
+      const [state, settings] = await Promise.all([get("getStateInstance"), get("getSettings")]);
+      return new Response(JSON.stringify({ hasCreds: !!(GREEN_ID && GREEN_TOKEN), state, settings }, null, 2), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     return new Response(JSON.stringify({ ok: true, service: "whatsapp-webhook" }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+
 
   // Optional shared-secret gate (?secret=...).
   if (WEBHOOK_SECRET) {
