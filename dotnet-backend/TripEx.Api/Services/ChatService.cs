@@ -18,6 +18,7 @@ public class ChatService
     private readonly OracleAiService _oracle;
     private readonly InvoiceService _invoiceService;
     private readonly GeolocationService _geoService;
+    private readonly ILogger<ChatService> _logger;
 
     // Intent → Actions mapping
     private static readonly Dictionary<string, (List<string> Actions, string? RedirectPage)> ActionMapping = new()
@@ -36,12 +37,14 @@ public class ChatService
         TripExDbContext db,
         OracleAiService oracle,
         InvoiceService invoiceService,
-        GeolocationService geoService)
+        GeolocationService geoService,
+        ILogger<ChatService> logger)
     {
         _db = db;
         _oracle = oracle;
         _invoiceService = invoiceService;
         _geoService = geoService;
+        _logger = logger;
     }
 
     public async Task<ChatResponse> ProcessAsync(ChatRequest request, Guid userId, string? ipAddress)
@@ -119,7 +122,9 @@ public class ChatService
         messages.AddRange(history.Select(h => new OracleMessage { Role = h.Role, Content = h.Content }));
 
         // ── Call Oracle AI ──
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         var rawContent = await _oracle.ChatAsync(messages, maxTokens, temperature);
+        sw.Stop();
 
         // ── Parse response ──
         var (intent, responseText) = ParseAiResponse(rawContent);
@@ -140,7 +145,10 @@ public class ChatService
             Metadata = JsonSerializer.Serialize(new { actions = mapping.Actions, redirectPage = mapping.RedirectPage ?? "" })
         });
 
-        // ── Log ──
+        // ── Log (DB audit + file log) ──
+        var latencyMs = sw.ElapsedMilliseconds;
+        var ragChars = knowledgeContext?.Length ?? 0;
+
         _db.ChatbotLogs.Add(new ChatbotLog
         {
             SessionId = sessionId,
@@ -151,10 +159,19 @@ public class ChatService
                 intent,
                 actions = mapping.Actions,
                 redirectPage = mapping.RedirectPage ?? "",
-                message_preview = request.Text.Length > 100 ? request.Text[..100] : request.Text,
-                source = request.Source
+                source = request.Source,
+                latency_ms = latencyMs,
+                rag_chars = ragChars,
+                // Full message + response so a chat turn can be examined end-to-end.
+                message = request.Text,
+                response = responseText
             })
         });
+
+        // Full Q&A to the rolling file log (logs/tripex-*.log) for easy inspection.
+        _logger.LogInformation(
+            "[CHAT] session={SessionId} user={UserId} source={Source} intent={Intent} rag={RagChars}c latency={LatencyMs}ms\n  Q: {Message}\n  A: {Response}",
+            sessionId, userId, request.Source ?? "-", intent, ragChars, latencyMs, request.Text, responseText);
 
         await _db.SaveChangesAsync();
 

@@ -191,6 +191,46 @@ _ = Task.Run(async () =>
             Console.WriteLine("⚠️ [DB-INIT] init-db.sql not found, trying EnsureCreated...");
             try { await db.Database.EnsureCreatedAsync(); } catch (Exception ex) { Console.WriteLine($"⚠️ [DB-INIT] EnsureCreated: {ex.Message}"); }
         }
+
+        // ── One-time knowledge seed (migrated from Supabase) ──
+        // Runs only when knowledge_chunks is empty, so it self-skips on every
+        // startup after the first. The file itself is idempotent (DELETE+INSERT
+        // per document) so a manual re-run is also safe.
+        var seedSqlPath = Path.Combine(Directory.GetCurrentDirectory(), "Data", "seed-knowledge.sql");
+        if (!File.Exists(seedSqlPath))
+            seedSqlPath = Path.Combine(AppContext.BaseDirectory, "Data", "seed-knowledge.sql");
+
+        if (File.Exists(seedSqlPath))
+        {
+            try
+            {
+                var existingChunks = 0;
+                try { existingChunks = await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM dbo.knowledge_chunks").FirstAsync(); }
+                catch { /* table not ready yet — treat as empty and let the seed run */ }
+
+                if (existingChunks == 0)
+                {
+                    Console.WriteLine("🌱 [DB-SEED] knowledge_chunks empty — loading seed-knowledge.sql …");
+                    var seedSql = await File.ReadAllTextAsync(seedSqlPath);
+                    var seedBatches = System.Text.RegularExpressions.Regex.Split(seedSql, @"^\s*GO\s*$",
+                        System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    var loaded = 0;
+                    foreach (var batch in seedBatches)
+                    {
+                        var trimmed = batch.Trim();
+                        if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("PRINT") || trimmed.StartsWith("SET ")) continue;
+                        try { loaded += await db.Database.ExecuteSqlRawAsync(trimmed); }
+                        catch (Exception ex) { Console.WriteLine($"⚠️ [DB-SEED] batch note: {ex.Message}"); }
+                    }
+                    Console.WriteLine($"✅ [DB-SEED] knowledge seed applied ({loaded} rows inserted).");
+                }
+                else
+                {
+                    Console.WriteLine($"↩️ [DB-SEED] knowledge_chunks already has {existingChunks} rows — skipping seed.");
+                }
+            }
+            catch (Exception ex) { Console.WriteLine($"❌ [DB-SEED] seed failed: {ex.Message}"); }
+        }
     }
     catch (Exception ex)
     {

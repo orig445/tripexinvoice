@@ -21,8 +21,15 @@
   </ItemGroup>
 
  <ItemGroup>
-  <!-- Use 'Update' instead of 'Include' for files already tracked by the SDK -->
-  <Content Update="Data\init-db.sql">
+  <!-- .sql is NOT in the Web SDK's default Content globs, so it must be 'Include'
+       (not 'Update') or it never reaches bin/publish and DB-init falls back to
+       EnsureCreated(), which skips dbo.search_knowledge and breaks RAG. -->
+  <Content Include="Data\init-db.sql">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+  </Content>
+
+  <Content Include="Data\seed-knowledge.sql">
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
   </Content>
