@@ -314,13 +314,15 @@ serve(async (req) => {
       content: text,
     });
 
-    // Load recent history
-    const { data: history } = await supabase
+    // Load recent history — take the LAST 30 messages of this conversation
+    // (descending + reverse), so long chats keep their most recent context.
+    const { data: historyDesc } = await supabase
       .from("chat_messages")
-      .select("role, content")
+      .select("role, content, created_at")
       .eq("session_id", sessionId)
-      .order("created_at", { ascending: true })
+      .order("created_at", { ascending: false })
       .limit(30);
+    const history = (historyDesc || []).slice().reverse();
 
     // ── Load chatbot config ──
     const { data: config } = await supabase.from("chatbot_config").select("*").eq("is_active", true).limit(1).single();
@@ -530,9 +532,26 @@ Browser-reported time (may differ if user traveled): ${userDate || "unknown"} ${
 IMPORTANT: When the user asks "what time is it" or "where am I", use the IP-based location and time above — this reflects where they PHYSICALLY are right now.
 Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}${lessonsContext}${knowledgeContext}`;
 
+    // Full conversation memory for this session: every prior turn is replayed
+    // to the model so it answers in context instead of treating each question
+    // as a standalone request.
+    const historyTurns = (history || [])
+      .filter((m: any) => typeof m.content === "string" && m.content.trim().length > 0)
+      .map((m: any) => ({
+        role: m.role === "assistant" ? "assistant" : "user",
+        content: String(m.content).slice(0, 4000),
+      }));
+
     const messages = [
       { role: "system", content: systemPrompt },
-      ...(history || []).map((m: any) => ({ role: m.role, content: m.content })),
+      {
+        role: "system",
+        content:
+          "The following messages are the ongoing conversation with THIS user in THIS session. " +
+          "Always use them as memory: remember names, trips, amounts, receipts and preferences already mentioned, " +
+          "resolve pronouns and follow-up questions against them, and never ask again for information the user already gave.",
+      },
+      ...historyTurns,
     ];
 
     // ── Call Oracle AI ──
