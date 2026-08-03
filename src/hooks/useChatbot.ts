@@ -207,9 +207,21 @@ export function useChatbot(options?: { audience?: KnowledgeAudience; source?: st
   );
 
   const startNewSession = useCallback(() => {
+    const previous = sessionIdRef.current;
     sessionIdRef.current = null;
     setSessionId(null);
     setMessages([]);
+    // Archive the previous conversation so it is kept in history but not
+    // restored automatically next time.
+    if (previous) {
+      supabase
+        .from("chat_sessions")
+        .update({ status: "closed" })
+        .eq("id", previous)
+        .then(({ error }) => {
+          if (error) console.error("Failed to close session:", error);
+        });
+    }
   }, []);
 
   return {
