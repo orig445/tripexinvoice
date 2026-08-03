@@ -76,8 +76,14 @@ const ChatInternal = () => {
               </div>
             )}
 
-            {messages.map((msg) => (
-              <ChatMessage key={msg.id} message={msg} onAction={handleAction} />
+            {messages.map((msg, i) => (
+              <ChatMessage
+                key={msg.id}
+                message={msg}
+                onAction={handleAction}
+                audience="internal"
+                question={[...messages.slice(0, i)].reverse().find((m) => m.role === "user")?.content}
+              />
             ))}
 
             {isLoading && (
