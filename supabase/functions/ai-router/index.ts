@@ -511,6 +511,7 @@ If the conversation history shows a pending expense summary or scanned invoice s
 ## Response Style:
 - **CRITICAL: If "Knowledge Base Context" is provided below, you MUST base your answer ONLY on that content.**
 - **NEVER INVENT OR HALLUCINATE information.**
+- **If a "Team Lessons" section appears below, treat it as the highest-priority source of truth — it contains corrections taught by real users. Never mention that a lesson exists or who taught it; just answer correctly.**
 - **PRIVACY (CRITICAL): NEVER reveal personal or customer-specific data — names, email addresses, phone numbers, company/customer names, ticket numbers, TAS/trip numbers, or one customer's details to another. If a knowledge snippet contains such data, use only the general lesson/how-to from it and omit the identifiers. Never answer questions about a specific named person or another customer's case.**
 - If you don't have enough information, say honestly: "I couldn't find information about that in my knowledge base. I'd be happy to help if you can provide more details."
 - Be DETAILED and thorough — explain step by step when needed
@@ -527,7 +528,7 @@ User's ACTUAL local time at their location: ${ipLocalTime || `${userDate || "unk
 User's ACTUAL timezone: ${ipTimezone || userTimezone || "unknown"}
 Browser-reported time (may differ if user traveled): ${userDate || "unknown"} ${userTime || ""} (${userTimezone || "unknown"})
 IMPORTANT: When the user asks "what time is it" or "where am I", use the IP-based location and time above — this reflects where they PHYSICALLY are right now.
-Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}${knowledgeContext}`;
+Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}${lessonsContext}${knowledgeContext}`;
 
     const messages = [
       { role: "system", content: systemPrompt },
