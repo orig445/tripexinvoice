@@ -80,7 +80,7 @@ const Chat = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <Header />
+      <Header onNewChat={startNewSession} />
 
       {/* Chat header */}
       <div className="border-b bg-gradient-to-r from-primary to-triplex-teal-light text-primary-foreground">
@@ -94,17 +94,9 @@ const Chat = () => {
               <p className="text-xs opacity-80">Online — Full screen chat</p>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-primary-foreground/90 hover:text-primary-foreground hover:bg-primary-foreground/10 gap-2"
-            onClick={startNewSession}
-          >
-            <RotateCcw className="h-4 w-4" />
-            New chat
-          </Button>
         </div>
       </div>
+
 
       {/* Messages area */}
       <main className="flex-1 overflow-hidden">
