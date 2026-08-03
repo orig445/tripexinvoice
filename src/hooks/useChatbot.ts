@@ -56,6 +56,31 @@ export function useChatbot(options?: { audience?: KnowledgeAudience; source?: st
     loadConfig();
   }, []);
 
+  // Restore the user's most recent conversation (per user + source) so the
+  // history survives reloads and navigation between pages.
+  useEffect(() => {
+    if (!user || sessionIdRef.current) return;
+    let cancelled = false;
+    const restoreSession = async () => {
+      const { data } = await supabase
+        .from("chat_sessions")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("source", source)
+        .eq("status", "active")
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cancelled || !data?.id || sessionIdRef.current) return;
+      sessionIdRef.current = data.id;
+      setSessionId(data.id);
+    };
+    restoreSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, source]);
+
   useEffect(() => {
     if (!sessionId) return;
     const loadMessages = async () => {
@@ -73,6 +98,7 @@ export function useChatbot(options?: { audience?: KnowledgeAudience; source?: st
     };
     loadMessages();
   }, [sessionId]);
+
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -181,9 +207,21 @@ export function useChatbot(options?: { audience?: KnowledgeAudience; source?: st
   );
 
   const startNewSession = useCallback(() => {
+    const previous = sessionIdRef.current;
     sessionIdRef.current = null;
     setSessionId(null);
     setMessages([]);
+    // Archive the previous conversation so it is kept in history but not
+    // restored automatically next time.
+    if (previous) {
+      supabase
+        .from("chat_sessions")
+        .update({ status: "closed" })
+        .eq("id", previous)
+        .then(({ error }) => {
+          if (error) console.error("Failed to close session:", error);
+        });
+    }
   }, []);
 
   return {
