@@ -35,6 +35,11 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
     };
   }, []);
 
+  // return focus to the box when the bot finishes replying
+  useEffect(() => {
+    if (!isLoading) inputRef.current?.focus();
+  }, [isLoading]);
+
   const startRecording = () => {
     if (!SpeechRecognition) {
       toast({
