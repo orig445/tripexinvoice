@@ -1,6 +1,9 @@
-import { User, Camera, ArrowRight, PlusCircle, BarChart3 } from "lucide-react";
+import { useState } from "react";
+import { User, Camera, ArrowRight, PlusCircle, BarChart3, ThumbsUp, GraduationCap } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import type { ChatMessage as ChatMessageType } from "@/hooks/useChatbot";
+import { TeachMiloDialog } from "./TeachMiloDialog";
 import myloWaving from "@/assets/mylo-waving.jpeg";
 import myloReading from "@/assets/mylo-reading.jpeg";
 import myloDetective from "@/assets/mylo-detective.jpeg";
@@ -9,7 +12,11 @@ import myloThinking from "@/assets/mylo-thinking.jpeg";
 interface ChatMessageProps {
   message: ChatMessageType;
   onAction?: (action: string, data?: Record<string, any>) => void;
+  /** The user question this assistant message replies to — used when teaching Milo */
+  question?: string;
+  audience?: "external" | "internal";
 }
+
 
 function getMiloAvatar(intent?: string): string {
   switch (intent) {
