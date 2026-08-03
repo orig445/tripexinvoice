@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
-import { RotateCcw } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Header } from "@/components/Header";
 import { Header } from "@/components/Header";
 import { ChatMessage } from "@/components/chatbot/ChatMessage";
 import { ChatInput } from "@/components/chatbot/ChatInput";
