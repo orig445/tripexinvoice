@@ -9,7 +9,7 @@ import myloWaving from "@/assets/mylo-waving.jpeg";
 import myloThinking from "@/assets/mylo-thinking.jpeg";
 
 const Chat = () => {
-  const { messages, isLoading, config, sendMessage, sendImage, startNewSession } = useChatbot();
+  const { messages, isLoading, config, sessionId, sessions, loadSession, sendMessage, sendImage, startNewSession } = useChatbot();
   const scrollRef = useRef<HTMLDivElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
