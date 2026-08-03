@@ -1,4 +1,4 @@
-import { Receipt, LogOut, User, Shield, Bot, Brain, Lock } from "lucide-react";
+import { Receipt, LogOut, User, Shield, Bot, Brain, Lock, RotateCcw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,11 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 
-export function Header() {
+interface HeaderProps {
+  onNewChat?: () => void;
+}
+
+export function Header({ onNewChat }: HeaderProps = {}) {
   const { user, role, isAdmin, signOut } = useAuth();
   const navigate = useNavigate();
 
