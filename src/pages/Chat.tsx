@@ -1,4 +1,15 @@
 import { useEffect, useRef } from "react";
+import { History } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
 import { Header } from "@/components/Header";
 import { ChatMessage } from "@/components/chatbot/ChatMessage";
 import { ChatInput } from "@/components/chatbot/ChatInput";
