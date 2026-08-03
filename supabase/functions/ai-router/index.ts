@@ -401,6 +401,51 @@ serve(async (req) => {
       console.error("RAG search error:", ragErr);
     }
 
+    // ── Team lessons: corrections taught by users through the chat ──
+    let lessonsContext = "";
+    try {
+      const words = text
+        .split(/\s+/)
+        .filter((w: string) => w.length > 3)
+        .slice(0, 6);
+
+      let lessons: any[] = [];
+      if (words.length > 0) {
+        const orFilter = words
+          .map((w: string) => `question.ilike.%${w.replace(/[,%()]/g, "")}%`)
+          .join(",");
+        const { data } = await supabase
+          .from("bot_lessons")
+          .select("question, answer")
+          .eq("audience", kbAudience)
+          .eq("is_approved", true)
+          .or(orFilter)
+          .order("created_at", { ascending: false })
+          .limit(5);
+        lessons = data || [];
+      }
+
+      if (lessons.length === 0) {
+        const { data } = await supabase
+          .from("bot_lessons")
+          .select("question, answer")
+          .eq("audience", kbAudience)
+          .eq("is_approved", true)
+          .order("created_at", { ascending: false })
+          .limit(3);
+        lessons = data || [];
+      }
+
+      if (lessons.length > 0) {
+        lessonsContext =
+          "\n\n## Team Lessons (corrections taught by real users — these OVERRIDE the knowledge base when they conflict):\n" +
+          lessons.map((l: any) => `Q: ${l.question}\nA: ${l.answer}`).join("\n\n");
+      }
+    } catch (lessonErr) {
+      console.error("Lessons lookup error:", lessonErr);
+    }
+
+
     const systemPrompt = `You are Milo 🦊 — a friendly, professional customer service assistant for TripEX (Travel & Expense Management). Your goal is to HELP users warmly and patiently. You ALWAYS respond in English regardless of the user's language.
 
 CRITICAL OUTPUT RULE: Respond with ONLY a JSON object. No reasoning, no markdown, no text outside the JSON.
