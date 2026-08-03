@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      bot_lessons: {
+        Row: {
+          answer: string
+          audience: string
+          created_at: string
+          id: string
+          is_approved: boolean
+          question: string
+          source: string
+          taught_by: string | null
+          updated_at: string
+          votes: number
+        }
+        Insert: {
+          answer: string
+          audience?: string
+          created_at?: string
+          id?: string
+          is_approved?: boolean
+          question: string
+          source?: string
+          taught_by?: string | null
+          updated_at?: string
+          votes?: number
+        }
+        Update: {
+          answer?: string
+          audience?: string
+          created_at?: string
+          id?: string
+          is_approved?: boolean
+          question?: string
+          source?: string
+          taught_by?: string | null
+          updated_at?: string
+          votes?: number
+        }
+        Relationships: []
+      }
       chat_messages: {
         Row: {
           content: string
