@@ -33,6 +33,10 @@ export function useChatbot(options?: { audience?: KnowledgeAudience; source?: st
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [config, setConfig] = useState<ChatbotConfig | null>(null);
+  const [sessions, setSessions] = useState<
+    { id: string; title: string; updated_at: string; status: string }[]
+  >([]);
+
 
   // Mirror of sessionId that updates SYNCHRONOUSLY. When several receipts are
   // sent in one batch (before React re-renders), each call must reuse the
