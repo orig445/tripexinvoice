@@ -102,6 +102,8 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
     if (!value.trim() || isLoading) return;
     onSend(value.trim());
     setValue("");
+    // keep focus in the box so the user can keep typing right away
+    requestAnimationFrame(() => inputRef.current?.focus());
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
