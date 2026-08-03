@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 import { Header } from "@/components/Header";
-import { Header } from "@/components/Header";
 import { ChatMessage } from "@/components/chatbot/ChatMessage";
 import { ChatInput } from "@/components/chatbot/ChatInput";
 import { QuickActions } from "@/components/chatbot/QuickActions";
