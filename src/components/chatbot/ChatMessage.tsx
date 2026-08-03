@@ -1,6 +1,9 @@
-import { User, Camera, ArrowRight, PlusCircle, BarChart3 } from "lucide-react";
+import { useState } from "react";
+import { User, Camera, ArrowRight, PlusCircle, BarChart3, ThumbsUp, GraduationCap } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import type { ChatMessage as ChatMessageType } from "@/hooks/useChatbot";
+import { TeachMiloDialog } from "./TeachMiloDialog";
 import myloWaving from "@/assets/mylo-waving.jpeg";
 import myloReading from "@/assets/mylo-reading.jpeg";
 import myloDetective from "@/assets/mylo-detective.jpeg";
@@ -9,7 +12,11 @@ import myloThinking from "@/assets/mylo-thinking.jpeg";
 interface ChatMessageProps {
   message: ChatMessageType;
   onAction?: (action: string, data?: Record<string, any>) => void;
+  /** The user question this assistant message replies to — used when teaching Milo */
+  question?: string;
+  audience?: "external" | "internal";
 }
+
 
 function getMiloAvatar(intent?: string): string {
   switch (intent) {
@@ -26,10 +33,13 @@ function getMiloAvatar(intent?: string): string {
   }
 }
 
-export function ChatMessage({ message, onAction }: ChatMessageProps) {
+export function ChatMessage({ message, onAction, question, audience = "external" }: ChatMessageProps) {
   const isUser = message.role === "user";
   const actions = message.metadata?.actions || [];
   const redirectPage = message.metadata?.redirectPage || "";
+  const [teachOpen, setTeachOpen] = useState(false);
+  const [voted, setVoted] = useState(false);
+
 
   const actionButtons: Record<string, { icon: typeof Camera; label: string }> = {
     Camera:         { icon: Camera,      label: "📷 Scan Invoice" },
@@ -89,7 +99,43 @@ export function ChatMessage({ message, onAction }: ChatMessageProps) {
             })}
           </div>
         )}
+
+        {!isUser && (
+          <div className="flex items-center gap-1 pt-0.5">
+            <Button
+              size="sm"
+              variant="ghost"
+              className={`h-6 px-1.5 text-[11px] gap-1 text-muted-foreground hover:text-primary ${voted ? "text-primary" : ""}`}
+              onClick={() => {
+                setVoted(true);
+                toast.success("Thanks for the feedback 🦊");
+              }}
+              title="Good answer"
+            >
+              <ThumbsUp className="h-3 w-3" />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 px-1.5 text-[11px] gap-1 text-muted-foreground hover:text-primary"
+              onClick={() => setTeachOpen(true)}
+              title="Teach Milo the right answer"
+            >
+              <GraduationCap className="h-3 w-3" />
+              Teach Milo
+            </Button>
+          </div>
+        )}
       </div>
+
+      <TeachMiloDialog
+        open={teachOpen}
+        onOpenChange={setTeachOpen}
+        defaultQuestion={question || ""}
+        defaultAnswer={message.content}
+        audience={audience}
+      />
     </div>
   );
 }
+

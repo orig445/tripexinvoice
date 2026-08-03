@@ -163,8 +163,13 @@ export function ChatWindow({ onClose, isFullscreen = false, onToggleFullscreen }
           </div>
         )}
 
-        {messages.map((msg) => (
-          <ChatMessage key={msg.id} message={msg} onAction={handleAction} />
+        {messages.map((msg, i) => (
+          <ChatMessage
+            key={msg.id}
+            message={msg}
+            onAction={handleAction}
+            question={[...messages.slice(0, i)].reverse().find((m) => m.role === "user")?.content}
+          />
         ))}
 
         {isLoading && (
