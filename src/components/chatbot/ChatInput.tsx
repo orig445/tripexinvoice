@@ -231,8 +231,8 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
         placeholder={isRecording ? "Listening..." : "Type a message..."}
         rows={1}
         className="flex-1 resize-none rounded-xl border bg-muted/50 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary min-h-[36px] max-h-[100px]"
-        disabled={isLoading}
       />
+
       <Button
         size="icon"
         className="h-9 w-9 rounded-xl flex-shrink-0"
