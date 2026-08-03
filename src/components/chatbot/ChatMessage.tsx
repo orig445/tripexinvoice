@@ -33,10 +33,13 @@ function getMiloAvatar(intent?: string): string {
   }
 }
 
-export function ChatMessage({ message, onAction }: ChatMessageProps) {
+export function ChatMessage({ message, onAction, question, audience = "external" }: ChatMessageProps) {
   const isUser = message.role === "user";
   const actions = message.metadata?.actions || [];
   const redirectPage = message.metadata?.redirectPage || "";
+  const [teachOpen, setTeachOpen] = useState(false);
+  const [voted, setVoted] = useState(false);
+
 
   const actionButtons: Record<string, { icon: typeof Camera; label: string }> = {
     Camera:         { icon: Camera,      label: "📷 Scan Invoice" },
