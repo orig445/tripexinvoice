@@ -99,7 +99,43 @@ export function ChatMessage({ message, onAction, question, audience = "external"
             })}
           </div>
         )}
+
+        {!isUser && (
+          <div className="flex items-center gap-1 pt-0.5">
+            <Button
+              size="sm"
+              variant="ghost"
+              className={`h-6 px-1.5 text-[11px] gap-1 text-muted-foreground hover:text-primary ${voted ? "text-primary" : ""}`}
+              onClick={() => {
+                setVoted(true);
+                toast.success("Thanks for the feedback 🦊");
+              }}
+              title="Good answer"
+            >
+              <ThumbsUp className="h-3 w-3" />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 px-1.5 text-[11px] gap-1 text-muted-foreground hover:text-primary"
+              onClick={() => setTeachOpen(true)}
+              title="Teach Milo the right answer"
+            >
+              <GraduationCap className="h-3 w-3" />
+              Teach Milo
+            </Button>
+          </div>
+        )}
       </div>
+
+      <TeachMiloDialog
+        open={teachOpen}
+        onOpenChange={setTeachOpen}
+        defaultQuestion={question || ""}
+        defaultAnswer={message.content}
+        audience={audience}
+      />
     </div>
   );
 }
+
