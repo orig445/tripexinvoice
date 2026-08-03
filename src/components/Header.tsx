@@ -41,6 +41,19 @@ export function Header({ onNewChat }: HeaderProps = {}) {
         </div>
 
         <div className="flex items-center gap-2">
+          {onNewChat && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={onNewChat}
+            >
+              <RotateCcw className="h-4 w-4" />
+              <span className="hidden sm:inline">New chat</span>
+            </Button>
+          )}
+
+
           {user && (
             <Button
               variant="outline"
