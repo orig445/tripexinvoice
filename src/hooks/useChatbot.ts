@@ -33,6 +33,10 @@ export function useChatbot(options?: { audience?: KnowledgeAudience; source?: st
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [config, setConfig] = useState<ChatbotConfig | null>(null);
+  const [sessions, setSessions] = useState<
+    { id: string; title: string; updated_at: string; status: string }[]
+  >([]);
+
 
   // Mirror of sessionId that updates SYNCHRONOUSLY. When several receipts are
   // sent in one batch (before React re-renders), each call must reuse the
@@ -206,6 +210,59 @@ export function useChatbot(options?: { audience?: KnowledgeAudience; source?: st
     [user, sessionId]
   );
 
+  const loadSessions = useCallback(async () => {
+    if (!user) return;
+    const { data: sessionRows } = await supabase
+      .from("chat_sessions")
+      .select("id, created_at, updated_at, status")
+      .eq("user_id", user.id)
+      .eq("source", source)
+      .order("updated_at", { ascending: false })
+      .limit(30);
+    if (!sessionRows || sessionRows.length === 0) {
+      setSessions([]);
+      return;
+    }
+    const ids = sessionRows.map((s) => s.id);
+    const { data: msgRows } = await supabase
+      .from("chat_messages")
+      .select("session_id, content, role, created_at")
+      .in("session_id", ids)
+      .eq("role", "user")
+      .order("created_at", { ascending: true });
+
+    const firstBySession = new Map<string, string>();
+    (msgRows || []).forEach((m: any) => {
+      if (!firstBySession.has(m.session_id)) firstBySession.set(m.session_id, m.content);
+    });
+
+    setSessions(
+      sessionRows.map((s: any) => ({
+        id: s.id,
+        title: (firstBySession.get(s.id) || "New conversation").slice(0, 60),
+        updated_at: s.updated_at,
+        status: s.status,
+      }))
+    );
+  }, [user?.id, source]);
+
+  useEffect(() => {
+    loadSessions();
+  }, [loadSessions, sessionId]);
+
+  const loadSession = useCallback(async (id: string) => {
+    sessionIdRef.current = id;
+    setSessionId(id);
+    setMessages([]);
+    const { data } = await supabase
+      .from("chat_messages")
+      .select("*")
+      .eq("session_id", id)
+      .order("created_at", { ascending: true });
+    setMessages((data as ChatMessage[]) || []);
+    await supabase.from("chat_sessions").update({ status: "active" }).eq("id", id);
+  }, []);
+
   const startNewSession = useCallback(() => {
     const previous = sessionIdRef.current;
     sessionIdRef.current = null;
@@ -220,17 +277,22 @@ export function useChatbot(options?: { audience?: KnowledgeAudience; source?: st
         .eq("id", previous)
         .then(({ error }) => {
           if (error) console.error("Failed to close session:", error);
+          loadSessions();
         });
     }
-  }, []);
+  }, [loadSessions]);
 
   return {
     messages,
     isLoading,
     config,
     sessionId,
+    sessions,
+    loadSessions,
+    loadSession,
     sendMessage,
     sendImage,
     startNewSession,
   };
 }
+

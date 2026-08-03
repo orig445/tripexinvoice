@@ -1,4 +1,15 @@
 import { useEffect, useRef } from "react";
+import { History } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
 import { Header } from "@/components/Header";
 import { ChatMessage } from "@/components/chatbot/ChatMessage";
 import { ChatInput } from "@/components/chatbot/ChatInput";
@@ -9,7 +20,7 @@ import myloWaving from "@/assets/mylo-waving.jpeg";
 import myloThinking from "@/assets/mylo-thinking.jpeg";
 
 const Chat = () => {
-  const { messages, isLoading, config, sendMessage, sendImage, startNewSession } = useChatbot();
+  const { messages, isLoading, config, sessionId, sessions, loadSession, sendMessage, sendImage, startNewSession } = useChatbot();
   const scrollRef = useRef<HTMLDivElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
@@ -92,7 +103,40 @@ const Chat = () => {
               <p className="text-xs opacity-80">Online — Full screen chat</p>
             </div>
           </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="gap-2 bg-primary-foreground/15 hover:bg-primary-foreground/25 text-primary-foreground border-0"
+              >
+                <History className="h-4 w-4" />
+                <span className="hidden sm:inline">Recent chats</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80 max-h-96 overflow-y-auto">
+              <DropdownMenuLabel>Your recent conversations</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {sessions.length === 0 && (
+                <div className="px-2 py-3 text-sm text-muted-foreground">No conversations yet</div>
+              )}
+              {sessions.map((s) => (
+                <DropdownMenuItem
+                  key={s.id}
+                  onClick={() => loadSession(s.id)}
+                  className={`flex flex-col items-start gap-0.5 ${s.id === sessionId ? "bg-accent" : ""}`}
+                >
+                  <span className="text-sm truncate w-full">{s.title}</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {new Date(s.updated_at).toLocaleString()}
+                  </span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
+
       </div>
 
 
