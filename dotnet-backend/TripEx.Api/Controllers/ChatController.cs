@@ -30,9 +30,11 @@ public class ChatController : ControllerBase
         var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString()
             ?? Request.Headers["X-Forwarded-For"].FirstOrDefault()?.Split(',')[0]?.Trim();
 
+        var userRole = User.FindFirst(ClaimTypes.Role)?.Value ?? "user";
+
         try
         {
-            var response = await _chatService.ProcessAsync(request, userId.Value, ipAddress);
+            var response = await _chatService.ProcessAsync(request, userId.Value, ipAddress, userRole);
             return Ok(response);
         }
         catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
