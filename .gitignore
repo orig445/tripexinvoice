@@ -21,4 +21,9 @@ dist-ssr
 *.ntvs*
 *.njsproj
 *.sln
+!dotnet-backend/TripEx.sln
 *.sw?
+
+# .NET production secrets — never commit the filled file (use the .example template)
+appsettings.Production.json
+**/appsettings.Production.json

@@ -1,0 +1,27 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TripEx.Api", "TripEx.Api\TripEx.Api.csproj", "{9D6884F7-FB53-4B65-BD32-24ECE6A95075}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TripEx.Api.Tests", "TripEx.Api.Tests\TripEx.Api.Tests.csproj", "{5B29A869-16F1-4A2A-8881-A0C84E4C50AD}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{9D6884F7-FB53-4B65-BD32-24ECE6A95075}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9D6884F7-FB53-4B65-BD32-24ECE6A95075}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9D6884F7-FB53-4B65-BD32-24ECE6A95075}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9D6884F7-FB53-4B65-BD32-24ECE6A95075}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5B29A869-16F1-4A2A-8881-A0C84E4C50AD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5B29A869-16F1-4A2A-8881-A0C84E4C50AD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5B29A869-16F1-4A2A-8881-A0C84E4C50AD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5B29A869-16F1-4A2A-8881-A0C84E4C50AD}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
