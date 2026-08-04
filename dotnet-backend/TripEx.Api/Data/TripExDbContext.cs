@@ -57,6 +57,9 @@ public class ChatSession
     [Column("user_id")] public Guid UserId { get; set; }
     [Column("source")] public string Source { get; set; } = "web";
     [Column("status")] public string Status { get; set; } = "active";
+    [Column("escalated")] public bool Escalated { get; set; }
+    [Column("escalated_at")] public DateTime? EscalatedAt { get; set; }
+    [Column("escalation_reason")] public string? EscalationReason { get; set; }
     [Column("created_at")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     [Column("updated_at")] public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

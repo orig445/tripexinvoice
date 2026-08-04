@@ -8,13 +8,27 @@
 -- ── chat_sessions ──────────────────────────────────────────────────
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'chat_sessions')
 CREATE TABLE [dbo].[chat_sessions] (
-    [id]         UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    [user_id]    UNIQUEIDENTIFIER NOT NULL,
-    [source]     NVARCHAR(50)  NOT NULL DEFAULT 'web',
-    [status]     NVARCHAR(50)  NOT NULL DEFAULT 'active',
-    [created_at] DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
-    [updated_at] DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
+    [id]                UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    [user_id]           UNIQUEIDENTIFIER NOT NULL,
+    [source]            NVARCHAR(50)  NOT NULL DEFAULT 'web',
+    -- Each session IS a support ticket. status: 'active' | 'escalated' | 'closed'.
+    [status]            NVARCHAR(50)  NOT NULL DEFAULT 'active',
+    [escalated]         BIT           NOT NULL DEFAULT 0,
+    [escalated_at]      DATETIME2      NULL,
+    [escalation_reason] NVARCHAR(1000) NULL,
+    [created_at]        DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
+    [updated_at]        DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
 );
+GO
+-- Upgrade path: add ticket/escalation columns if an older chat_sessions exists.
+IF COL_LENGTH('dbo.chat_sessions', 'escalated') IS NULL
+    ALTER TABLE [dbo].[chat_sessions] ADD [escalated] BIT NOT NULL DEFAULT 0;
+GO
+IF COL_LENGTH('dbo.chat_sessions', 'escalated_at') IS NULL
+    ALTER TABLE [dbo].[chat_sessions] ADD [escalated_at] DATETIME2 NULL;
+GO
+IF COL_LENGTH('dbo.chat_sessions', 'escalation_reason') IS NULL
+    ALTER TABLE [dbo].[chat_sessions] ADD [escalation_reason] NVARCHAR(1000) NULL;
 GO
 
 -- ── chat_messages ──────────────────────────────────────────────────

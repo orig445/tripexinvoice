@@ -51,6 +51,10 @@ public class ChatResponse
     public string RedirectPage { get; set; } = "";
     public Dictionary<string, object?> Data { get; set; } = new();
     public string SessionId { get; set; } = "";
+    // Set when Milo hands the ticket to a human. The frontend uses these to
+    // show a "connect to a human agent" option pointing at SupportContact.
+    public bool Escalated { get; set; }
+    public string? SupportContact { get; set; }
 }
 
 // ═══════════════════════════════════════

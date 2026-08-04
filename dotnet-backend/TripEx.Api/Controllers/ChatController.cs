@@ -48,6 +48,18 @@ public class ChatController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// List support tickets (= chat sessions) for review and learning. Admin only.
+    /// Use ?escalatedOnly=true to see only tickets Milo handed to a human.
+    /// </summary>
+    [HttpGet("tickets")]
+    [Authorize(Roles = "admin")]
+    public async Task<ActionResult> ListTickets([FromQuery] bool escalatedOnly = false, [FromQuery] int take = 100)
+    {
+        var tickets = await _chatService.ListTicketsAsync(escalatedOnly, Math.Clamp(take, 1, 500));
+        return Ok(tickets);
+    }
+
     private Guid? GetUserId()
     {
         var sub = User.FindFirst(ClaimTypes.NameIdentifier)?.Value

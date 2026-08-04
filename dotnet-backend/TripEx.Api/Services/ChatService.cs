@@ -19,6 +19,7 @@ public class ChatService
     private readonly InvoiceService _invoiceService;
     private readonly GeolocationService _geoService;
     private readonly ILogger<ChatService> _logger;
+    private readonly string _supportContact;
 
     // Intent → Actions mapping
     private static readonly Dictionary<string, (List<string> Actions, string? RedirectPage)> ActionMapping = new()
@@ -39,13 +40,15 @@ public class ChatService
         OracleAiService oracle,
         InvoiceService invoiceService,
         GeolocationService geoService,
-        ILogger<ChatService> logger)
+        ILogger<ChatService> logger,
+        IConfiguration configuration)
     {
         _db = db;
         _oracle = oracle;
         _invoiceService = invoiceService;
         _geoService = geoService;
         _logger = logger;
+        _supportContact = configuration["Support:Contact"] ?? "support@tripex.io";
     }
 
     public async Task<ChatResponse> ProcessAsync(ChatRequest request, Guid userId, string? ipAddress, string userRole = "user")
@@ -174,6 +177,23 @@ public class ChatService
             "[CHAT] session={SessionId} user={UserId} source={Source} intent={Intent} rag={RagChars}c latency={LatencyMs}ms\n  Q: {Message}\n  A: {Response}",
             sessionId, userId, request.Source ?? "-", intent, ragChars, latencyMs, request.Text, responseText);
 
+        // ── Escalation: hand the ticket to a human when Milo can't help ──
+        var escalated = intent == "escalate";
+        if (escalated)
+        {
+            var ticket = await _db.ChatSessions.FirstOrDefaultAsync(s => s.Id == sessionId);
+            if (ticket != null)
+            {
+                ticket.Escalated = true;
+                ticket.EscalatedAt = DateTime.UtcNow;
+                ticket.Status = "escalated";
+                ticket.EscalationReason = request.Text.Length > 1000 ? request.Text[..1000] : request.Text;
+                ticket.UpdatedAt = DateTime.UtcNow;
+            }
+            _logger.LogInformation("[TICKET-ESCALATED] session={SessionId} user={UserId} reason={Reason}",
+                sessionId, userId, request.Text);
+        }
+
         await _db.SaveChangesAsync();
 
         return new ChatResponse
@@ -181,8 +201,39 @@ public class ChatService
             Text = responseText,
             Actions = mapping.Actions,
             RedirectPage = mapping.RedirectPage ?? "",
-            SessionId = sessionId.ToString()
+            SessionId = sessionId.ToString(),
+            Escalated = escalated,
+            SupportContact = escalated ? _supportContact : null
         };
+    }
+
+    /// <summary>
+    /// List tickets (= chat sessions) for review / learning. Admin-only via the controller.
+    /// </summary>
+    public async Task<List<object>> ListTicketsAsync(bool escalatedOnly, int take)
+    {
+        var q = _db.ChatSessions.AsQueryable();
+        if (escalatedOnly) q = q.Where(s => s.Escalated);
+
+        var tickets = await q
+            .OrderByDescending(s => s.UpdatedAt)
+            .Take(take)
+            .Select(s => new
+            {
+                ticketId = s.Id,
+                userId = s.UserId,
+                source = s.Source,
+                status = s.Status,
+                escalated = s.Escalated,
+                escalatedAt = s.EscalatedAt,
+                escalationReason = s.EscalationReason,
+                messageCount = _db.ChatMessages.Count(m => m.SessionId == s.Id),
+                createdAt = s.CreatedAt,
+                updatedAt = s.UpdatedAt
+            })
+            .ToListAsync();
+
+        return tickets.Cast<object>().ToList();
     }
 
     private async Task<ChatResponse> HandleImageAsync(ChatRequest request, Guid sessionId, Guid userId)
