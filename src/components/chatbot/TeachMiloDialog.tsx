@@ -81,6 +81,19 @@ export function TeachMiloDialog({
 
         <div className="space-y-3">
           <div className="space-y-1.5">
+            <Label htmlFor="lesson-user-type">This lesson applies to</Label>
+            <Select value={userType} onValueChange={setUserType}>
+              <SelectTrigger id="lesson-user-type">
+                <SelectValue placeholder="Select user type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="user">Regular user</SelectItem>
+                <SelectItem value="coordinator">Coordinator</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
             <Label htmlFor="lesson-question">When a user asks…</Label>
             <Textarea
               id="lesson-question"
