@@ -36,6 +36,7 @@ export function TeachMiloDialog({
   const { user } = useAuth();
   const [question, setQuestion] = useState(defaultQuestion);
   const [answer, setAnswer] = useState("");
+  const [userType, setUserType] = useState("user");
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -53,6 +54,7 @@ export function TeachMiloDialog({
       answer: answer.trim(),
       audience,
       source,
+      user_type: userType,
       taught_by: user.id,
     });
     setSaving(false);
