@@ -87,10 +87,11 @@ export function TeachMiloDialog({
                 <SelectValue placeholder="Select user type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="user">Regular user</SelectItem>
-                <SelectItem value="coordinator">Coordinator</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
-              </SelectContent>
+              <SelectItem value="user">Regular user</SelectItem>
+              <SelectItem value="coordinator">Coordinator</SelectItem>
+              <SelectItem value="finance">Finance / כספים</SelectItem>
+              <SelectItem value="admin">Admin</SelectItem>
+            </SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5">
