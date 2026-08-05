@@ -3,6 +3,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -29,6 +36,7 @@ export function TeachMiloDialog({
   const { user } = useAuth();
   const [question, setQuestion] = useState(defaultQuestion);
   const [answer, setAnswer] = useState("");
+  const [userType, setUserType] = useState("user");
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -46,6 +54,7 @@ export function TeachMiloDialog({
       answer: answer.trim(),
       audience,
       source,
+      user_type: userType,
       taught_by: user.id,
     });
     setSaving(false);
@@ -71,6 +80,19 @@ export function TeachMiloDialog({
         </DialogHeader>
 
         <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="lesson-user-type">This lesson applies to</Label>
+            <Select value={userType} onValueChange={setUserType}>
+              <SelectTrigger id="lesson-user-type">
+                <SelectValue placeholder="Select user type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="user">Regular user</SelectItem>
+                <SelectItem value="coordinator">Coordinator</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <div className="space-y-1.5">
             <Label htmlFor="lesson-question">When a user asks…</Label>
             <Textarea
