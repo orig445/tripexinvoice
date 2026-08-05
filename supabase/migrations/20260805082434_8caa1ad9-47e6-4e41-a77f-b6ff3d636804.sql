@@ -1,0 +1,1 @@
+ALTER TABLE public.bot_lessons ADD COLUMN IF NOT EXISTS user_type text NOT NULL DEFAULT 'user';

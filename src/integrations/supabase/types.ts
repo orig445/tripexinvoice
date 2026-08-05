@@ -25,6 +25,7 @@ export type Database = {
           source: string
           taught_by: string | null
           updated_at: string
+          user_type: string
           votes: number
         }
         Insert: {
@@ -37,6 +38,7 @@ export type Database = {
           source?: string
           taught_by?: string | null
           updated_at?: string
+          user_type?: string
           votes?: number
         }
         Update: {
@@ -49,6 +51,7 @@ export type Database = {
           source?: string
           taught_by?: string | null
           updated_at?: string
+          user_type?: string
           votes?: number
         }
         Relationships: []
