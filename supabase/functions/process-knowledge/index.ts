@@ -1,8 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { encode as base64Encode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
-// Official SheetJS ESM build (recommended for Deno / Supabase Edge Functions).
-import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
+// SheetJS is imported DYNAMICALLY (cdn.sheetjs.com is blocked by the bundler).
+// deno-lint-ignore no-explicit-any
+let XLSX: any = null;
+async function getXlsx() {
+  if (!XLSX) XLSX = await import("https://esm.sh/xlsx@0.18.5");
+  return XLSX;
+}
+
 // NOTE: unpdf is imported DYNAMICALLY inside extractPdfTextLocal (not a static
 // top-level import) so a bundling issue with it can never block deployment.
 
