@@ -360,10 +360,10 @@ serve(async (req) => {
         if (!extractedText || extractedText.length < 20) {
           throw new Error("Could not extract text from spreadsheet. Try uploading as CSV instead.");
         }
-      } else if (fileType.includes("text") || fileType.includes("csv") || fileType.includes("json") || fileType.includes("xml") || fileType.includes("markdown")) {
+      } else if (kind === "text") {
         // Plain text files
         extractedText = await fileData.text();
-      } else if (fileType.includes("pdf") || /\.pdf$/.test(fileName)) {
+      } else if (kind === "pdf") {
         // PDF: extract embedded text locally (no AI / no quota). Most support
         // emails are text-based, so this covers them for free.
         const bytes = new Uint8Array(await fileData.arrayBuffer());
@@ -382,16 +382,19 @@ serve(async (req) => {
             console.error("[pdf] OCI vision fallback failed:", e);
           }
         }
-      } else if (fileType.includes("word") || fileType.includes("document") || /\.docx?$/.test(fileName)) {
-        // Word document → OCI vision (best effort).
-        const buffer = await fileData.arrayBuffer();
-        const base64 = base64Encode(new Uint8Array(buffer));
-        extractedText = await ociVision(
-          "Extract ALL text content from this document. Return ONLY the raw text, preserving paragraphs and structure.",
-          `data:${doc.file_type};base64,${base64}`,
-          4096,
-        );
-      } else if (fileType.includes("image")) {
+      } else if (kind === "word") {
+        // Word/PowerPoint (OOXML): unzip and read the XML parts locally.
+        const bytes = new Uint8Array(await fileData.arrayBuffer());
+        extractedText = await extractOoxmlText(bytes);
+        if (extractedText.length < 20) {
+          // Legacy .doc (OLE2) or odd formats → salvage printable strings.
+          extractedText = salvageStrings(bytes);
+        }
+        if (extractedText.length < 20) {
+          throw new Error("Could not extract text from Word document");
+        }
+      } else if (kind === "image") {
+
         // Use Oracle AI to describe image content
         const ORACLE_API_KEY =
           Deno.env.get("oracleapikey") ||
@@ -444,8 +447,15 @@ serve(async (req) => {
         const aiData = await response.json();
         extractedText = aiData.choices?.[0]?.message?.content || "";
       } else {
-        throw new Error(`Unsupported file type: ${fileType}`);
+        // Last resort: treat as UTF-8 text (covers unknown/octet-stream mimes).
+        const raw = await fileData.text();
+        const printable = raw.replace(/[^\P{C}\n\t]/gu, "");
+        if (printable.trim().length < 20) {
+          throw new Error(`Unsupported file type: ${fileType} (${fileName})`);
+        }
+        extractedText = printable;
       }
+
 
       // Sanitize: remove null bytes that crash Postgres
       extractedText = extractedText.replace(/\u0000/g, "");
