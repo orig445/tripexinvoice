@@ -1,8 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { encode as base64Encode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
-// Official SheetJS ESM build (recommended for Deno / Supabase Edge Functions).
-import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
+// SheetJS is imported DYNAMICALLY (cdn.sheetjs.com is blocked by the bundler).
+// deno-lint-ignore no-explicit-any
+let XLSX: any = null;
+async function getXlsx() {
+  if (!XLSX) XLSX = await import("https://esm.sh/xlsx@0.18.5");
+  return XLSX;
+}
+
 // NOTE: unpdf is imported DYNAMICALLY inside extractPdfTextLocal (not a static
 // top-level import) so a bundling issue with it can never block deployment.
 
@@ -145,6 +151,80 @@ async function extractPdfTextLocal(bytes: Uint8Array): Promise<string> {
   }
 }
 
+type FileKind = "spreadsheet" | "pdf" | "word" | "text" | "image" | "unknown";
+
+/**
+ * Decide how to extract a file. Extension and magic bytes win over the mime
+ * type, because ZIP/bulk uploads arrive as "application/octet-stream".
+ */
+function detectKind(mime: string, name: string, head: Uint8Array): FileKind {
+  const ext = (name.match(/\.([a-z0-9]+)$/)?.[1] || "").toLowerCase();
+  if (["xlsx", "xls", "xlsm", "xlsb"].includes(ext)) return "spreadsheet";
+  if (ext === "pdf") return "pdf";
+  if (["docx", "doc", "pptx", "ppt", "rtf"].includes(ext)) return "word";
+  if (["txt", "csv", "json", "xml", "md", "html", "htm", "log", "yml", "yaml"].includes(ext)) return "text";
+  if (["png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff"].includes(ext)) return "image";
+
+  if (mime.includes("spreadsheet") || mime.includes("excel") || mime.includes("sheet")) return "spreadsheet";
+  if (mime.includes("pdf")) return "pdf";
+  if (mime.includes("word") || mime.includes("presentation") || mime.includes("officedocument")) return "word";
+  if (mime.includes("image")) return "image";
+  if (mime.includes("text") || mime.includes("csv") || mime.includes("json") || mime.includes("xml") || mime.includes("markdown")) return "text";
+
+  // Magic-byte sniffing for octet-stream / missing mime.
+  const sig = String.fromCharCode(...head.slice(0, 4));
+  if (sig === "%PDF") return "pdf";
+  if (head[0] === 0x50 && head[1] === 0x4b) return "word"; // OOXML zip (docx/pptx/xlsx)
+  if (head[0] === 0xd0 && head[1] === 0xcf) return "word"; // legacy OLE2 (doc/xls/ppt)
+  if (head[0] === 0x89 && head[1] === 0x50) return "image"; // PNG
+  if (head[0] === 0xff && head[1] === 0xd8) return "image"; // JPEG
+  return "unknown";
+}
+
+/** Keep only readable characters from a binary blob (legacy .doc salvage). */
+function salvageStrings(bytes: Uint8Array): string {
+  const raw = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+  return raw
+    .replace(/[^\P{C}\n\t]/gu, " ")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** Extract text from OOXML (docx / pptx) by unzipping and stripping XML tags. */
+async function extractOoxmlText(bytes: Uint8Array): Promise<string> {
+  try {
+    const JSZip = (await import("https://esm.sh/jszip@3.10.1")).default;
+    const zip = await JSZip.loadAsync(bytes);
+    const parts: string[] = [];
+    const names = Object.keys(zip.files).filter((n) =>
+      /^word\/(document|header\d*|footer\d*|footnotes|endnotes)\.xml$/.test(n) ||
+      /^ppt\/slides\/slide\d+\.xml$/.test(n) ||
+      /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(n)
+    ).sort();
+
+    for (const n of names) {
+      const xml = await zip.files[n].async("string");
+      const text = xml
+        .replace(/<\/w:p>|<\/a:p>|<w:br\s*\/>/g, "\n")
+        .replace(/<w:tab\s*\/>/g, "\t")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+        .replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+        .replace(/[ \t]{2,}/g, " ")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+      if (text.length > 0) parts.push(text);
+    }
+    return parts.join("\n\n").trim();
+  } catch (e) {
+    console.error("[ooxml] extraction failed:", e);
+    return "";
+  }
+}
+
+
+
 interface Normalized {
   audience?: "external" | "internal";
   domain?: string;
@@ -279,31 +359,30 @@ serve(async (req) => {
       }
 
       let extractedText = "";
-      const fileType = doc.file_type.toLowerCase();
+      const fileType = (doc.file_type || "").toLowerCase();
       const fileName = (doc.file_name || "").toLowerCase();
+      const headBytes = new Uint8Array(await fileData.slice(0, 8).arrayBuffer());
+      const kind = detectKind(fileType, fileName, headBytes);
+      console.log(`[process] file=${fileName} mime=${fileType} kind=${kind}`);
 
-      // Detect spreadsheets by mime OR by extension (covers legacy .xls whose
-      // mime is often blank/generic). SheetJS parses BOTH modern .xlsx (OOXML/ZIP)
-      // and legacy .xls (OLE2/BIFF), so it replaces the old ZIP-only extractor.
-      const isSpreadsheet =
-        fileType.includes("spreadsheet") ||
-        fileType.includes("excel") ||
-        fileType.includes("sheet") ||
-        /\.(xlsx|xls|xlsm|xlsb)$/.test(fileName);
+      const isSpreadsheet = kind === "spreadsheet";
 
       if (isSpreadsheet) {
+
         const buffer = await fileData.arrayBuffer();
         const uint8 = new Uint8Array(buffer);
 
         try {
           // type:"array" lets SheetJS auto-detect the format (xls vs xlsx vs csv).
-          const workbook = XLSX.read(uint8, { type: "array" });
+          const xlsx = await getXlsx();
+          const workbook = xlsx.read(uint8, { type: "array" });
+
           const parts: string[] = [];
           for (const sheetName of workbook.SheetNames) {
             const sheet = workbook.Sheets[sheetName];
             if (!sheet) continue;
             // CSV keeps rows/columns readable for the model.
-            const csv = XLSX.utils.sheet_to_csv(sheet, { blankrows: false });
+            const csv = xlsx.utils.sheet_to_csv(sheet, { blankrows: false });
             if (csv && csv.trim().length > 0) {
               parts.push(`--- ${sheetName} ---`);
               parts.push(csv.trim());
@@ -360,10 +439,10 @@ serve(async (req) => {
         if (!extractedText || extractedText.length < 20) {
           throw new Error("Could not extract text from spreadsheet. Try uploading as CSV instead.");
         }
-      } else if (fileType.includes("text") || fileType.includes("csv") || fileType.includes("json") || fileType.includes("xml") || fileType.includes("markdown")) {
+      } else if (kind === "text") {
         // Plain text files
         extractedText = await fileData.text();
-      } else if (fileType.includes("pdf") || /\.pdf$/.test(fileName)) {
+      } else if (kind === "pdf") {
         // PDF: extract embedded text locally (no AI / no quota). Most support
         // emails are text-based, so this covers them for free.
         const bytes = new Uint8Array(await fileData.arrayBuffer());
@@ -382,16 +461,19 @@ serve(async (req) => {
             console.error("[pdf] OCI vision fallback failed:", e);
           }
         }
-      } else if (fileType.includes("word") || fileType.includes("document") || /\.docx?$/.test(fileName)) {
-        // Word document → OCI vision (best effort).
-        const buffer = await fileData.arrayBuffer();
-        const base64 = base64Encode(new Uint8Array(buffer));
-        extractedText = await ociVision(
-          "Extract ALL text content from this document. Return ONLY the raw text, preserving paragraphs and structure.",
-          `data:${doc.file_type};base64,${base64}`,
-          4096,
-        );
-      } else if (fileType.includes("image")) {
+      } else if (kind === "word") {
+        // Word/PowerPoint (OOXML): unzip and read the XML parts locally.
+        const bytes = new Uint8Array(await fileData.arrayBuffer());
+        extractedText = await extractOoxmlText(bytes);
+        if (extractedText.length < 20) {
+          // Legacy .doc (OLE2) or odd formats → salvage printable strings.
+          extractedText = salvageStrings(bytes);
+        }
+        if (extractedText.length < 20) {
+          throw new Error("Could not extract text from Word document");
+        }
+      } else if (kind === "image") {
+
         // Use Oracle AI to describe image content
         const ORACLE_API_KEY =
           Deno.env.get("oracleapikey") ||
@@ -444,8 +526,15 @@ serve(async (req) => {
         const aiData = await response.json();
         extractedText = aiData.choices?.[0]?.message?.content || "";
       } else {
-        throw new Error(`Unsupported file type: ${fileType}`);
+        // Last resort: treat as UTF-8 text (covers unknown/octet-stream mimes).
+        const raw = await fileData.text();
+        const printable = raw.replace(/[^\P{C}\n\t]/gu, "");
+        if (printable.trim().length < 20) {
+          throw new Error(`Unsupported file type: ${fileType} (${fileName})`);
+        }
+        extractedText = printable;
       }
+
 
       // Sanitize: remove null bytes that crash Postgres
       extractedText = extractedText.replace(/\u0000/g, "");
