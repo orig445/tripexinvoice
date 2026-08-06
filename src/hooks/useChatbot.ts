@@ -13,6 +13,7 @@ export interface ChatMessage {
     actions?: string[];
     redirectPage?: string;
     data?: Record<string, any>;
+    sources?: Array<{ name: string; url: string | null }>;
     [key: string]: any;
   };
   created_at: string;
@@ -143,6 +144,7 @@ export function useChatbot(options?: { audience?: KnowledgeAudience; source?: st
             actions: data.actions || [],
             redirectPage: data.redirectPage || "",
             data: data.data || {},
+            sources: data.data?.sources || [],
           },
           created_at: new Date().toISOString(),
         };
