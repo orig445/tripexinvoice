@@ -382,7 +382,7 @@ serve(async (req) => {
             const sheet = workbook.Sheets[sheetName];
             if (!sheet) continue;
             // CSV keeps rows/columns readable for the model.
-            const csv = XLSX.utils.sheet_to_csv(sheet, { blankrows: false });
+            const csv = xlsx.utils.sheet_to_csv(sheet, { blankrows: false });
             if (csv && csv.trim().length > 0) {
               parts.push(`--- ${sheetName} ---`);
               parts.push(csv.trim());
