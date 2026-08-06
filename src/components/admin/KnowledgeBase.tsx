@@ -363,7 +363,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
               id="knowledge-upload"
               className="hidden"
               multiple
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.json,.xml"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.json,.xml,.zip"
               onChange={handleFileInput}
             />
             <Button variant="outline" onClick={() => document.getElementById("knowledge-upload")?.click()}>
@@ -371,7 +371,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
               בחר קבצים
             </Button>
             <p className="text-xs text-muted-foreground mt-3">
-              PDF, Word, Excel, CSV, טקסט, Markdown, JSON, XML · עד 25MB לקובץ
+              PDF, Word, Excel, CSV, טקסט, Markdown, JSON, XML, ZIP · עד 25MB לקובץ
             </p>
           </div>
 
