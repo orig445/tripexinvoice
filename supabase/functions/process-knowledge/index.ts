@@ -145,6 +145,80 @@ async function extractPdfTextLocal(bytes: Uint8Array): Promise<string> {
   }
 }
 
+type FileKind = "spreadsheet" | "pdf" | "word" | "text" | "image" | "unknown";
+
+/**
+ * Decide how to extract a file. Extension and magic bytes win over the mime
+ * type, because ZIP/bulk uploads arrive as "application/octet-stream".
+ */
+function detectKind(mime: string, name: string, head: Uint8Array): FileKind {
+  const ext = (name.match(/\.([a-z0-9]+)$/)?.[1] || "").toLowerCase();
+  if (["xlsx", "xls", "xlsm", "xlsb"].includes(ext)) return "spreadsheet";
+  if (ext === "pdf") return "pdf";
+  if (["docx", "doc", "pptx", "ppt", "rtf"].includes(ext)) return "word";
+  if (["txt", "csv", "json", "xml", "md", "html", "htm", "log", "yml", "yaml"].includes(ext)) return "text";
+  if (["png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff"].includes(ext)) return "image";
+
+  if (mime.includes("spreadsheet") || mime.includes("excel") || mime.includes("sheet")) return "spreadsheet";
+  if (mime.includes("pdf")) return "pdf";
+  if (mime.includes("word") || mime.includes("presentation") || mime.includes("officedocument")) return "word";
+  if (mime.includes("image")) return "image";
+  if (mime.includes("text") || mime.includes("csv") || mime.includes("json") || mime.includes("xml") || mime.includes("markdown")) return "text";
+
+  // Magic-byte sniffing for octet-stream / missing mime.
+  const sig = String.fromCharCode(...head.slice(0, 4));
+  if (sig === "%PDF") return "pdf";
+  if (head[0] === 0x50 && head[1] === 0x4b) return "word"; // OOXML zip (docx/pptx/xlsx)
+  if (head[0] === 0xd0 && head[1] === 0xcf) return "word"; // legacy OLE2 (doc/xls/ppt)
+  if (head[0] === 0x89 && head[1] === 0x50) return "image"; // PNG
+  if (head[0] === 0xff && head[1] === 0xd8) return "image"; // JPEG
+  return "unknown";
+}
+
+/** Keep only readable characters from a binary blob (legacy .doc salvage). */
+function salvageStrings(bytes: Uint8Array): string {
+  const raw = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+  return raw
+    .replace(/[^\P{C}\n\t]/gu, " ")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** Extract text from OOXML (docx / pptx) by unzipping and stripping XML tags. */
+async function extractOoxmlText(bytes: Uint8Array): Promise<string> {
+  try {
+    const JSZip = (await import("https://esm.sh/jszip@3.10.1")).default;
+    const zip = await JSZip.loadAsync(bytes);
+    const parts: string[] = [];
+    const names = Object.keys(zip.files).filter((n) =>
+      /^word\/(document|header\d*|footer\d*|footnotes|endnotes)\.xml$/.test(n) ||
+      /^ppt\/slides\/slide\d+\.xml$/.test(n) ||
+      /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(n)
+    ).sort();
+
+    for (const n of names) {
+      const xml = await zip.files[n].async("string");
+      const text = xml
+        .replace(/<\/w:p>|<\/a:p>|<w:br\s*\/>/g, "\n")
+        .replace(/<w:tab\s*\/>/g, "\t")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+        .replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+        .replace(/[ \t]{2,}/g, " ")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+      if (text.length > 0) parts.push(text);
+    }
+    return parts.join("\n\n").trim();
+  } catch (e) {
+    console.error("[ooxml] extraction failed:", e);
+    return "";
+  }
+}
+
+
+
 interface Normalized {
   audience?: "external" | "internal";
   domain?: string;
