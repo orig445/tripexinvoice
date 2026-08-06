@@ -94,9 +94,53 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
     loadDocuments();
   }, [loadDocuments]);
 
-  const addFiles = (files: FileList | File[]) => {
-    const incoming: StagedFile[] = [];
+  const isZip = (f: File) =>
+    /\.zip$/i.test(f.name) || f.type === "application/zip" || f.type === "application/x-zip-compressed";
+
+  const SUPPORTED_EXT = /\.(pdf|docx?|xlsx?|csv|txt|md|json|xml)$/i;
+
+  // Expand a ZIP archive into its individual documents (recursively skips
+  // folders, macOS metadata and unsupported binaries).
+  const expandZip = async (file: File): Promise<File[]> => {
+    const JSZip = (await import("jszip")).default;
+    const zip = await JSZip.loadAsync(file);
+    const out: File[] = [];
+    const entries = Object.values(zip.files) as any[];
+    for (const entry of entries) {
+      if (entry.dir) continue;
+      const name = entry.name.split("/").pop() || entry.name;
+      if (name.startsWith(".") || entry.name.startsWith("__MACOSX/")) continue;
+      if (!SUPPORTED_EXT.test(name)) continue;
+      const blob = await entry.async("blob");
+      if (blob.size === 0 || blob.size > MAX_SIZE) continue;
+      out.push(new File([blob], name, { type: blob.type || "application/octet-stream" }));
+    }
+    return out;
+  };
+
+  const addFiles = async (files: FileList | File[]) => {
+    const expanded: File[] = [];
     for (const file of Array.from(files)) {
+      if (isZip(file)) {
+        try {
+          const inner = await expandZip(file);
+          if (inner.length === 0) {
+            toast.error(`לא נמצאו קבצים נתמכים בתוך ${file.name}`);
+            continue;
+          }
+          toast.success(`${file.name}: חולצו ${inner.length} קבצים`);
+          expanded.push(...inner);
+        } catch (err) {
+          console.error("zip error", err);
+          toast.error(`שגיאה בפתיחת ${file.name}`);
+        }
+        continue;
+      }
+      expanded.push(file);
+    }
+
+    const incoming: StagedFile[] = [];
+    for (const file of expanded) {
       if (file.size > MAX_SIZE) {
         toast.error(`הקובץ ${file.name} גדול מדי (מקסימום 25MB)`);
         continue;
@@ -319,7 +363,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
               id="knowledge-upload"
               className="hidden"
               multiple
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.json,.xml"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.json,.xml,.zip"
               onChange={handleFileInput}
             />
             <Button variant="outline" onClick={() => document.getElementById("knowledge-upload")?.click()}>
@@ -327,7 +371,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
               בחר קבצים
             </Button>
             <p className="text-xs text-muted-foreground mt-3">
-              PDF, Word, Excel, CSV, טקסט, Markdown, JSON, XML · עד 25MB לקובץ
+              PDF, Word, Excel, CSV, טקסט, Markdown, JSON, XML, ZIP · עד 25MB לקובץ
             </p>
           </div>
 
