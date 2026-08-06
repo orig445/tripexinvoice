@@ -341,21 +341,22 @@ serve(async (req) => {
 
     // ── RAG: Search knowledge base ──
     let knowledgeContext = "";
+    let knowledgeSources: Array<{ name: string; url: string | null }> = [];
     try {
       // Search with full query
       const { data: chunks } = await supabase.rpc("search_knowledge", {
         query_text: text,
-        max_results: 5,
+        max_results: kbAudience === "internal" ? 15 : 5,
       });
 
       // Also search with individual words for better Hebrew matching
       const words = text.split(/\s+/).filter((w: string) => w.length > 2);
       let allChunks = chunks || [];
 
-      for (const word of words.slice(0, 3)) {
+      for (const word of words.slice(0, kbAudience === "internal" ? 8 : 3)) {
         const { data: wordChunks } = await supabase.rpc("search_knowledge", {
           query_text: word,
-          max_results: 3,
+          max_results: kbAudience === "internal" ? 8 : 3,
         });
         if (wordChunks) {
           for (const wc of wordChunks) {
@@ -378,7 +379,7 @@ serve(async (req) => {
         if (docIds.length > 0) {
           const { data: docs, error: docsErr } = await supabase
             .from("knowledge_documents")
-            .select("id, audience")
+            .select("id, audience, file_name, file_url")
             .in("id", docIds);
 
           if (!docsErr && docs) {
@@ -386,18 +387,31 @@ serve(async (req) => {
             allChunks = allChunks.filter(
               (c: any) => (audienceById.get(c.document_id) ?? "external") === kbAudience,
             );
+
+            const matchedDocIds = new Set(allChunks.map((c: any) => c.document_id));
+            const matchedDocs = docs.filter((d: any) => matchedDocIds.has(d.id));
+            knowledgeSources = await Promise.all(
+              matchedDocs.map(async (doc: any) => {
+                let url: string | null = null;
+                if (doc.file_url) {
+                  const { data: signed } = await supabase.storage.from("knowledge").createSignedUrl(doc.file_url, 3600);
+                  url = signed?.signedUrl || null;
+                }
+                return { name: doc.file_name, url };
+              }),
+            );
           }
           // If the column is missing (docsErr), skip filtering — no internal docs exist yet.
         }
       }
 
-      // Limit to top 5
-      allChunks = allChunks.slice(0, 5);
+      // Internal research needs enough surrounding evidence for a complete answer.
+      allChunks = allChunks.slice(0, kbAudience === "internal" ? 15 : 5);
 
       if (allChunks.length > 0) {
         knowledgeContext =
           "\n\n## Knowledge Base Context (use this to answer the user):\n" +
-          allChunks.map((c: any) => `[${c.file_name}]: ${c.content}`).join("\n\n");
+          allChunks.map((c: any) => `[Source: ${c.file_name}]\n${c.content}`).join("\n\n");
       }
     } catch (ragErr) {
       console.error("RAG search error:", ragErr);
@@ -448,7 +462,20 @@ serve(async (req) => {
     }
 
 
-    const systemPrompt = `You are Milo 🦊 — a friendly, professional customer service assistant for TripEX (Travel & Expense Management). Your goal is to HELP users warmly and patiently. You ALWAYS respond in English regardless of the user's language.
+    const assistantRole = kbAudience === "internal"
+      ? `You are Milo Internal Knowledge — an expert research assistant for TripEX employees. You are NOT a customer-support bot and must never treat the user as a customer. Your job is to investigate the internal knowledge base and help employees with any company topic represented there, including HR, product, operations, finance, procedures, integrations, and technical documentation.
+
+INTERNAL RESEARCH RULES (CRITICAL):
+- Thoroughly synthesize all relevant supplied internal excerpts; do not give a generic TripEX support response.
+- Answer the employee's actual question directly and comprehensively, even when it is outside travel and expenses.
+- For broad requests such as help with an HR interface, summarize what the documents say, organize the findings into clear sections, and provide concrete steps, fields, workflows, dependencies, and caveats found in the sources.
+- Cite factual sections inline as [Source: exact file name]. Never invent a source or claim a detail not present in the excerpts.
+- When sources are present, finish with a short “Sources” section listing the exact file names. Download links are added separately by the application.
+- If the excerpts genuinely do not contain the answer, clearly say which part was not found. Do not redirect the employee to customer support and do not pretend the topic is out of scope.
+- Treat follow-up questions as continuing internal research and use the conversation history.`
+      : `You are Milo 🦊 — a friendly, professional customer service assistant for TripEX (Travel & Expense Management). Your goal is to HELP users warmly and patiently.`;
+
+    const systemPrompt = `${assistantRole} You ALWAYS respond in English regardless of the user's language.
 
 CRITICAL OUTPUT RULE: Respond with ONLY a JSON object. No reasoning, no markdown, no text outside the JSON.
 CRITICAL TEXT RULE: The "text" field must ALWAYS contain natural, human-readable text. NEVER put JSON objects, code, or raw data structures inside the "text" field. Always format data as a readable list with dashes or line breaks — like a real person would write it.
@@ -462,13 +489,15 @@ CRITICAL LANGUAGE RULE: You MUST ALWAYS respond in English, no matter what langu
 - expense: user wants to add or manage expenses
 - general: casual conversation or anything else
 
-## SCOPE — YOU ARE A SUPPORT AGENT ONLY (CRITICAL):
+## SCOPE — CUSTOMER CHAT ONLY:
+${kbAudience === "internal" ? "This section does NOT apply. You are the internal company knowledge researcher described above." : `
 You answer support questions. You do NOT perform actions and you do NOT run data-collection wizards.
 - NEVER start a travel-request / flight-booking flow. Never ask "Where are you planning to travel to?", for dates, passengers, or notes.
 - NEVER start an add-expense wizard (description → amount → currency → date → category).
 - If the user wants to create a trip request, book travel, or add an expense, EXPLAIN how to do it in TripEX (concrete steps / where to click) based on the knowledge base — do not collect the details yourself.
 - If the knowledge base doesn't cover it, say so honestly and offer to escalate to a human agent.
 - Never ask a chain of questions. Answer, then optionally offer one next step.
+`}
 
 
 ### When user corrects OCR/scanned data:
@@ -509,13 +538,15 @@ You are a smart support agent, not a form. ANSWER FIRST, ask later.
 - Structure answers with line breaks and numbered steps for readability
 - ALWAYS respond in English
 
-## Email-style formatting (apply to every answer):
+## Email-style formatting (${kbAudience === "internal" ? "do not apply; use a clear internal research brief instead" : "apply to every answer"}):
+${kbAudience === "internal" ? "Use descriptive headings, concise paragraphs, and numbered steps. Do not open like a support email and do not offer escalation to a support agent." : `
 Write each reply like a short, professional support email — but WITHOUT a signature block or sign-off.
 - Open with a brief greeting line ("Hi," or "Hi <name>," if the user's name is known), then a blank line.
 - Body in short paragraphs separated by blank lines; use numbered steps (1., 2., 3.) for instructions.
 - Close with one short line offering further help (e.g. "Happy to help if anything is unclear.").
 - Do NOT add "Best regards", "Milo — TripEX Support", subject lines, or "From:"/"To:" headers.
 - Keep it tight and readable — no walls of text.
+`}
 
 
 
@@ -808,7 +839,7 @@ Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}
       role: "assistant",
       content: finalText,
       intent,
-      metadata: { actions: mapping.actions, redirectPage: mapping.redirectPage || "" },
+      metadata: { actions: mapping.actions, redirectPage: mapping.redirectPage || "", sources: knowledgeSources },
     });
 
     // Log
@@ -830,7 +861,7 @@ Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}
         actions: mapping.actions,
         text: finalText,
         redirectPage: mapping.redirectPage || "",
-        data: {},
+        data: { sources: knowledgeSources },
         session_id: sessionId,
       }),
       {

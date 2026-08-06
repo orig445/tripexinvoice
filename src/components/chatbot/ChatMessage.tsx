@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { User, Camera, ArrowRight, PlusCircle, BarChart3, ThumbsUp, GraduationCap } from "lucide-react";
+import { User, Camera, ArrowRight, PlusCircle, BarChart3, ThumbsUp, GraduationCap, FileText, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import type { ChatMessage as ChatMessageType } from "@/hooks/useChatbot";
@@ -36,6 +36,7 @@ function getMiloAvatar(intent?: string): string {
 export function ChatMessage({ message, onAction, question, audience = "external" }: ChatMessageProps) {
   const isUser = message.role === "user";
   const actions = message.metadata?.actions || [];
+  const sources = message.metadata?.sources || message.metadata?.data?.sources || [];
   const redirectPage = message.metadata?.redirectPage || "";
   const [teachOpen, setTeachOpen] = useState(false);
   const [voted, setVoted] = useState(false);
@@ -97,6 +98,35 @@ export function ChatMessage({ message, onAction, question, audience = "external"
                 </Button>
               );
             })}
+          </div>
+        )}
+
+        {!isUser && sources.length > 0 && (
+          <div className="space-y-1.5 pt-1" aria-label="Source documents">
+            <p className="text-[11px] font-medium text-muted-foreground">Source documents</p>
+            <div className="flex flex-wrap gap-1.5">
+              {sources.map((source, index) =>
+                source.url ? (
+                  <a
+                    key={`${source.name}-${index}`}
+                    href={source.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex max-w-full items-center gap-1 rounded-md border bg-background px-2 py-1 text-xs text-foreground hover:border-primary hover:text-primary"
+                    title={`Open ${source.name}`}
+                  >
+                    <FileText className="h-3 w-3 shrink-0" />
+                    <span className="max-w-56 truncate">{source.name}</span>
+                    <ExternalLink className="h-3 w-3 shrink-0" />
+                  </a>
+                ) : (
+                  <span key={`${source.name}-${index}`} className="inline-flex max-w-full items-center gap-1 rounded-md border bg-background px-2 py-1 text-xs text-foreground">
+                    <FileText className="h-3 w-3 shrink-0" />
+                    <span className="max-w-56 truncate">{source.name}</span>
+                  </span>
+                ),
+              )}
+            </div>
           </div>
         )}
 

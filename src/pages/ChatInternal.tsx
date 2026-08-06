@@ -33,7 +33,7 @@ const ChatInternal = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-background" dir="rtl">
+    <div className="min-h-screen flex flex-col bg-background" dir="ltr">
       <Header />
 
       {/* Chat header — amber theme marks this as the internal assistant */}
@@ -44,8 +44,8 @@ const ChatInternal = () => {
               <Lock className="h-6 w-6" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold">עוזר פנימי — צוות TripEx</h2>
-              <p className="text-xs opacity-80">מבוסס על בסיס הידע הפנימי · לעובדים בלבד</p>
+              <h2 className="text-lg font-semibold">Milo Internal Knowledge</h2>
+              <p className="text-xs opacity-80">Company-wide research across internal documents · Employees only</p>
             </div>
           </div>
           <Button
@@ -55,7 +55,7 @@ const ChatInternal = () => {
             onClick={startNewSession}
           >
             <RotateCcw className="h-4 w-4" />
-            שיחה חדשה
+            New chat
           </Button>
         </div>
       </div>
@@ -70,8 +70,8 @@ const ChatInternal = () => {
                   <Lock className="h-9 w-9 text-amber-600" />
                 </div>
                 <div className="bg-muted rounded-2xl px-5 py-3 text-sm max-w-[85%]">
-                  שלום! אני העוזר הפנימי של הצוות. שאלו אותי כל דבר על סמך המסמכים הפנימיים
-                  שהועלו למאגר הפנימי.
+                  Hello! I research the complete internal knowledge base for employees. Ask me about HR,
+                  product, operations, finance, procedures, integrations, or any uploaded company document.
                 </div>
               </div>
             )}
