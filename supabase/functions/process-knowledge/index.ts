@@ -279,19 +279,16 @@ serve(async (req) => {
       }
 
       let extractedText = "";
-      const fileType = doc.file_type.toLowerCase();
+      const fileType = (doc.file_type || "").toLowerCase();
       const fileName = (doc.file_name || "").toLowerCase();
+      const headBytes = new Uint8Array(await fileData.slice(0, 8).arrayBuffer());
+      const kind = detectKind(fileType, fileName, headBytes);
+      console.log(`[process] file=${fileName} mime=${fileType} kind=${kind}`);
 
-      // Detect spreadsheets by mime OR by extension (covers legacy .xls whose
-      // mime is often blank/generic). SheetJS parses BOTH modern .xlsx (OOXML/ZIP)
-      // and legacy .xls (OLE2/BIFF), so it replaces the old ZIP-only extractor.
-      const isSpreadsheet =
-        fileType.includes("spreadsheet") ||
-        fileType.includes("excel") ||
-        fileType.includes("sheet") ||
-        /\.(xlsx|xls|xlsm|xlsb)$/.test(fileName);
+      const isSpreadsheet = kind === "spreadsheet";
 
       if (isSpreadsheet) {
+
         const buffer = await fileData.arrayBuffer();
         const uint8 = new Uint8Array(buffer);
 
