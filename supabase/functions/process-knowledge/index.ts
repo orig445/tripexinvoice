@@ -374,7 +374,9 @@ serve(async (req) => {
 
         try {
           // type:"array" lets SheetJS auto-detect the format (xls vs xlsx vs csv).
-          const workbook = XLSX.read(uint8, { type: "array" });
+          const xlsx = await getXlsx();
+          const workbook = xlsx.read(uint8, { type: "array" });
+
           const parts: string[] = [];
           for (const sheetName of workbook.SheetNames) {
             const sheet = workbook.Sheets[sheetName];
