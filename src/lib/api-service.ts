@@ -340,8 +340,22 @@ export async function uploadKnowledgeFile(params: {
 
     if (insert.error) return { data: null, error: new Error(insert.error.message) };
 
-    await processKnowledgeDocument(insert.data.id).catch(() => {});
-    return { data: { success: true, documentId: insert.data.id, fileName: params.file.name }, error: null };
+    const processing = await processKnowledgeDocument(insert.data.id);
+    if (processing.error) {
+      return {
+        data: { success: false, documentId: insert.data.id, fileName: params.file.name },
+        error: processing.error,
+      };
+    }
+    return {
+      data: {
+        success: true,
+        documentId: insert.data.id,
+        fileName: params.file.name,
+        ...((processing.data as Record<string, unknown> | null) || {}),
+      },
+      error: null,
+    };
   } catch (err: any) {
     return { data: null, error: err };
   }

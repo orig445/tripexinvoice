@@ -1,11 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { encode as base64Encode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
-// SheetJS is imported DYNAMICALLY (cdn.sheetjs.com is blocked by the bundler).
+// Load binary parsers at runtime using npm: specifiers supported by Edge Runtime.
 // deno-lint-ignore no-explicit-any
 let XLSX: any = null;
 async function getXlsx() {
-  if (!XLSX) XLSX = await import("https://esm.sh/xlsx@0.18.5");
+  if (!XLSX) XLSX = await import("npm:xlsx@0.18.5");
   return XLSX;
 }
 
@@ -191,10 +191,32 @@ function salvageStrings(bytes: Uint8Array): string {
     .trim();
 }
 
+/** Decode CSV/text exports, including UTF-8 BOM and UTF-16 LE/BE files. */
+function decodeText(bytes: Uint8Array): string {
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+    return new TextDecoder("utf-16le").decode(bytes.subarray(2));
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+    const swapped = new Uint8Array(bytes.length - 2);
+    for (let i = 2; i + 1 < bytes.length; i += 2) {
+      swapped[i - 2] = bytes[i + 1];
+      swapped[i - 1] = bytes[i];
+    }
+    return new TextDecoder("utf-16le").decode(swapped);
+  }
+  const sampleLength = Math.min(bytes.length, 2000);
+  let oddNulls = 0;
+  for (let i = 1; i < sampleLength; i += 2) if (bytes[i] === 0) oddNulls++;
+  if (sampleLength > 20 && oddNulls > sampleLength / 6) {
+    return new TextDecoder("utf-16le").decode(bytes);
+  }
+  return new TextDecoder("utf-8", { fatal: false }).decode(bytes).replace(/^\uFEFF/, "");
+}
+
 /** Extract text from OOXML (docx / pptx) by unzipping and stripping XML tags. */
 async function extractOoxmlText(bytes: Uint8Array): Promise<string> {
   try {
-    const JSZip = (await import("https://esm.sh/jszip@3.10.1")).default;
+    const JSZip = (await import("npm:jszip@3.10.1")).default;
     const zip = await JSZip.loadAsync(bytes);
     const parts: string[] = [];
     const names = Object.keys(zip.files).filter((n) =>
@@ -233,6 +255,28 @@ interface Normalized {
   distilled: boolean;
 }
 
+/** Return the first complete JSON object, ignoring prose or duplicate objects. */
+function firstJsonObject(value: string): string | null {
+  const start = value.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < value.length; i++) {
+    const char = value[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') inString = true;
+    else if (char === "{") depth++;
+    else if (char === "}" && --depth === 0) return value.slice(start, i + 1);
+  }
+  return null;
+}
+
 /**
  * Turn raw extracted text into clean, de-identified knowledge and classify it.
  * For support email threads (Glassix) this distills the thread into a generic
@@ -268,10 +312,9 @@ ${rawText.slice(0, 24000)}
     let raw = await ociChatText(prompt, 4096);
     // Strip markdown fences if present
     raw = raw.replace(/^```(json)?/i, "").replace(/```$/i, "").trim();
-    const start = raw.indexOf("{");
-    const end = raw.lastIndexOf("}");
-    if (start === -1 || end === -1) return { content: scrubPII(rawText), distilled: false };
-    const parsed = JSON.parse(raw.slice(start, end + 1));
+    const json = firstJsonObject(raw);
+    if (!json) return { content: scrubPII(rawText), distilled: false };
+    const parsed = JSON.parse(json);
     const content = scrubPII(String(parsed.content || "").trim());
     if (content.length < 5) return { content: scrubPII(rawText), distilled: false };
     return {
@@ -397,7 +440,7 @@ serve(async (req) => {
         // saved with an .xls extension. Decode as text and strip tags.
         if (!extractedText || extractedText.length < 20) {
           try {
-            const asText = new TextDecoder("utf-8").decode(uint8);
+            const asText = decodeText(uint8);
             const looksHtml = /<\s*(table|tr|td|html|body)/i.test(asText);
             if (looksHtml) {
               const stripped = asText
@@ -440,8 +483,8 @@ serve(async (req) => {
           throw new Error("Could not extract text from spreadsheet. Try uploading as CSV instead.");
         }
       } else if (kind === "text") {
-        // Plain text files
-        extractedText = await fileData.text();
+        // Plain text / CSV files, including Excel's common UTF-16 exports.
+        extractedText = decodeText(new Uint8Array(await fileData.arrayBuffer()));
       } else if (kind === "pdf") {
         // PDF: extract embedded text locally (no AI / no quota). Most support
         // emails are text-based, so this covers them for free.
