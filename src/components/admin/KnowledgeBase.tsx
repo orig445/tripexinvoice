@@ -5,6 +5,7 @@ import {
   deleteKnowledgeDocument,
   processKnowledgeDocument,
   triggerKnowledgeSync,
+  getKnowledgeDownloadUrl,
   type KnowledgeDoc,
   type KnowledgeAudience,
 } from "@/lib/api-service";
@@ -35,6 +36,8 @@ import {
   UploadCloud,
   RefreshCw,
   CloudDownload,
+  Download,
+
 } from "lucide-react";
 
 // Domains (business area) — helps the agent decide WHEN a document is relevant.
@@ -222,6 +225,26 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
   };
 
   const [reprocessingId, setReprocessingId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  const handleDownload = async (doc: KnowledgeDoc) => {
+    setDownloadingId(doc.id);
+    const { url, error } = await getKnowledgeDownloadUrl(doc);
+    setDownloadingId(null);
+    if (error || !url) {
+      toast.error(error?.message || "לא ניתן להוריד את הקובץ");
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = doc.file_name;
+    a.target = "_blank";
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
   const [isSyncing, setIsSyncing] = useState(false);
   const [bulk, setBulk] = useState<{ done: number; total: number } | null>(null);
 
@@ -541,6 +564,21 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     {getStatusBadge(doc.status)}
                     <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      title="הורד קובץ"
+                      disabled={downloadingId === doc.id}
+                      onClick={() => handleDownload(doc)}
+                    >
+                      {downloadingId === doc.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button
+
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
