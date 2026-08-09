@@ -196,6 +196,23 @@ _ = Task.Run(async () =>
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TripExDbContext>();
 
+        // Execute a SQL batch via a RAW ADO command. We deliberately avoid
+        // db.Database.ExecuteSqlRawAsync here: EF Core treats "{" / "}" in the SQL
+        // as string.Format placeholders, so any batch containing JSON literals (the
+        // knowledge seed rows) throws "Input string was not in a correct format /
+        // Unexpected closing brace" and no knowledge ever loads. A DbCommand runs
+        // the text verbatim.
+        async Task<int> ExecRawAsync(string batchSql)
+        {
+            var conn = db.Database.GetDbConnection();
+            if (conn.State != System.Data.ConnectionState.Open)
+                await conn.OpenAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = batchSql;
+            cmd.CommandTimeout = 120;
+            return await cmd.ExecuteNonQueryAsync();
+        }
+
         var initSqlPath = Path.Combine(Directory.GetCurrentDirectory(), "Data", "init-db.sql");
         if (!File.Exists(initSqlPath))
             initSqlPath = Path.Combine(AppContext.BaseDirectory, "Data", "init-db.sql");
@@ -210,7 +227,7 @@ _ = Task.Run(async () =>
             {
                 var trimmed = batch.Trim();
                 if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("PRINT")) continue;
-                try { await db.Database.ExecuteSqlRawAsync(trimmed); }
+                try { await ExecRawAsync(trimmed); }
                 catch (Exception ex) { Console.WriteLine($"⚠️ [DB-INIT] Batch note: {ex.Message}"); }
             }
             Console.WriteLine($"✅ [DB-INIT] Database verified in {sw.ElapsedMilliseconds}ms");
@@ -248,7 +265,7 @@ _ = Task.Run(async () =>
                     {
                         var trimmed = batch.Trim();
                         if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("PRINT") || trimmed.StartsWith("SET ")) continue;
-                        try { loaded += await db.Database.ExecuteSqlRawAsync(trimmed); }
+                        try { loaded += await ExecRawAsync(trimmed); }
                         catch (Exception ex) { Console.WriteLine($"⚠️ [DB-SEED] batch note: {ex.Message}"); }
                     }
                     Console.WriteLine($"✅ [DB-SEED] knowledge seed applied ({loaded} rows inserted).");
