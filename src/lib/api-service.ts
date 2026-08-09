@@ -217,6 +217,7 @@ export interface KnowledgeDoc {
   audience: string | null;
   source: string;
   external_url: string | null;
+  file_url: string | null;
   status: string;
   created_at: string;
 }
@@ -237,10 +238,34 @@ function normalizeDoc(d: any): KnowledgeDoc {
     audience: d.audience ?? null,
     source: d.source ?? "upload",
     external_url: d.externalUrl ?? d.external_url ?? null,
+    file_url: d.fileUrl ?? d.file_url ?? null,
     status: d.status ?? "pending",
     created_at: d.createdAt ?? d.created_at ?? new Date().toISOString(),
   };
 }
+
+/** Get a temporary download URL for an uploaded knowledge file. */
+export async function getKnowledgeDownloadUrl(
+  doc: KnowledgeDoc,
+): Promise<{ url: string | null; error: Error | null }> {
+  const path = doc.file_url;
+  if (!path) {
+    if (doc.external_url) return { url: doc.external_url, error: null };
+    return { url: null, error: new Error("לא נמצא קובץ מקור להורדה") };
+  }
+  if (/^https?:\/\//i.test(path)) return { url: path, error: null };
+
+  if (isExternalBackend) {
+    return { url: `${API_BASE_URL}/api/knowledge/documents/${doc.id}/download`, error: null };
+  }
+
+  const { data, error } = await supabase.storage
+    .from("knowledge")
+    .createSignedUrl(path, 300, { download: doc.file_name });
+  if (error || !data?.signedUrl) return { url: null, error: new Error(String(error?.message || "signing failed")) };
+  return { url: data.signedUrl, error: null };
+}
+
 
 /** Trigger an on-demand sync of the external knowledge sources (SharePoint / Zoho CRM).
  *  Runs against the internal knowledge base. Returns the per-source summary. */
