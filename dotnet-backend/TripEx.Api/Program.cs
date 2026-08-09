@@ -80,7 +80,11 @@ builder.Services.Configure<HostOptions>(opts =>
 builder.Services.AddControllers();
 builder.Services.AddRequestTimeouts(); // enables [RequestTimeout] attribute on controllers
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    // Keep generated schema names unique even if DTO/entity names collide across namespaces.
+    options.CustomSchemaIds(type => type.FullName?.Replace("+", "."));
+});
 
 // ── CORS ──
 builder.Services.AddCors(options =>

@@ -33,9 +33,10 @@ public class KnowledgeController : ControllerBase
     /// The frontend calls this once per file so each file carries its own tags.
     /// </summary>
     [HttpPost("upload")]
+    [Consumes("multipart/form-data")]
     [RequestSizeLimit(MaxFileBytes + (1 * 1024 * 1024))]
     public async Task<ActionResult<UploadKnowledgeResponse>> Upload(
-        [FromForm] IFormFile? file,
+        IFormFile? file,
         [FromForm] string? domain,
         [FromForm] string? docType,
         [FromForm] string? description,
