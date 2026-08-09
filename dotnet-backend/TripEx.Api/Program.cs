@@ -14,8 +14,18 @@ using TripEx.Api.Services;
 // ── log4net: daily-rolling file logs in <app>/logs/ ──
 // File pattern: logs/tripex-YYYYMMDD.log (new file every day, keep last 30 days, 50MB cap).
 // Config is loaded from log4net.config which sits next to the dll in publish output.
-var logsDir = Path.Combine(Directory.GetCurrentDirectory(), "logs");
+//
+// IMPORTANT: anchor the logs dir to AppContext.BaseDirectory (the deploy folder),
+// NOT Directory.GetCurrentDirectory(). Under IIS in-process hosting the current
+// directory is C:\Windows\System32\inetsrv, so a relative "logs/" path would try
+// to write there (and silently fail on permissions) — which is why the daily log
+// stops updating once the app runs under IIS instead of from a console.
+var logsDir = Path.Combine(AppContext.BaseDirectory, "logs");
 try { Directory.CreateDirectory(logsDir); } catch { /* never fail startup over logs dir */ }
+
+// Expose the absolute logs dir to log4net.config via %property{LogDir}, so the
+// RollingFileAppender writes to a known, writable, hosting-independent path.
+log4net.GlobalContext.Properties["LogDir"] = logsDir;
 
 var log4netConfigPath = Path.Combine(AppContext.BaseDirectory, "log4net.config");
 if (!File.Exists(log4netConfigPath))
@@ -47,6 +57,16 @@ TaskScheduler.UnobservedTaskException += (_, e) =>
 };
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ── Host lifetime ──
+// Use the Windows Service lifetime when the process is actually running as a
+// service; this is a no-op under IIS or when launched from a console, so it is
+// safe in every hosting mode. Without it, running `dotnet TripEx.Api.dll` uses
+// the Console lifetime, whose process dies the moment the console / RDP session
+// that started it closes — which is why the app "won't stay up" when deployed
+// by hand instead of hosted by IIS or installed as a service.
+builder.Host.UseWindowsService();
+
 builder.Logging.ClearProviders();
 builder.Logging.AddLog4Net(log4netConfigPath);
 
@@ -146,6 +166,18 @@ builder.Services.AddHostedService<DbCleanupService>();
 var app = builder.Build();
 
 Console.WriteLine($"🚀 [STARTUP] App built at {DateTime.Now:HH:mm:ss.fff}");
+
+// Report how the process is actually hosted, so logs make the lifetime obvious.
+// "Console" means it was launched from a terminal and will die when that
+// terminal / RDP session closes — deploy it via IIS or as a Windows Service to
+// keep it running independently of any interactive session.
+var hostingMode = Microsoft.Extensions.Hosting.WindowsServices.WindowsServiceHelpers.IsWindowsService()
+    ? "Windows Service"
+    : (Environment.GetEnvironmentVariable("ASPNETCORE_IIS_HTTPAUTH") != null
+       || Environment.GetEnvironmentVariable("ASPNETCORE_PORT") != null
+        ? "IIS (ASP.NET Core Module)"
+        : "Console (dies with the launching session — not a durable deploy)");
+Console.WriteLine($"🧭 [STARTUP] Hosting mode: {hostingMode}");
 
 // ── Ensure storage directory exists (fast, safe) ──
 var storagePath = app.Configuration["Storage:LocalPath"]

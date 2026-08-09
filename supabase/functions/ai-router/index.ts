@@ -314,14 +314,14 @@ serve(async (req) => {
       content: text,
     });
 
-    // Load recent history — take the LAST 30 messages of this conversation
+    // Load recent history — take the LAST 50 messages of this conversation
     // (descending + reverse), so long chats keep their most recent context.
     const { data: historyDesc } = await supabase
       .from("chat_messages")
       .select("role, content, created_at")
       .eq("session_id", sessionId)
       .order("created_at", { ascending: false })
-      .limit(30);
+      .limit(50);
     const history = (historyDesc || []).slice().reverse();
 
     // ── Load chatbot config ──
