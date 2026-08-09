@@ -367,6 +367,51 @@ serve(async (req) => {
         }
       }
 
+      // ── Document-title search ──
+      // Full-text chunk search can miss a file whose *name* is the answer
+      // (e.g. asking for "a report" should surface "דוחות פופולריים - roi.xlsx").
+      // Match the query words against file names and pull that document's chunks.
+      try {
+        const titleTerms = new Set<string>(words.map((w: string) => w.replace(/[,%()]/g, "")));
+        if (/\b(report|reports)\b/i.test(text) || /דוח|דוחות|דו"ח/.test(text)) {
+          titleTerms.add("דוח");
+          titleTerms.add("report");
+          titleTerms.add("roi");
+        }
+        const terms = [...titleTerms].filter((t) => t.length > 2).slice(0, 10);
+        if (terms.length > 0) {
+          const orFilter = terms.map((t) => `file_name.ilike.%${t}%`).join(",");
+          const { data: namedDocs } = await supabase
+            .from("knowledge_documents")
+            .select("id, file_name")
+            .eq("audience", kbAudience)
+            .eq("status", "ready")
+            .or(orFilter)
+            .limit(5);
+
+          for (const doc of namedDocs || []) {
+            const { data: docChunks } = await supabase
+              .from("knowledge_chunks")
+              .select("id, document_id, content")
+              .eq("document_id", doc.id)
+              .order("chunk_index", { ascending: true })
+              .limit(5);
+            for (const dc of docChunks || []) {
+              if (!allChunks.some((c: any) => c.chunk_id === dc.id)) {
+                allChunks.unshift({
+                  chunk_id: dc.id,
+                  document_id: dc.document_id,
+                  content: dc.content,
+                  file_name: doc.file_name,
+                });
+              }
+            }
+          }
+        }
+      } catch (titleErr) {
+        console.error("Title search error:", titleErr);
+      }
+
       // ── Audience isolation ──
       // search_knowledge is not audience-aware, so filter the returned chunks by
       // the audience of their source document. This guarantees the customer bot
@@ -472,6 +517,7 @@ INTERNAL RESEARCH RULES (CRITICAL):
 - Cite factual sections inline as [Source: exact file name]. Never invent a source or claim a detail not present in the excerpts.
 - When sources are present, finish with a short “Sources” section listing the exact file names. Download links are added separately by the application.
 - If the excerpts genuinely do not contain the answer, clearly say which part was not found. Do not redirect the employee to customer support and do not pretend the topic is out of scope.
+- If the employee asks for a report, template, or file, identify the matching document by its exact file name, summarize what it contains (sheets, columns, key metrics), and tell them the file is attached below as a download link.
 - Treat follow-up questions as continuing internal research and use the conversation history.`
       : `You are Milo 🦊 — a friendly, professional customer service assistant for TripEX (Travel & Expense Management). Your goal is to HELP users warmly and patiently.`;
 
