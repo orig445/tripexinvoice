@@ -547,6 +547,21 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
+                      title="הורד קובץ"
+                      disabled={downloadingId === doc.id}
+                      onClick={() => handleDownload(doc)}
+                    >
+                      {downloadingId === doc.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button
+
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
                       title="עבד מחדש"
                       disabled={reprocessingId === doc.id}
                       onClick={() => handleReprocess(doc)}
