@@ -5,6 +5,7 @@ import {
   deleteKnowledgeDocument,
   processKnowledgeDocument,
   triggerKnowledgeSync,
+  getKnowledgeDownloadUrl,
   type KnowledgeDoc,
   type KnowledgeAudience,
 } from "@/lib/api-service";
