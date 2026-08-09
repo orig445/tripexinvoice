@@ -54,17 +54,26 @@ public class ChatService
     public async Task<ChatResponse> ProcessAsync(ChatRequest request, Guid userId, string? ipAddress, string userRole = "user")
     {
         // ── Session handling ──
-        Guid sessionId;
+        // DB writes are best-effort: if the database is unavailable we still answer
+        // (via OCI) instead of failing the whole request — persistence is just skipped.
+        Guid sessionId = Guid.NewGuid();
         if (!string.IsNullOrEmpty(request.SessionToken) && Guid.TryParse(request.SessionToken, out var existingId))
         {
             sessionId = existingId;
         }
         else
         {
-            var session = new ChatSession { UserId = userId, Source = request.Source };
-            _db.ChatSessions.Add(session);
-            await _db.SaveChangesAsync();
-            sessionId = session.Id;
+            try
+            {
+                var session = new ChatSession { UserId = userId, Source = request.Source };
+                _db.ChatSessions.Add(session);
+                await _db.SaveChangesAsync();
+                sessionId = session.Id;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ [CHAT] Session not persisted (DB unavailable): {ex.Message}");
+            }
         }
 
         // ── Image flow ──
@@ -83,27 +92,52 @@ public class ChatService
             };
         }
 
-        // ── Save user message ──
-        _db.ChatMessages.Add(new ChatMessage
+        // ── Save user message (best-effort) ──
+        try
         {
-            SessionId = sessionId,
-            Role = "user",
-            Content = request.Text
-        });
-        await _db.SaveChangesAsync();
+            _db.ChatMessages.Add(new ChatMessage
+            {
+                SessionId = sessionId,
+                Role = "user",
+                Content = request.Text
+            });
+            await _db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ [CHAT] User message not persisted (DB unavailable): {ex.Message}");
+        }
 
-        // ── Load history ──
-        var history = await _db.ChatMessages
-            .Where(m => m.SessionId == sessionId)
-            .OrderBy(m => m.CreatedAt)
-            .Take(30)
-            .Select(m => new { m.Role, m.Content })
-            .ToListAsync();
+        // ── Load history (best-effort; empty when DB is unavailable) ──
+        var history = new List<(string Role, string Content)>();
+        try
+        {
+            history = (await _db.ChatMessages
+                .Where(m => m.SessionId == sessionId)
+                .OrderBy(m => m.CreatedAt)
+                .Take(50)
+                .Select(m => new { m.Role, m.Content })
+                .ToListAsync())
+                .Select(m => (m.Role, m.Content))
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ [CHAT] History not loaded (DB unavailable): {ex.Message}");
+        }
 
-        // ── Load config ──
-        var config = await _db.ChatbotConfigs
-            .Where(c => c.IsActive)
-            .FirstOrDefaultAsync();
+        // ── Load config (best-effort; defaults when DB is unavailable) ──
+        ChatbotConfig? config = null;
+        try
+        {
+            config = await _db.ChatbotConfigs
+                .Where(c => c.IsActive)
+                .FirstOrDefaultAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ [CHAT] Config not loaded (DB unavailable), using defaults: {ex.Message}");
+        }
 
         var temperature = (double)(config?.Temperature ?? 0.3m);
         var maxTokens = config?.MaxTokens ?? 2048;
@@ -139,62 +173,69 @@ public class ChatService
         // ── Save corrections (learning from OCR corrections) ──
         await TrySaveCorrections(intent, sessionId, userId);
 
-        // ── Save assistant message ──
-        _db.ChatMessages.Add(new ChatMessage
-        {
-            SessionId = sessionId,
-            Role = "assistant",
-            Content = responseText,
-            Intent = intent,
-            Metadata = JsonSerializer.Serialize(new { actions = mapping.Actions, redirectPage = mapping.RedirectPage ?? "" })
-        });
-
-        // ── Log (DB audit + file log) ──
         var latencyMs = sw.ElapsedMilliseconds;
         var ragChars = knowledgeContext?.Length ?? 0;
+        var escalated = intent == "escalate";
 
-        _db.ChatbotLogs.Add(new ChatbotLog
-        {
-            SessionId = sessionId,
-            UserId = userId,
-            EventType = "intent_detected",
-            Details = JsonSerializer.Serialize(new
-            {
-                intent,
-                actions = mapping.Actions,
-                redirectPage = mapping.RedirectPage ?? "",
-                source = request.Source,
-                latency_ms = latencyMs,
-                rag_chars = ragChars,
-                // Full message + response so a chat turn can be examined end-to-end.
-                message = request.Text,
-                response = responseText
-            })
-        });
-
-        // Full Q&A to the rolling file log (logs/tripex-*.log) for easy inspection.
+        // Full Q&A to the rolling file log (logs/tripex-*.log) — always, even if DB is down.
         _logger.LogInformation(
             "[CHAT] session={SessionId} user={UserId} source={Source} intent={Intent} rag={RagChars}c latency={LatencyMs}ms\n  Q: {Message}\n  A: {Response}",
             sessionId, userId, request.Source ?? "-", intent, ragChars, latencyMs, request.Text, responseText);
 
-        // ── Escalation: hand the ticket to a human when Milo can't help ──
-        var escalated = intent == "escalate";
-        if (escalated)
+        // ── Persist assistant message + audit log + escalation (best-effort) ──
+        // Skipped silently if the DB is unavailable so the answer still returns.
+        try
         {
-            var ticket = await _db.ChatSessions.FirstOrDefaultAsync(s => s.Id == sessionId);
-            if (ticket != null)
+            _db.ChatMessages.Add(new ChatMessage
             {
-                ticket.Escalated = true;
-                ticket.EscalatedAt = DateTime.UtcNow;
-                ticket.Status = "escalated";
-                ticket.EscalationReason = request.Text.Length > 1000 ? request.Text[..1000] : request.Text;
-                ticket.UpdatedAt = DateTime.UtcNow;
-            }
-            _logger.LogInformation("[TICKET-ESCALATED] session={SessionId} user={UserId} reason={Reason}",
-                sessionId, userId, request.Text);
-        }
+                SessionId = sessionId,
+                Role = "assistant",
+                Content = responseText,
+                Intent = intent,
+                Metadata = JsonSerializer.Serialize(new { actions = mapping.Actions, redirectPage = mapping.RedirectPage ?? "" })
+            });
 
-        await _db.SaveChangesAsync();
+            _db.ChatbotLogs.Add(new ChatbotLog
+            {
+                SessionId = sessionId,
+                UserId = userId,
+                EventType = "intent_detected",
+                Details = JsonSerializer.Serialize(new
+                {
+                    intent,
+                    actions = mapping.Actions,
+                    redirectPage = mapping.RedirectPage ?? "",
+                    source = request.Source,
+                    latency_ms = latencyMs,
+                    rag_chars = ragChars,
+                    // Full message + response so a chat turn can be examined end-to-end.
+                    message = request.Text,
+                    response = responseText
+                })
+            });
+
+            // ── Escalation: hand the ticket to a human when Milo can't help ──
+            if (escalated)
+            {
+                var ticket = await _db.ChatSessions.FirstOrDefaultAsync(s => s.Id == sessionId);
+                if (ticket != null)
+                {
+                    ticket.Escalated = true;
+                    ticket.EscalatedAt = DateTime.UtcNow;
+                    ticket.Status = "escalated";
+                    ticket.EscalationReason = request.Text.Length > 1000 ? request.Text[..1000] : request.Text;
+                    ticket.UpdatedAt = DateTime.UtcNow;
+                }
+                _logger.LogInformation("[TICKET-ESCALATED] session={SessionId} user={UserId} reason={Reason}",
+                    sessionId, userId, request.Text);
+            }
+
+            await _db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ [CHAT] Assistant message/log not persisted (DB unavailable): {ex.Message}");
+        }
 
         return new ChatResponse
         {

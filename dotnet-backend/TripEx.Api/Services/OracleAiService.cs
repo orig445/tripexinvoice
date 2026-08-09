@@ -45,15 +45,23 @@ public class OracleAiService
         // 60s gives the model room to finish on a single attempt for typical receipts.
         _httpClient.Timeout = TimeSpan.FromSeconds(60);
         _db = db;
-        _apiKey = config["Oracle:ApiKey"]
-            ?? Environment.GetEnvironmentVariable("ORACLE_API_KEY")
-            ?? throw new InvalidOperationException("Oracle API key not configured");
+        // Treat template placeholders (YOUR_..., REPLACE...) as "not set", so a real value
+        // supplied via environment variable (as the OCR deployment uses) still wins even when
+        // appsettings.json still holds the placeholder.
+        _apiKey = FirstConfigured(config["Oracle:ApiKey"], Environment.GetEnvironmentVariable("ORACLE_API_KEY"))
+            ?? throw new InvalidOperationException("Oracle API key not configured (set Oracle:ApiKey or the ORACLE_API_KEY env var)");
         _endpoint = config["Oracle:Endpoint"]
             ?? "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions";
         _model = config["Oracle:Model"]
             ?? "google.gemini-2.5-flash";
-        _compartmentId = config["Oracle:CompartmentId"];
+        _compartmentId = FirstConfigured(config["Oracle:CompartmentId"], Environment.GetEnvironmentVariable("ORACLE_COMPARTMENT_ID"));
     }
+
+    // Returns the first value that is non-empty AND not a config template placeholder.
+    private static string? FirstConfigured(params string?[] values) =>
+        values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v)
+            && !v!.StartsWith("YOUR_", StringComparison.OrdinalIgnoreCase)
+            && !v.StartsWith("REPLACE", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Invoice-specific call: sends image + country hint to Gemini 2.5 Flash.
