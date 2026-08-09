@@ -93,6 +93,19 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
     ?? Environment.GetEnvironmentVariable("DATABASE_URL")
     ?? throw new InvalidOperationException("DATABASE_URL not configured");
 
+// Log WHICH server/database we are about to use (never the password), so the log
+// makes it obvious whether the real connection string is in effect or still the
+// appsettings.json placeholder. If you see server='YOUR_DB_HOST' here, the real
+// connection string was never provided — create appsettings.Production.json.
+try
+{
+    var csb = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(connectionString);
+    Console.WriteLine($"🗄️ [DB-CONFIG] Target server='{csb.DataSource}', database='{csb.InitialCatalog}'");
+    if (csb.DataSource.Contains("YOUR_DB_HOST") || csb.DataSource.Contains("REPLACE") || csb.DataSource.Contains("TAS_SQL_HOST"))
+        Console.WriteLine("❗ [DB-CONFIG] Connection string is still a PLACEHOLDER — set the real one in appsettings.Production.json (same folder as TripEx.Api.dll).");
+}
+catch (Exception ex) { Console.WriteLine($"⚠️ [DB-CONFIG] Could not parse connection string: {ex.Message}"); }
+
 builder.Services.AddDbContext<TripExDbContext>(options =>
     options.UseSqlServer(connectionString, sql =>
         sql.EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(10), errorNumbersToAdd: null)));
