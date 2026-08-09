@@ -36,6 +36,8 @@ import {
   UploadCloud,
   RefreshCw,
   CloudDownload,
+  Download,
+
 } from "lucide-react";
 
 // Domains (business area) — helps the agent decide WHEN a document is relevant.
