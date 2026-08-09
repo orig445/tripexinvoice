@@ -58,15 +58,6 @@ TaskScheduler.UnobservedTaskException += (_, e) =>
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ── Host lifetime ──
-// Use the Windows Service lifetime when the process is actually running as a
-// service; this is a no-op under IIS or when launched from a console, so it is
-// safe in every hosting mode. Without it, running `dotnet TripEx.Api.dll` uses
-// the Console lifetime, whose process dies the moment the console / RDP session
-// that started it closes — which is why the app "won't stay up" when deployed
-// by hand instead of hosted by IIS or installed as a service.
-builder.Host.UseWindowsService();
-
 builder.Logging.ClearProviders();
 builder.Logging.AddLog4Net(log4netConfigPath);
 
@@ -172,15 +163,17 @@ var app = builder.Build();
 Console.WriteLine($"🚀 [STARTUP] App built at {DateTime.Now:HH:mm:ss.fff}");
 
 // Report how the process is actually hosted, so logs make the lifetime obvious.
-// "Console" means it was launched from a terminal and will die when that
-// terminal / RDP session closes — deploy it via IIS or as a Windows Service to
-// keep it running independently of any interactive session.
-var hostingMode = Microsoft.Extensions.Hosting.WindowsServices.WindowsServiceHelpers.IsWindowsService()
-    ? "Windows Service"
-    : (Environment.GetEnvironmentVariable("ASPNETCORE_IIS_HTTPAUTH") != null
-       || Environment.GetEnvironmentVariable("ASPNETCORE_PORT") != null
-        ? "IIS (ASP.NET Core Module)"
-        : "Console (dies with the launching session — not a durable deploy)");
+// Dependency-free detection (no extra NuGet package): the ASP.NET Core Module
+// sets these env vars under IIS; otherwise fall back to whether the process is
+// interactive (console) or not.
+var underIis = Environment.GetEnvironmentVariable("ASPNETCORE_IIS_HTTPAUTH") != null
+            || Environment.GetEnvironmentVariable("ASPNETCORE_ANCM_HTTPS_PORT") != null
+            || Environment.GetEnvironmentVariable("ASPNETCORE_PORT") != null;
+var hostingMode = underIis
+    ? "IIS (ASP.NET Core Module)"
+    : (Environment.UserInteractive
+        ? "Console (dies with the launching session — not a durable deploy)"
+        : "Non-interactive host / service");
 Console.WriteLine($"🧭 [STARTUP] Hosting mode: {hostingMode}");
 
 // ── Ensure storage directory exists (fast, safe) ──
