@@ -203,6 +203,16 @@ _ = Task.Run(async () =>
     try
     {
         await Task.Delay(2000); // let the host finish binding ports first
+
+        // Skip DB init/seed entirely while the connection string is a placeholder.
+        // Otherwise every startup wastes ~30s on connection timeouts and floods the
+        // log with SQL errors. The chatbot still answers (DB access is best-effort).
+        if (connectionString.Contains("YOUR_DB_HOST") || connectionString.Contains("TAS_SQL_HOST") || connectionString.Contains("REPLACE"))
+        {
+            Console.WriteLine("↩️ [DB-INIT] Connection string is a placeholder — skipping DB init/seed until a real one is configured.");
+            return;
+        }
+
         Console.WriteLine($"🗄️ [DB-INIT] Starting database initialization at {DateTime.Now:HH:mm:ss.fff}");
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
