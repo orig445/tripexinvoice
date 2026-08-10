@@ -17,3 +17,7 @@ verify_jwt = false
 # Public webhook — Green API POSTs incoming WhatsApp messages here (no JWT).
 [functions.whatsapp-webhook]
 verify_jwt = false
+
+# Zoho OAuth callback — the browser (and Zoho's redirect) hit this with no JWT.
+[functions.zoho-oauth-callback]
+verify_jwt = false
