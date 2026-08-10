@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { User, Camera, ArrowRight, PlusCircle, BarChart3, ThumbsUp, GraduationCap, FileText, ExternalLink } from "lucide-react";
+import { User, Camera, ArrowRight, PlusCircle, BarChart3, ThumbsUp, GraduationCap, FileText, ExternalLink, Languages, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import type { ChatMessage as ChatMessageType } from "@/hooks/useChatbot";
@@ -40,6 +41,28 @@ export function ChatMessage({ message, onAction, question, audience = "external"
   const redirectPage = message.metadata?.redirectPage || "";
   const [teachOpen, setTeachOpen] = useState(false);
   const [voted, setVoted] = useState(false);
+  const [translation, setTranslation] = useState<string | null>(null);
+  const [showTranslation, setShowTranslation] = useState(false);
+  const [translating, setTranslating] = useState(false);
+
+  const handleTranslate = async () => {
+    if (translation) {
+      setShowTranslation((v) => !v);
+      return;
+    }
+    setTranslating(true);
+    const { data, error } = await supabase.functions.invoke("translate-text", {
+      body: { text: message.content, target: "he" },
+    });
+    setTranslating(false);
+    if (error || !data?.translation) {
+      console.error("Translate error:", error);
+      toast.error("Translation failed");
+      return;
+    }
+    setTranslation(data.translation);
+    setShowTranslation(true);
+  };
 
 
   const actionButtons: Record<string, { icon: typeof Camera; label: string }> = {
@@ -78,6 +101,21 @@ export function ChatMessage({ message, onAction, question, audience = "external"
             </span>
           ))}
         </div>
+
+        {showTranslation && translation && (
+          <div
+            dir="rtl"
+            className="rounded-2xl border border-primary/20 bg-background px-3.5 py-2.5 text-sm leading-relaxed text-foreground"
+          >
+            <p className="mb-1 text-[11px] font-medium text-muted-foreground">תרגום לעברית</p>
+            {translation.split("\n").map((line, i) => (
+              <span key={i}>
+                {line}
+                {i < translation.split("\n").length - 1 && <br />}
+              </span>
+            ))}
+          </div>
+        )}
 
         {!isUser && actions.length > 0 && onAction && (
           <div className="flex gap-1.5 flex-wrap">
@@ -153,6 +191,17 @@ export function ChatMessage({ message, onAction, question, audience = "external"
             >
               <GraduationCap className="h-3 w-3" />
               Teach Milo
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 px-1.5 text-[11px] gap-1 text-muted-foreground hover:text-primary"
+              onClick={handleTranslate}
+              disabled={translating}
+              title="תרגם לעברית"
+            >
+              {translating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Languages className="h-3 w-3" />}
+              {showTranslation ? "הצג מקור" : "תרגם לעברית"}
             </Button>
           </div>
         )}
