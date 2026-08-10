@@ -366,9 +366,13 @@ public class ChatService
         // keeps the customer ('external') and staff ('internal') knowledge bases apart.
         var chunks = new List<KbChunk>();
 
-        var connection = _db.Database.GetDbConnection();
+        // GetDbConnection() itself can throw (e.g. the DB provider assembly failing to
+        // load) — it must be INSIDE the try, not before it, or RAG failures crash the
+        // whole chat request with a 500 instead of just returning no knowledge context.
+        DbConnection? connection = null;
         try
         {
+            connection = _db.Database.GetDbConnection();
             await connection.OpenAsync();
 
             const string sql = "SELECT file_name, content, domain, doc_type, description FROM dbo.search_knowledge(@query, @max, @audience)";
@@ -389,7 +393,7 @@ public class ChatService
         }
         finally
         {
-            if (connection.State != ConnectionState.Closed)
+            if (connection != null && connection.State != ConnectionState.Closed)
                 await connection.CloseAsync();
         }
 
