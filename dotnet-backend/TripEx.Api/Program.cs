@@ -249,6 +249,25 @@ _ = Task.Run(async () =>
             return await cmd.ExecuteNonQueryAsync();
         }
 
+        // Preflight: open the connection ONCE before running any batches. If this fails
+        // (e.g. a SqlClient assembly load error, or the server is unreachable), every
+        // single batch would fail with the SAME root cause — looping through ~30 batches
+        // would just print the same error dozens of times and hide the real detail behind
+        // noise, while also letting "✅ Database verified" print even though NOTHING
+        // actually ran. Fail loud and ONCE instead, with the full exception (not just
+        // .Message) so a genuine new problem is actually diagnosable from the log.
+        try
+        {
+            var preflightConn = db.Database.GetDbConnection();
+            if (preflightConn.State != System.Data.ConnectionState.Open)
+                await preflightConn.OpenAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ [DB-INIT] Cannot open a database connection — skipping DB init/seed entirely (chat still answers via OCI, best-effort). Full error:\n{ex}");
+            return;
+        }
+
         var initSqlPath = Path.Combine(Directory.GetCurrentDirectory(), "Data", "init-db.sql");
         if (!File.Exists(initSqlPath))
             initSqlPath = Path.Combine(AppContext.BaseDirectory, "Data", "init-db.sql");
@@ -259,13 +278,22 @@ _ = Task.Run(async () =>
             var batches = System.Text.RegularExpressions.Regex.Split(sql, @"^\s*GO\s*$",
                 System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
+            var batchFailures = 0;
             foreach (var batch in batches)
             {
                 var trimmed = batch.Trim();
                 if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("PRINT")) continue;
                 try { await ExecRawAsync(trimmed); }
-                catch (Exception ex) { Console.WriteLine($"⚠️ [DB-INIT] Batch note: {ex.Message}"); }
+                catch (Exception ex)
+                {
+                    batchFailures++;
+                    // Full detail on the first failure only; count the rest so the log
+                    // stays readable instead of repeating the same stack trace 30 times.
+                    if (batchFailures == 1) Console.WriteLine($"⚠️ [DB-INIT] Batch note: {ex}");
+                }
             }
+            if (batchFailures > 0)
+                Console.WriteLine($"⚠️ [DB-INIT] {batchFailures}/{batches.Length} batch(es) failed — see first error above.");
             Console.WriteLine($"✅ [DB-INIT] Database verified in {sw.ElapsedMilliseconds}ms");
         }
         else
@@ -297,13 +325,20 @@ _ = Task.Run(async () =>
                     var seedBatches = System.Text.RegularExpressions.Regex.Split(seedSql, @"^\s*GO\s*$",
                         System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                     var loaded = 0;
+                    var seedFailures = 0;
                     foreach (var batch in seedBatches)
                     {
                         var trimmed = batch.Trim();
                         if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("PRINT") || trimmed.StartsWith("SET ")) continue;
                         try { loaded += await ExecRawAsync(trimmed); }
-                        catch (Exception ex) { Console.WriteLine($"⚠️ [DB-SEED] batch note: {ex.Message}"); }
+                        catch (Exception ex)
+                        {
+                            seedFailures++;
+                            if (seedFailures == 1) Console.WriteLine($"⚠️ [DB-SEED] batch note: {ex}");
+                        }
                     }
+                    if (seedFailures > 0)
+                        Console.WriteLine($"⚠️ [DB-SEED] {seedFailures}/{seedBatches.Length} batch(es) failed — see first error above.");
                     Console.WriteLine($"✅ [DB-SEED] knowledge seed applied ({loaded} rows inserted).");
                 }
                 else
