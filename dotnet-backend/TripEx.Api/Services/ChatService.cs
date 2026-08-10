@@ -132,6 +132,7 @@ public class ChatService
         {
             config = await _db.ChatbotConfigs
                 .Where(c => c.IsActive)
+                .OrderByDescending(c => c.UpdatedAt)   // deterministic: newest active config wins
                 .FirstOrDefaultAsync();
         }
         catch (Exception ex)
