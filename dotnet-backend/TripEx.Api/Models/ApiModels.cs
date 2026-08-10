@@ -1,3 +1,6 @@
+using System.Text.Json.Serialization;
+using TripEx.Api.Json;
+
 namespace TripEx.Api.Models;
 
 // ═══════════════════════════════════════
@@ -38,6 +41,8 @@ public class ChatRequest
     public string Source { get; set; } = "web";       // "web" | "mobile" | "widget"
     public string? SessionToken { get; set; }
     public string? Scope { get; set; }
+    // TAS's widget sends trid as a bare JSON number (e.g. 0), not a string.
+    [JsonConverter(typeof(FlexibleStringJsonConverter))]
     public string? Trid { get; set; }
     public string? UserDate { get; set; }
     public string? UserTime { get; set; }
