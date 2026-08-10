@@ -15,7 +15,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    const apiKey = Deno.env.get('LOVABLE_API_KEY')
+    const apiKey = Deno.env.get('oracleapikey') || Deno.env.get('LOVABLE_API_KEY')
     if (!apiKey) {
       return new Response(JSON.stringify({ error: 'AI is not configured' }), {
         status: 500,
@@ -25,11 +25,15 @@ Deno.serve(async (req) => {
 
     const targetName = target === 'he' ? 'Hebrew' : 'English'
 
-    const res = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const res = await fetch(
+      'https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions',
+      {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'meta.llama-4-maverick-17b-128e-instruct-fp8',
+        max_tokens: 2048,
+        temperature: 0.1,
         messages: [
           {
             role: 'system',
@@ -41,7 +45,8 @@ Deno.serve(async (req) => {
           { role: 'user', content: text },
         ],
       }),
-    })
+    },
+    )
 
     if (!res.ok) {
       const detail = await res.text()
