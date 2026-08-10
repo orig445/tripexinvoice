@@ -21,11 +21,14 @@ export type Database = {
           created_at: string
           id: string
           is_approved: boolean
+          person_id: string | null
           question: string
+          scope: string
           source: string
           taught_by: string | null
           updated_at: string
           user_type: string
+          user_types: string[]
           votes: number
         }
         Insert: {
@@ -34,11 +37,14 @@ export type Database = {
           created_at?: string
           id?: string
           is_approved?: boolean
+          person_id?: string | null
           question: string
+          scope?: string
           source?: string
           taught_by?: string | null
           updated_at?: string
           user_type?: string
+          user_types?: string[]
           votes?: number
         }
         Update: {
@@ -47,14 +53,25 @@ export type Database = {
           created_at?: string
           id?: string
           is_approved?: boolean
+          person_id?: string | null
           question?: string
+          scope?: string
           source?: string
           taught_by?: string | null
           updated_at?: string
           user_type?: string
+          user_types?: string[]
           votes?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "bot_lessons_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_people"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       chat_messages: {
         Row: {
@@ -389,6 +406,30 @@ export type Database = {
           status?: string
           updated_at?: string
           uploaded_by?: string | null
+        }
+        Relationships: []
+      }
+      lesson_people: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          note: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          note?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          note?: string | null
         }
         Relationships: []
       }
