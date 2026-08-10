@@ -21,9 +21,10 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 const DC = Deno.env.get("ZOHO_DC") || "com"; // com | eu | in | com.au | jp | ca
 const CLIENT_ID = Deno.env.get("ZOHO_CLIENT_ID") || "";
 const CLIENT_SECRET = Deno.env.get("ZOHO_CLIENT_SECRET") || "";
-// Default scopes: read CRM modules (knowledge sync) + create/read Desk tickets
-// (chat → ticket). Override per-request with ?scope=...
-const DEFAULT_SCOPE = "ZohoCRM.modules.READ,Desk.tickets.CREATE,Desk.tickets.READ";
+// Read-only scopes for pulling CRM data into the knowledge base.
+// modules.READ = read records; settings.READ = discover field names (the sync
+// calls /settings/fields). Override per-request with ?scope=...
+const DEFAULT_SCOPE = "ZohoCRM.modules.READ,ZohoCRM.settings.READ";
 
 function html(body: string, status = 200): Response {
   return new Response(
