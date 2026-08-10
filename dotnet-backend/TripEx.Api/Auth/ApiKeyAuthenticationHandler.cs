@@ -11,7 +11,8 @@ namespace TripEx.Api.Auth;
 /// </summary>
 public class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAuthenticationOptions>
 {
-    private const string ApiKeyHeaderName = "X-Api-Key";
+    // Accept the standard X-Api-Key, and "Token" which is what COMBTAS/TAS sends.
+    private static readonly string[] ApiKeyHeaderNames = { "X-Api-Key", "Token" };
 
     public ApiKeyAuthenticationHandler(
         IOptionsMonitor<ApiKeyAuthenticationOptions> options,
@@ -23,10 +24,17 @@ public class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAuthentic
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        if (!Request.Headers.TryGetValue(ApiKeyHeaderName, out var apiKeyValues))
-            return Task.FromResult(AuthenticateResult.NoResult());
+        string? providedKey = null;
+        foreach (var headerName in ApiKeyHeaderNames)
+        {
+            if (Request.Headers.TryGetValue(headerName, out var values)
+                && !string.IsNullOrEmpty(values.FirstOrDefault()))
+            {
+                providedKey = values.FirstOrDefault();
+                break;
+            }
+        }
 
-        var providedKey = apiKeyValues.FirstOrDefault();
         if (string.IsNullOrEmpty(providedKey))
             return Task.FromResult(AuthenticateResult.NoResult());
 

@@ -150,8 +150,10 @@ builder.Services.AddAuthentication(options =>
     {
         options.ForwardDefaultSelector = context =>
         {
-            // If X-Api-Key header present, use API Key scheme
-            if (context.Request.Headers.ContainsKey("X-Api-Key"))
+            // If an API-key header is present, use the API Key scheme.
+            // COMBTAS/TAS sends its key in a header named "Token"; also accept the
+            // standard "X-Api-Key".
+            if (context.Request.Headers.ContainsKey("X-Api-Key") || context.Request.Headers.ContainsKey("Token"))
                 return "ApiKey";
 
             // Otherwise fall back to JWT
