@@ -93,18 +93,29 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
     ?? Environment.GetEnvironmentVariable("DATABASE_URL")
     ?? throw new InvalidOperationException("DATABASE_URL not configured");
 
-// Log WHICH server/database we are about to use (never the password), so the log
-// makes it obvious whether the real connection string is in effect or still the
-// appsettings.json placeholder. If you see server='YOUR_DB_HOST' here, the real
-// connection string was never provided — create appsettings.Production.json.
-try
+// Log WHICH server/database we are about to use (never the password).
+// IMPORTANT: parse the connection string with a plain regex and DO NOT touch any
+// Microsoft.Data.SqlClient type here. Constructing a SqlConnectionStringBuilder at
+// startup forces the SqlClient assembly to load eagerly — and if that load fails on
+// the host, the WHOLE app crashes with HTTP 500.30 before it can even serve /swagger.
+// Keeping startup free of SqlClient means the app always boots; DB access is
+// best-effort and only exercised per-request.
+static string ConnPart(string cs, params string[] keys)
 {
-    var csb = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(connectionString);
-    Console.WriteLine($"🗄️ [DB-CONFIG] Target server='{csb.DataSource}', database='{csb.InitialCatalog}'");
-    if (csb.DataSource.Contains("YOUR_DB_HOST") || csb.DataSource.Contains("REPLACE") || csb.DataSource.Contains("TAS_SQL_HOST"))
-        Console.WriteLine("❗ [DB-CONFIG] Connection string is still a PLACEHOLDER — set the real one in appsettings.Production.json (same folder as TripEx.Api.dll).");
+    foreach (var key in keys)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(
+            cs, @"(?:^|;)\s*" + System.Text.RegularExpressions.Regex.Escape(key) + @"\s*=\s*([^;]+)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (m.Success) return m.Groups[1].Value.Trim();
+    }
+    return "";
 }
-catch (Exception ex) { Console.WriteLine($"⚠️ [DB-CONFIG] Could not parse connection string: {ex.Message}"); }
+var dbServer = ConnPart(connectionString, "Server", "Data Source", "Address", "Addr");
+var dbName = ConnPart(connectionString, "Database", "Initial Catalog");
+Console.WriteLine($"🗄️ [DB-CONFIG] Target server='{dbServer}', database='{dbName}'");
+if (dbServer.Contains("YOUR_DB_HOST") || dbServer.Contains("REPLACE") || dbServer.Contains("TAS_SQL_HOST"))
+    Console.WriteLine("❗ [DB-CONFIG] Connection string is still a PLACEHOLDER — set the real one in appsettings.Production.json (same folder as TripEx.Api.dll).");
 
 builder.Services.AddDbContext<TripExDbContext>(options =>
     options.UseSqlServer(connectionString, sql =>
