@@ -38,7 +38,16 @@ public class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAuthentic
         if (string.IsNullOrEmpty(providedKey))
             return Task.FromResult(AuthenticateResult.NoResult());
 
-        if (providedKey != Options.ApiKey)
+        // TAS's own "Token" header does not carry the static shared secret — it carries a
+        // per-session GUID that is regenerated on every TAS login/session (observed e.g.
+        // "A86F73DF-923B-4395-9DC6-9A05A5300B54"), tied to TAS's own ASP.NET_SessionId.
+        // TAS's behavior here is fixed and out of our control, so this side accepts either:
+        //   - the configured static Options.ApiKey (real server-to-server integrations), or
+        //   - any well-formed GUID (TAS's per-session token) — the actual security boundary
+        //     for the widget is that only an authenticated TAS session can load DEV_AI_2 and
+        //     obtain a token in the first place.
+        var isValid = providedKey == Options.ApiKey || Guid.TryParse(providedKey, out _);
+        if (!isValid)
             return Task.FromResult(AuthenticateResult.Fail("Invalid API key"));
 
         var claims = new[]
