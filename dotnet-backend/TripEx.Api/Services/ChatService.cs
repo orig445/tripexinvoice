@@ -160,6 +160,19 @@ public class ChatService
         };
         messages.AddRange(history.Select(h => new OracleMessage { Role = h.Role, Content = h.Content }));
 
+        // The current user message is normally already the last entry in `history`
+        // (saved to the DB above, then reloaded). But DB access is best-effort — if
+        // persistence or the reload failed, `history` can be empty, and the model
+        // would receive ONLY the system prompt with no actual question at all,
+        // silently degrading every reply to a generic greeting no matter what the
+        // user asked. Guarantee the current message is present regardless of DB state.
+        var lastIsCurrentUserMessage = messages.Count > 0
+            && messages[^1].Role == "user"
+            && messages[^1].Content is string lastContent
+            && lastContent == request.Text;
+        if (!lastIsCurrentUserMessage)
+            messages.Add(new OracleMessage { Role = "user", Content = request.Text });
+
         // ── Call Oracle AI ──
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var rawContent = await _oracle.ChatAsync(messages, maxTokens, temperature);
