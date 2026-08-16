@@ -231,16 +231,28 @@ public class ChatService
         // The widget renders "text" as raw HTML (innerHTML), so a plain <a> tag with
         // target="_top" becomes a real clickable link that breaks out of the chat
         // iframe on click — no frontend change needed to support this.
+        var isHebrewReply = ContainsHebrew(responseText);
         if (pageLink != null)
         {
             // Match the link label to whatever language the reply actually came out in —
             // detected from the reply text itself (Hebrew Unicode block present or not)
             // rather than asking the AI for a separate field, so it can't get out of sync
             // with what the user actually sees.
-            var label = ContainsHebrew(responseText) ? pageLink.Label : pageLink.LabelEn;
+            var label = isHebrewReply ? pageLink.Label : pageLink.LabelEn;
             var safeUrl = System.Net.WebUtility.HtmlEncode(pageLink.Url);
             var safeLabel = System.Net.WebUtility.HtmlEncode(label);
             responseText += $"\n\n<a href=\"{safeUrl}\" target=\"_top\" rel=\"noopener\">{safeLabel}</a>";
+        }
+
+        var escalated = intent == "escalate";
+        // The support contact line is added here (deterministically, in code) rather than
+        // left to the AI's own wording — guarantees it always names the real address and
+        // always comes AFTER the page link above, never before it.
+        if (escalated)
+        {
+            responseText += isHebrewReply
+                ? $"\n\nניתן לפנות לתמיכה במייל {_supportContact}"
+                : $"\n\nYou can reach support by email at {_supportContact}";
         }
 
         // ── Save corrections (learning from OCR corrections) ──
@@ -248,7 +260,6 @@ public class ChatService
 
         var latencyMs = sw.ElapsedMilliseconds;
         var ragChars = knowledgeContext?.Length ?? 0;
-        var escalated = intent == "escalate";
 
         // Full Q&A to the rolling file log (logs/tripex-*.log) — always, even if DB is down.
         _logger.LogInformation(
@@ -684,6 +695,9 @@ clear match — if none apply, omit ""page"" or set it to """". Never invent a k
 3. NEVER pick a ""General sections"" hub just because you're unsure which specific page is exactly
    right, or because you noticed it before finishing the specific list. Uncertainty means: pick
    your best specific guess, not the hub.
+4. When you DO set a ""page"" key, do not add your own ""if this isn't right, contact your admin/
+   support"" disclaimer in ""text"" — a link to that exact page is already added automatically
+   after your text, so that caveat is unnecessary noise. Just give the direct answer.
 
 Specific pages/reports — scan ALL of these before considering anything else:
 {specificList}
@@ -710,7 +724,10 @@ CRITICAL LANGUAGE RULE: Detect the language of the user's latest message and rep
 ## Escalation — routing to a human
 Escalate when: you don't know the answer, the Knowledge Base has nothing relevant, or the user needs a human to take action.
 - {escalationRule}
-- Use intent ""escalate"" and, in ""text"", tell the user exactly who to contact (System Admin and/or Support).
+- Use intent ""escalate"" and, in ""text"", explain the situation and let the user know a human will help.
+- Do NOT write a specific support email/contact address yourself — the real one is appended
+  automatically right after your text. You may say ""your System Admin"" generically when that
+  applies, but never invent or state a specific email.
 
 ## Intent Categories
 - help: the user wants guidance, a how-to, or an explanation
