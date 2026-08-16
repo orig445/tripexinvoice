@@ -53,44 +53,6 @@ public class ChatService
         }
     }
 
-    // Simple keyword-overlap search over the (possibly huge) page-links dataset, so only
-    // a handful of real candidates — not all ~366 entries — go into every prompt. Tokenizes
-    // both the user's message and each page's label/description/category/key on Unicode
-    // letters/digits, so Hebrew and English both work. Not full RAG/semantic search: if a
-    // Hebrew question shares no words with a page's Hebrew label/description, it won't be
-    // offered as a candidate that turn — acceptable trade-off to avoid dumping hundreds of
-    // lines into every request just to cover long-tail admin screens.
-    private static List<PageLinkConfig> SelectRelevantPages(string userText, int topN = 10)
-    {
-        var queryTokens = Tokenize(userText);
-        if (queryTokens.Count == 0) return new();
-
-        // Weighted by field: a hit in Label (what the page IS) counts far more than a hit
-        // buried in Description — without this, a single-word label like "תקציב" loses to
-        // unrelated pages whose long description happens to mention the same word once.
-        return _pageLinks.Values
-            .Select(p => new
-            {
-                Page = p,
-                Score = queryTokens.Sum(t =>
-                    (Tokenize(p.Label).Contains(t) ? 3 : 0) +
-                    (Tokenize(p.Key).Contains(t) ? 2 : 0) +
-                    (Tokenize(p.Description).Contains(t) ? 1 : 0) +
-                    (Tokenize(p.Category).Contains(t) ? 1 : 0))
-            })
-            .Where(x => x.Score > 0)
-            .OrderByDescending(x => x.Score)
-            .Take(topN)
-            .Select(x => x.Page)
-            .ToList();
-    }
-
-    private static HashSet<string> Tokenize(string text) =>
-        Regex.Matches(text.ToLowerInvariant(), @"[\p{L}\p{N}]+")
-            .Select(m => m.Value)
-            .Where(t => t.Length > 1)
-            .ToHashSet();
-
     // Intent → Actions mapping
     private static readonly Dictionary<string, (List<string> Actions, string? RedirectPage)> ActionMapping = new()
     {
@@ -220,11 +182,13 @@ public class ChatService
         var knowledgeContext = await SearchKnowledgeBase(request.Text);
 
         // ── Build system prompt ──
-        // Only a handful of candidate pages go in (not the whole ~366-entry dataset) —
-        // see SelectRelevantPages.
-        var candidatePages = SelectRelevantPages(request.Text);
+        // Every known page goes in — the AI's own semantic matching handles Hebrew
+        // morphology/synonyms far better than a keyword-overlap filter would (tried and
+        // dropped; see git history). Descriptions are kept short (tag-phrases, not full
+        // sentences) specifically to keep this affordable at ~366 entries.
+        var allPages = _pageLinks.Values.ToList();
         var systemPrompt = BuildSystemPrompt(
-            request, geo, knowledgeContext, userRole, candidatePages);
+            request, geo, knowledgeContext, userRole, allPages);
 
         // ── Build messages ──
         var messages = new List<OracleMessage>
@@ -682,7 +646,7 @@ public class ChatService
 
     private static string BuildSystemPrompt(
         ChatRequest request, GeoInfo geo, string knowledgeContext, string userRole,
-        List<PageLinkConfig> candidatePages)
+        List<PageLinkConfig> allPages)
     {
         var isAdmin = string.Equals(userRole, "admin", StringComparison.OrdinalIgnoreCase);
         var escalationRule = isAdmin
@@ -690,9 +654,9 @@ public class ChatService
             : "This user is a regular user — when escalation is needed, route them to their System Admin, or to Support.";
 
         var navigationSection = "";
-        if (candidatePages.Count > 0)
+        if (allPages.Count > 0)
         {
-            var pageList = string.Join("\n", candidatePages.Select(p => $"- \"{p.Key}\": {p.Description}"));
+            var pageList = string.Join("\n", allPages.Select(p => $"- \"{p.Key}\": {p.Description}"));
             navigationSection = $@"
 
 ## Navigation — sending the user to a page
@@ -700,6 +664,9 @@ Some topics have one specific TripEX page. If the user's question is CLEARLY abo
 using ONE of the pages below, include ""page"": ""<key>"" in the JSON (alongside intent/text) so a
 clickable link to that page is added to your answer automatically. Only set it when there's a
 clear match — if none apply, omit ""page"" or set it to """". Never invent a key that isn't in this list.
+When several pages look similar, pick the MOST SPECIFIC one for exactly what the user asked (e.g.
+if they ask for a report ""by employee"", prefer a page whose description says by-employee over a
+more generic one that merely mentions employees in passing).
 Available pages:
 {pageList}";
         }
