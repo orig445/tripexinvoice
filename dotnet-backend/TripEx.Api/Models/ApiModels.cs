@@ -54,12 +54,32 @@ public class ChatResponse
     public string Text { get; set; } = "";
     public List<string> Actions { get; set; } = new();
     public string RedirectPage { get; set; } = "";
+    // Button text to show for RedirectPage (e.g. "Go to Settings"). Empty when RedirectPage is empty.
+    public string? RedirectLabel { get; set; }
     public Dictionary<string, object?> Data { get; set; } = new();
     public string SessionId { get; set; } = "";
     // Set when Milo hands the ticket to a human. The frontend uses these to
     // show a "connect to a human agent" option pointing at SupportContact.
     public bool Escalated { get; set; }
     public string? SupportContact { get; set; }
+}
+
+/// <summary>
+/// One entry in Data/page-links.json — a known TripEX page Milo can send the user to.
+/// "Key" is what the AI references as "page" in its JSON response.
+/// </summary>
+public class PageLinkConfig
+{
+    /// <summary>Unique, stable identifier (the TAS page's own filename/report code).</summary>
+    public string Key { get; set; } = "";
+    /// <summary>Absolute URL to navigate the top-level window to.</summary>
+    public string Url { get; set; } = "";
+    /// <summary>Link text shown to the user (in whatever language fits the deployment).</summary>
+    public string Label { get; set; } = "";
+    /// <summary>Short hint for the AI on when this page is relevant — not shown to the user.</summary>
+    public string Description { get; set; } = "";
+    /// <summary>Grouping only (e.g. "Settings > Accounting", "Reports") — not shown to the user.</summary>
+    public string Category { get; set; } = "";
 }
 
 // ═══════════════════════════════════════

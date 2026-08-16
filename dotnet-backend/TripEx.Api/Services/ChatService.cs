@@ -21,6 +21,76 @@ public class ChatService
     private readonly ILogger<ChatService> _logger;
     private readonly string _supportContact;
 
+    // Data/page-links.json is a large, static, deployment-wide dataset (hundreds of TAS
+    // pages) — load it once per process (like log4net's LogDir) rather than per request.
+    // Anchored to AppContext.BaseDirectory because IIS in-process hosting changes the
+    // process's current directory to C:\Windows\System32\inetsrv (see Program.cs LogDir).
+    private static readonly Dictionary<string, PageLinkConfig> _pageLinks = LoadPageLinks();
+
+    private static Dictionary<string, PageLinkConfig> LoadPageLinks()
+    {
+        try
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "Data", "page-links.json");
+            if (!File.Exists(path))
+            {
+                Console.WriteLine($"⚠️ [CHAT] Data/page-links.json not found at '{path}' — Milo will answer without page links.");
+                return new();
+            }
+            var list = JsonSerializer.Deserialize<List<PageLinkConfig>>(
+                File.ReadAllText(path),
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
+            var dict = list
+                .Where(p => !string.IsNullOrWhiteSpace(p.Key))
+                .ToDictionary(p => p.Key, p => p, StringComparer.OrdinalIgnoreCase);
+            Console.WriteLine($"✅ [CHAT] Loaded {dict.Count} page links from Data/page-links.json");
+            return dict;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ [CHAT] Failed to load Data/page-links.json — Milo will answer without page links: {ex.Message}");
+            return new();
+        }
+    }
+
+    // Simple keyword-overlap search over the (possibly huge) page-links dataset, so only
+    // a handful of real candidates — not all ~366 entries — go into every prompt. Tokenizes
+    // both the user's message and each page's label/description/category/key on Unicode
+    // letters/digits, so Hebrew and English both work. Not full RAG/semantic search: if a
+    // Hebrew question shares no words with a page's Hebrew label/description, it won't be
+    // offered as a candidate that turn — acceptable trade-off to avoid dumping hundreds of
+    // lines into every request just to cover long-tail admin screens.
+    private static List<PageLinkConfig> SelectRelevantPages(string userText, int topN = 10)
+    {
+        var queryTokens = Tokenize(userText);
+        if (queryTokens.Count == 0) return new();
+
+        // Weighted by field: a hit in Label (what the page IS) counts far more than a hit
+        // buried in Description — without this, a single-word label like "תקציב" loses to
+        // unrelated pages whose long description happens to mention the same word once.
+        return _pageLinks.Values
+            .Select(p => new
+            {
+                Page = p,
+                Score = queryTokens.Sum(t =>
+                    (Tokenize(p.Label).Contains(t) ? 3 : 0) +
+                    (Tokenize(p.Key).Contains(t) ? 2 : 0) +
+                    (Tokenize(p.Description).Contains(t) ? 1 : 0) +
+                    (Tokenize(p.Category).Contains(t) ? 1 : 0))
+            })
+            .Where(x => x.Score > 0)
+            .OrderByDescending(x => x.Score)
+            .Take(topN)
+            .Select(x => x.Page)
+            .ToList();
+    }
+
+    private static HashSet<string> Tokenize(string text) =>
+        Regex.Matches(text.ToLowerInvariant(), @"[\p{L}\p{N}]+")
+            .Select(m => m.Value)
+            .Where(t => t.Length > 1)
+            .ToHashSet();
+
     // Intent → Actions mapping
     private static readonly Dictionary<string, (List<string> Actions, string? RedirectPage)> ActionMapping = new()
     {
@@ -150,8 +220,11 @@ public class ChatService
         var knowledgeContext = await SearchKnowledgeBase(request.Text);
 
         // ── Build system prompt ──
+        // Only a handful of candidate pages go in (not the whole ~366-entry dataset) —
+        // see SelectRelevantPages.
+        var candidatePages = SelectRelevantPages(request.Text);
         var systemPrompt = BuildSystemPrompt(
-            request, geo, knowledgeContext, userRole);
+            request, geo, knowledgeContext, userRole, candidatePages);
 
         // ── Build messages ──
         var messages = new List<OracleMessage>
@@ -179,10 +252,25 @@ public class ChatService
         sw.Stop();
 
         // ── Parse response ──
-        var (intent, responseText) = ParseAiResponse(rawContent);
+        var (intent, responseText, page) = ParseAiResponse(rawContent);
 
         // ── Map intent to actions ──
         var mapping = ActionMapping.GetValueOrDefault(intent, ActionMapping["general"]);
+
+        // ── Map page → a real TAS URL + button label (Chatbot:PageLinks config) ──
+        // The AI only ever sees the page KEY (and its Description); the actual URL
+        // lives in config so pages can be added/changed without a code deploy.
+        var pageLink = !string.IsNullOrEmpty(page) && _pageLinks.TryGetValue(page, out var pl) ? pl : null;
+
+        // The widget renders "text" as raw HTML (innerHTML), so a plain <a> tag with
+        // target="_top" becomes a real clickable link that breaks out of the chat
+        // iframe on click — no frontend change needed to support this.
+        if (pageLink != null)
+        {
+            var safeUrl = System.Net.WebUtility.HtmlEncode(pageLink.Url);
+            var safeLabel = System.Net.WebUtility.HtmlEncode(pageLink.Label);
+            responseText += $"\n\n<a href=\"{safeUrl}\" target=\"_top\" rel=\"noopener\">{safeLabel}</a>";
+        }
 
         // ── Save corrections (learning from OCR corrections) ──
         await TrySaveCorrections(intent, sessionId, userId);
@@ -206,7 +294,7 @@ public class ChatService
                 Role = "assistant",
                 Content = responseText,
                 Intent = intent,
-                Metadata = JsonSerializer.Serialize(new { actions = mapping.Actions, redirectPage = mapping.RedirectPage ?? "" })
+                Metadata = JsonSerializer.Serialize(new { actions = mapping.Actions, page, redirectPage = pageLink?.Url ?? "" })
             });
 
             _db.ChatbotLogs.Add(new ChatbotLog
@@ -218,7 +306,8 @@ public class ChatService
                 {
                     intent,
                     actions = mapping.Actions,
-                    redirectPage = mapping.RedirectPage ?? "",
+                    page,
+                    redirectPage = pageLink?.Url ?? "",
                     source = request.Source,
                     latency_ms = latencyMs,
                     rag_chars = ragChars,
@@ -255,7 +344,8 @@ public class ChatService
         {
             Text = responseText,
             Actions = mapping.Actions,
-            RedirectPage = mapping.RedirectPage ?? "",
+            RedirectPage = pageLink?.Url ?? "",
+            RedirectLabel = pageLink?.Label,
             SessionId = sessionId.ToString(),
             Escalated = escalated,
             SupportContact = escalated ? _supportContact : null
@@ -470,16 +560,18 @@ public class ChatService
         return $"{header}: {c.Content}";
     }
 
-    private static (string Intent, string Text) ParseAiResponse(string rawContent)
+    private static (string Intent, string Text, string Page) ParseAiResponse(string rawContent)
     {
         var intent = "general";
         var responseText = rawContent;
+        var page = "";
 
         try
         {
             var parsed = OracleAiService.ParseJsonFromAiResponse(rawContent);
 
             intent = parsed.TryGetProperty("intent", out var i) ? i.GetString() ?? "general" : "general";
+            page = parsed.TryGetProperty("page", out var p) ? p.GetString() ?? "" : "";
 
             if (parsed.TryGetProperty("text", out var t))
             {
@@ -495,6 +587,7 @@ public class ChatService
             // Fallback: try regex extraction
             var textMatch = Regex.Match(rawContent, @"""text""\s*:\s*""((?:[^""\\]|\\.)*)""", RegexOptions.Singleline);
             var intentMatch = Regex.Match(rawContent, @"""intent""\s*:\s*""([^""]*)""");
+            var pageMatch = Regex.Match(rawContent, @"""page""\s*:\s*""([^""]*)""");
 
             if (textMatch.Success)
             {
@@ -503,10 +596,11 @@ public class ChatService
                     .Replace("\\\"", "\"");
                 responseText = OracleAiService.DecodeUnicodeEscapes(responseText);
                 intent = intentMatch.Success ? intentMatch.Groups[1].Value : "general";
+                page = pageMatch.Success ? pageMatch.Groups[1].Value : "";
             }
         }
 
-        return (intent, responseText);
+        return (intent, responseText, page);
     }
 
     private async Task TrySaveCorrections(string intent, Guid sessionId, Guid userId)
@@ -586,12 +680,29 @@ public class ChatService
         }
     }
 
-    private static string BuildSystemPrompt(ChatRequest request, GeoInfo geo, string knowledgeContext, string userRole)
+    private static string BuildSystemPrompt(
+        ChatRequest request, GeoInfo geo, string knowledgeContext, string userRole,
+        List<PageLinkConfig> candidatePages)
     {
         var isAdmin = string.Equals(userRole, "admin", StringComparison.OrdinalIgnoreCase);
         var escalationRule = isAdmin
             ? "This user IS a system admin — when escalation is needed, route them to Support only (never tell an admin to contact their admin)."
             : "This user is a regular user — when escalation is needed, route them to their System Admin, or to Support.";
+
+        var navigationSection = "";
+        if (candidatePages.Count > 0)
+        {
+            var pageList = string.Join("\n", candidatePages.Select(p => $"- \"{p.Key}\": {p.Description}"));
+            navigationSection = $@"
+
+## Navigation — sending the user to a page
+Some topics have one specific TripEX page. If the user's question is CLEARLY about reaching or
+using ONE of the pages below, include ""page"": ""<key>"" in the JSON (alongside intent/text) so a
+clickable link to that page is added to your answer automatically. Only set it when there's a
+clear match — if none apply, omit ""page"" or set it to """". Never invent a key that isn't in this list.
+Available pages:
+{pageList}";
+        }
 
         return $@"You are Milo 🦊 — a friendly, professional customer-service assistant for TripEX (Travel & Expense Management). Your job is to HELP users understand and use the TripEX system: answer their questions, explain how features work, and help troubleshoot problems. Be warm, patient and clear.
 
@@ -634,9 +745,10 @@ Escalate when: you don't know the answer, the Knowledge Base has nothing relevan
   Button), keep that whole path on the SAME numbered line, in order.
 - For a simple one-fact answer with no sequence of actions, plain prose is fine — do not
   force a numbered list where there is nothing to sequence.
+{navigationSection}
 
-## Output format (ONLY this JSON, nothing else)
-{{""intent"": ""<intent>"", ""text"": ""<your detailed, friendly answer in English>""}}
+## Output format (ONLY this JSON, nothing else — omit ""page"" when it doesn't apply)
+{{""intent"": ""<intent>"", ""text"": ""<your detailed, friendly answer in English>"", ""page"": ""<page key or omit>""}}
 
 User role: {userRole}
 User's location (from IP): {geo.Location}
