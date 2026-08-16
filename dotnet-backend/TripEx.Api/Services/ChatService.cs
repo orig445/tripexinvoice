@@ -663,7 +663,10 @@ public class ChatService
         var navigationSection = "";
         if (allPages.Count > 0)
         {
-            var pageList = string.Join("\n", allPages.Select(p => $"- \"{p.Key}\": {p.Description}"));
+            var hubPages = allPages.Where(p => p.Category == "Navigation").ToList();
+            var specificPages = allPages.Where(p => p.Category != "Navigation").ToList();
+            var hubList = string.Join("\n", hubPages.Select(p => $"- \"{p.Key}\": {p.Description}"));
+            var specificList = string.Join("\n", specificPages.Select(p => $"- \"{p.Key}\": {p.Description}"));
             navigationSection = $@"
 
 ## Navigation — sending the user to a page
@@ -671,11 +674,23 @@ Some topics have one specific TripEX page. If the user's question is CLEARLY abo
 using ONE of the pages below, include ""page"": ""<key>"" in the JSON (alongside intent/text) so a
 clickable link to that page is added to your answer automatically. Only set it when there's a
 clear match — if none apply, omit ""page"" or set it to """". Never invent a key that isn't in this list.
-When several pages look similar, pick the MOST SPECIFIC one for exactly what the user asked (e.g.
-if they ask for a report ""by employee"", prefer a page whose description says by-employee over a
-more generic one that merely mentions employees in passing).
-Available pages:
-{pageList}";
+
+🔴 SPECIFIC BEATS GENERAL — this is the #1 rule for this section:
+If the user's question matches ONE item in the ""Specific pages"" list below, you MUST use that
+key — even if a page in the ""General sections"" list also sounds related. NEVER fall back to a
+general/hub page (like the reports or settings landing page) just because you aren't 100% sure
+which specific one is right — pick your single best specific match instead of hedging with the hub.
+Only use a ""General sections"" key when the request is genuinely about browsing that whole area,
+not about one particular report/screen (e.g. ""what reports do you have?"" → the hub is correct;
+""expense report by employee"" → a specific report is correct, not the hub).
+When several specific pages look similar, pick the one whose description most exactly matches what
+was asked (e.g. a report ""by employee"" beats one that only mentions employees in passing).
+
+General sections (use ONLY when nothing specific applies):
+{hubList}
+
+Specific pages/reports (prefer these whenever one matches):
+{specificList}";
         }
 
         return $@"You are Milo 🦊 — a friendly, professional customer-service assistant for TripEX (Travel & Expense Management). Your job is to HELP users understand and use the TripEX system: answer their questions, explain how features work, and help troubleshoot problems. Be warm, patient and clear.
