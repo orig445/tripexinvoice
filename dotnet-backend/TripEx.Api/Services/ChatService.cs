@@ -675,22 +675,21 @@ using ONE of the pages below, include ""page"": ""<key>"" in the JSON (alongside
 clickable link to that page is added to your answer automatically. Only set it when there's a
 clear match — if none apply, omit ""page"" or set it to """". Never invent a key that isn't in this list.
 
-🔴 SPECIFIC BEATS GENERAL — this is the #1 rule for this section:
-If the user's question matches ONE item in the ""Specific pages"" list below, you MUST use that
-key — even if a page in the ""General sections"" list also sounds related. NEVER fall back to a
-general/hub page (like the reports or settings landing page) just because you aren't 100% sure
-which specific one is right — pick your single best specific match instead of hedging with the hub.
-Only use a ""General sections"" key when the request is genuinely about browsing that whole area,
-not about one particular report/screen (e.g. ""what reports do you have?"" → the hub is correct;
-""expense report by employee"" → a specific report is correct, not the hub).
-When several specific pages look similar, pick the one whose description most exactly matches what
-was asked (e.g. a report ""by employee"" beats one that only mentions employees in passing).
+🔴 READ THE FULL SPECIFIC LIST FIRST — do this in order, every time:
+1. Go through the ""Specific pages/reports"" list below FIRST, top to bottom. It is long — do not
+   stop at the first plausible-looking entry. Identify EVERY entry that could relate to the
+   question, then pick the SINGLE one whose description most exactly matches what was asked.
+2. Only if NOTHING in that list fits — not even loosely — look at ""General sections"" (below it)
+   as a fallback for browsing that whole area (e.g. ""what reports do you have?"").
+3. NEVER pick a ""General sections"" hub just because you're unsure which specific page is exactly
+   right, or because you noticed it before finishing the specific list. Uncertainty means: pick
+   your best specific guess, not the hub.
 
-General sections (use ONLY when nothing specific applies):
-{hubList}
+Specific pages/reports — scan ALL of these before considering anything else:
+{specificList}
 
-Specific pages/reports (prefer these whenever one matches):
-{specificList}";
+General sections — LAST RESORT ONLY, use only if nothing above fits:
+{hubList}";
         }
 
         return $@"You are Milo 🦊 — a friendly, professional customer-service assistant for TripEX (Travel & Expense Management). Your job is to HELP users understand and use the TripEX system: answer their questions, explain how features work, and help troubleshoot problems. Be warm, patient and clear.
