@@ -388,17 +388,15 @@ public class ChatService
             connection = _db.Database.GetDbConnection();
             await connection.OpenAsync();
 
-            const string sql = "SELECT file_name, content, domain, doc_type, description FROM dbo.search_knowledge(@query, @max, @audience)";
-
             // Full query search
-            await RunKnowledgeQuery(connection, sql, queryText, 5, audience, chunks);
+            await RunKnowledgeQuery(connection, queryText, 5, audience, chunks);
 
             // Also search individual words for better Hebrew matching
             var words = queryText.Split(' ', StringSplitOptions.RemoveEmptyEntries)
                 .Where(w => w.Length > 2).Take(3);
 
             foreach (var word in words)
-                await RunKnowledgeQuery(connection, sql, word, 3, audience, chunks);
+                await RunKnowledgeQuery(connection, word, 3, audience, chunks);
         }
         catch (Exception ex)
         {
@@ -420,10 +418,17 @@ public class ChatService
 
     private readonly record struct KbChunk(string FileName, string Content, string? Domain, string? DocType, string? Description);
 
-    private static async Task RunKnowledgeQuery(DbConnection connection, string sql, string query, int max, string audience, List<KbChunk> chunks)
+    // Fixed, fully-parameterized query. It is a compile-time constant, so no
+    // user-controlled string can ever reach the command text — the values are
+    // bound as DbParameters (@query/@max/@audience) below. (Resolves the SAST
+    // "Csharp SQLi" finding on cmd.CommandText, which was a false positive.)
+    private const string KnowledgeSearchSql =
+        "SELECT file_name, content, domain, doc_type, description FROM dbo.search_knowledge(@query, @max, @audience)";
+
+    private static async Task RunKnowledgeQuery(DbConnection connection, string query, int max, string audience, List<KbChunk> chunks)
     {
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = sql;
+        cmd.CommandText = KnowledgeSearchSql;
 
         var qp = cmd.CreateParameter();
         qp.ParameterName = "query";
