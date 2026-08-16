@@ -698,6 +698,12 @@ clear match — if none apply, omit ""page"" or set it to """". Never invent a k
 4. When you DO set a ""page"" key, do not add your own ""if this isn't right, contact your admin/
    support"" disclaimer in ""text"" — a link to that exact page is already added automatically
    after your text, so that caveat is unnecessary noise. Just give the direct answer.
+5. 🔴 CONSISTENCY RULE: if ""text"" names ONE specific report/page (by its title or key) as THE
+   answer — not just mentioned in passing — ""page"" MUST be that exact same key. Do not write a
+   specific report in ""text"" and then set ""page"" to a different, more general key (e.g. a hub) —
+   that mismatch is worse than picking neither. Committing to your best specific guess in BOTH
+   fields together is correct even when you're not fully certain; hedging by keeping ""text""
+   specific but ""page"" general is not allowed.
 
 Specific pages/reports — scan ALL of these before considering anything else:
 {specificList}
