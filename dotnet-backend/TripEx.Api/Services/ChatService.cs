@@ -53,6 +53,8 @@ public class ChatService
         }
     }
 
+    private static bool ContainsHebrew(string text) => Regex.IsMatch(text, @"[֐-׿]");
+
     // Intent → Actions mapping
     private static readonly Dictionary<string, (List<string> Actions, string? RedirectPage)> ActionMapping = new()
     {
@@ -231,8 +233,13 @@ public class ChatService
         // iframe on click — no frontend change needed to support this.
         if (pageLink != null)
         {
+            // Match the link label to whatever language the reply actually came out in —
+            // detected from the reply text itself (Hebrew Unicode block present or not)
+            // rather than asking the AI for a separate field, so it can't get out of sync
+            // with what the user actually sees.
+            var label = ContainsHebrew(responseText) ? pageLink.Label : pageLink.LabelEn;
             var safeUrl = System.Net.WebUtility.HtmlEncode(pageLink.Url);
-            var safeLabel = System.Net.WebUtility.HtmlEncode(pageLink.Label);
+            var safeLabel = System.Net.WebUtility.HtmlEncode(label);
             responseText += $"\n\n<a href=\"{safeUrl}\" target=\"_top\" rel=\"noopener\">{safeLabel}</a>";
         }
 

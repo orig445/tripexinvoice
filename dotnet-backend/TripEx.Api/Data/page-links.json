@@ -4,2561 +4,2927 @@
         "key":  "dashboard",
         "description":  "סקירה כללית פעילות ונתונים",
         "label":  "מעבר לדשבורד",
-        "category":  "Navigation"
+        "category":  "Navigation",
+        "labelEn":  "Dashboard"
     },
     {
         "url":  "https://deveu.combtas.com/QA_3_70/Main_Pagesv2/tasks.aspx",
         "key":  "tasks",
         "description":  "משימות ובקשות ממתינות לטיפול",
         "label":  "מעבר למשימות",
-        "category":  "Navigation"
+        "category":  "Navigation",
+        "labelEn":  "Tasks"
     },
     {
         "url":  "https://deveu.combtas.com/QA_3_70/Main_Pagesv2/trips.aspx",
         "key":  "trips",
         "description":  "כל הנסיעות עבר והווה",
         "label":  "מעבר לכל הנסיעות",
-        "category":  "Navigation"
+        "category":  "Navigation",
+        "labelEn":  "All Travels"
     },
     {
         "url":  "https://deveu.combtas.com/QA_3_70/Main_PagesV2/Central.aspx",
         "key":  "central",
         "description":  "סינון וחיפוש עסקאות/רשומות",
         "label":  "מעבר למסך המרכזי",
-        "category":  "Navigation"
+        "category":  "Navigation",
+        "labelEn":  "Central"
     },
     {
         "url":  "https://deveu.combtas.com/QA_3_70/Main_Pagesv2/expenses.aspx",
         "key":  "expenses",
         "description":  "דיווח וניהול דוחות הוצאות",
         "label":  "מעבר לדוחות הוצאות",
-        "category":  "Navigation"
+        "category":  "Navigation",
+        "labelEn":  "Expense Reports"
     },
     {
         "url":  "https://deveu.combtas.com/QA_3_70/Main_Pagesv2/ApprovalHistory.aspx",
         "key":  "approval_history",
         "description":  "היסטוריית אישורים ודחיות",
         "label":  "מעבר להיסטוריית אישורים",
-        "category":  "Navigation"
+        "category":  "Navigation",
+        "labelEn":  "Approvals History"
     },
     {
         "url":  "https://deveu.combtas.com/QA_3_70/Main_Pagesv2/calendar.aspx",
         "key":  "calendar",
         "description":  "יומן נסיעות ומשימות",
         "label":  "מעבר ליומן",
-        "category":  "Navigation"
+        "category":  "Navigation",
+        "labelEn":  "Calendar"
     },
     {
         "url":  "https://deveu.combtas.com/QA_3_70/Main_Pagesv2/Map.aspx",
         "key":  "risk_management",
         "description":  "מפת סיכוני נסיעות",
         "label":  "מעבר לניהול סיכונים",
-        "category":  "Navigation"
+        "category":  "Navigation",
+        "labelEn":  "Risk Management"
     },
     {
         "url":  "https://deveu.combtas.com/QA_3_70/Main_Pages/Analyst_Reports.aspx",
         "key":  "analysis_reports",
         "description":  "דוחות ניתוח וסטטיסטיקה",
         "label":  "מעבר לדוחות ניתוח",
-        "category":  "Navigation"
+        "category":  "Navigation",
+        "labelEn":  "Analysis Reports"
     },
     {
         "url":  "https://deveu.combtas.com/QA_3_70/Main_Pagesv2/DataAnalyst.aspx",
         "key":  "bi_analysis",
         "description":  "ניתוח נתונים עסקי",
         "label":  "מעבר לניתוח BI",
-        "category":  "Navigation"
+        "category":  "Navigation",
+        "labelEn":  "BI Analysis"
     },
     {
         "url":  "https://deveu.combtas.com/QA_3_70/UsersDetails/profile.aspx",
         "key":  "profile",
         "description":  "פרופיל אישי של המשתמש",
         "label":  "מעבר לפרופיל שלי",
-        "category":  "Navigation"
+        "category":  "Navigation",
+        "labelEn":  "My Profile"
     },
     {
         "url":  "https://deveu.combtas.com/QA_3_70/Main_Pagesv2/accounting.aspx",
         "key":  "accounting",
         "description":  "הנהלת חשבונות",
         "label":  "מעבר להנהלת חשבונות",
-        "category":  "Navigation"
+        "category":  "Navigation",
+        "labelEn":  "Accounting"
     },
     {
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/MasterFilesMain.aspx",
         "key":  "settings",
         "description":  "הגדרות כלליות וקבצי אב",
         "label":  "מעבר להגדרות",
-        "category":  "Navigation"
+        "category":  "Navigation",
+        "labelEn":  "Settings"
     },
     {
         "url":  "https://deveu.combtas.com/QA_3_70/Main_Pagesv2/GroupManagment.aspx",
         "key":  "group_management",
         "description":  "ניהול קבוצות והרשאות",
         "label":  "מעבר לניהול קבוצות",
-        "category":  "Navigation"
+        "category":  "Navigation",
+        "labelEn":  "Group Management"
     },
     {
         "url":  "https://deveu.combtas.com/QA_3_70/DP/Trip/CreateNewTR.aspx",
         "key":  "new_travel_request",
         "description":  "פתיחת בקשת נסיעה חדשה",
         "label":  "יצירת בקשת נסיעה חדשה",
-        "category":  "Navigation"
+        "category":  "Navigation",
+        "labelEn":  "New Travel Request"
     },
     {
         "url":  "https://deveu.combtas.com/QA_3_70/DP/Trip/CreateNewExpense.aspx",
         "key":  "new_expense_report",
         "description":  "פתיחת דוח הוצאות חדש",
         "label":  "יצירת דוח הוצאות חדש",
-        "category":  "Navigation"
+        "category":  "Navigation",
+        "labelEn":  "New Expense Report"
     },
     {
         "url":  "https://deveu.combtas.com/QA_3_70/Main_PagesV2/Search.aspx?Adv",
         "key":  "advanced_search",
         "description":  "חיפוש מתקדם במערכת",
         "label":  "חיפוש מתקדם",
-        "category":  "Navigation"
+        "category":  "Navigation",
+        "labelEn":  "Advanced Search"
     },
     {
         "key":  "tbl_acct_Setting",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_acct_Setting.aspx",
         "label":  "הגדרות הנהלת חשבונות",
         "description":  "פרמטרים כלליים הנהלת חשבונות",
-        "category":  "Accounting"
+        "category":  "Accounting",
+        "labelEn":  "Accounting Settings"
     },
     {
         "key":  "tbl_company_Agreement_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_company_Agreement_new.aspx",
         "label":  "הסכמי חברות תעופה",
         "description":  "הסכמים מסחריים חברות תעופה",
-        "category":  "Accounting"
+        "category":  "Accounting",
+        "labelEn":  "Airline Agreements"
     },
     {
         "key":  "tbl_company_Budget",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_company_Budget.aspx",
         "label":  "תקציב",
         "description":  "תקציבי נסיעות ומעקב ניצול",
-        "category":  "Accounting"
+        "category":  "Accounting",
+        "labelEn":  "Budget"
     },
     {
         "key":  "CashAdvance_Type",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/CashAdvance_Type.aspx",
         "label":  "סוגי מקדמות",
         "description":  "סוגי מקדמות כספיות לעובדים",
-        "category":  "Accounting"
+        "category":  "Accounting",
+        "labelEn":  "Cash Advance Types"
     },
     {
         "key":  "tbl_glob_Airplus_agencies_codes",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Airplus_agencies_codes.aspx",
         "label":  "המרת סוכנויות מאאוטסורס ל-TAS",
         "description":  "המרת קודי סוכנויות אאוטסורס ל-TAS",
-        "category":  "Accounting"
+        "category":  "Accounting",
+        "labelEn":  "Convert Agencies from Outsource to TAS"
     },
     {
         "key":  "tbl_glob_Customer",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Customer.aspx",
         "label":  "לקוחות",
         "description":  "רשימת לקוחות לחיוב וסליקה",
-        "category":  "Accounting"
+        "category":  "Accounting",
+        "labelEn":  "Customers"
     },
     {
         "key":  "tbl_system_exchange_rate_2",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_exchange_rate_2.aspx",
         "label":  "שערי חליפין",
         "description":  "עדכון שערי חליפין בין מטבעות",
-        "category":  "Accounting"
+        "category":  "Accounting",
+        "labelEn":  "Exchange Rates"
     },
     {
         "key":  "tbl_glob_Expense_Account",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Expense_Account.aspx",
         "label":  "חשבון הנה\"ח לסוג הוצאה",
         "description":  "שיוך סוג הוצאה לחשבון הנה\"ח",
-        "category":  "Accounting"
+        "category":  "Accounting",
+        "labelEn":  "Expense Type Account"
     },
     {
         "key":  "tbl_glob_Expense_Type_Per_Company",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Expense_Type_Per_Company.aspx",
         "label":  "שיוך סוגי הוצאה לחברה",
         "description":  "סוגי הוצאה מורשים לפי חברה",
-        "category":  "Accounting"
+        "category":  "Accounting",
+        "labelEn":  "Expense Type Assign"
     },
     {
         "key":  "tbl_glob_Expense_Type",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Expense_Type.aspx",
         "label":  "סוגי הוצאה",
         "description":  "רשימת סוגי הוצאות לדיווח",
-        "category":  "Accounting"
+        "category":  "Accounting",
+        "labelEn":  "Expense Types"
     },
     {
         "key":  "tbl_glob_expense_type_expand",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_expense_type_expand.aspx",
         "label":  "הרחבת סוגי הוצאה",
         "description":  "שדות מורחבים לסוגי הוצאה",
-        "category":  "Accounting"
+        "category":  "Accounting",
+        "labelEn":  "Expense Types Expand"
     },
     {
         "key":  "tbl_glob_Form_of_Payment_2",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Form_of_Payment_2.aspx",
         "label":  "אמצעי תשלום",
         "description":  "אמצעי תשלום לדיווח הוצאות",
-        "category":  "Accounting"
+        "category":  "Accounting",
+        "labelEn":  "Forms of Payments"
     },
     {
         "key":  "tbl_glob_PerDiem_2",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_PerDiem_2.aspx",
         "label":  "עלויות אש\"ל משוערות",
         "description":  "סכומי אש\"ל לפי יעד ודרג",
-        "category":  "Accounting"
+        "category":  "Accounting",
+        "labelEn":  "Per Diem Estimated Costs"
     },
     {
         "key":  "tbl_glob_sub_perdiem_rules_2",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_sub_perdiem_rules_2.aspx",
         "label":  "כללי אש\"ל ליום ראשון ואחרון",
         "description":  "חישוב אש\"ל ביום יציאה וחזרה",
-        "category":  "Accounting"
+        "category":  "Accounting",
+        "labelEn":  "Per Diem First Last Day Rules"
     },
     {
         "key":  "PerDiemMeal",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/PerDiemMeal.aspx",
         "label":  "ארוחות במסגרת אש\"ל",
         "description":  "ניכוי ארוחות מסכום אש\"ל",
-        "category":  "Accounting"
+        "category":  "Accounting",
+        "labelEn":  "Perdiem Meals"
     },
     {
         "key":  "tbl_glob_Supplier_Service",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Supplier_Service.aspx",
         "label":  "שירותי ספק",
         "description":  "סוגי שירותים לפי ספק נסיעות",
-        "category":  "Accounting"
+        "category":  "Accounting",
+        "labelEn":  "Supplier Service"
     },
     {
         "key":  "tbl_glob_Reduction",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Reduction.aspx",
         "label":  "הנחות ספקים",
         "description":  "הנחות והטבות מספקי נסיעות",
-        "category":  "Accounting"
+        "category":  "Accounting",
+        "labelEn":  "Suppliers\u0027 Discounts"
     },
     {
         "key":  "tbl_glob_Supplier",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Supplier.aspx",
         "label":  "ספקים",
         "description":  "ניהול ספקי נסיעות",
-        "category":  "Accounting"
+        "category":  "Accounting",
+        "labelEn":  "Suppliers"
     },
     {
         "key":  "tbl_tr_additional_services",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_tr_additional_services.aspx",
         "label":  "שירותים נוספים",
         "description":  "שירותים נוספים לבקשת נסיעה",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Additional Services"
     },
     {
         "key":  "tbl_Agents_Interface_Declaration",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_Agents_Interface_Declaration.aspx",
         "label":  "הצהרת ממשקי סוכנות",
         "description":  "ממשקי תקשורת מול סוכנויות נסיעות",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Agent Interfaces"
     },
     {
         "key":  "tbl_agent_Invoice_Interface",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_agent_Invoice_Interface.aspx",
         "label":  "ממשק חשבוניות סוכנות",
         "description":  "קליטת חשבוניות מסוכנויות נסיעות",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Agent Invoice Interface"
     },
     {
         "key":  "tbl_agent_Invoice_Interface_Permission",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_agent_Invoice_Interface_Permission.aspx",
         "label":  "הרשאות ממשק חשבוניות סוכנות",
         "description":  "הרשאות לממשק חשבוניות סוכנות",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Agent Invoice Interface Permission"
     },
     {
         "key":  "tbl_glob_Allow_File_Type",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Allow_File_Type.aspx",
         "label":  "סוגי קבצים מותרים",
         "description":  "סוגי קבצים מותרים להעלאה",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Allow File Type"
     },
     {
         "key":  "tbl_system_Reports",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_Reports.aspx",
         "label":  "דוחות ניתוח",
         "description":  "ניהול דוחות ניתוח והפקה",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Analysis Reports"
     },
     {
         "key":  "tbl_system_Master_Audit",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_Master_Audit.aspx",
         "label":  "יומן ביקורת הגדרות",
         "description":  "מעקב שינויים בטבלאות הגדרות",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Auditing log of Settings"
     },
     {
         "key":  "tbl_company_Group_2",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_company_Group_2.aspx",
         "label":  "קבוצת הרשאה",
         "description":  "קבוצות הרשאה לגישת משתמשים",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Authorization group"
     },
     {
         "key":  "tbl_system_view",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_view.aspx",
         "label":  "הגדרות BI",
         "description":  "חיבור ותצוגת דוחות BI",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "BI Settings"
     },
     {
         "key":  "tbl_glob_budget_rows",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_budget_rows.aspx",
         "label":  "שורות תקציב",
         "description":  "שורות פירוט מבנה התקציב",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Budget Rows"
     },
     {
         "key":  "CheckConnectionToWSs",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/CheckConnectionToWSs.aspx",
         "label":  "בדיקת חיבור לשירותי ווב",
         "description":  "בדיקת חיבור לשירותי ווב חיצוניים",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Check Connection To Web Servicess"
     },
     {
         "key":  "tbl_glob_CheckList_Items",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_CheckList_Items.aspx",
         "label":  "פריטי רשימת בדיקה",
         "description":  "רשימות תיוג לאישור נסיעה",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Check List Item"
     },
     {
         "key":  "tbl_company_combo_members",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_company_combo_members.aspx",
         "label":  "חברות בקבוצות משולבות",
         "description":  "שיוך ישויות לקבוצות משולבות",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Combo memberships"
     },
     {
         "key":  "CompanyLogoDefinition",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/CompanyLogoDefinition.aspx",
         "label":  "לוגו חברה ומדריך למשתמש",
         "description":  "העלאת לוגו חברה ומדריך משתמש",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Company Logo and User Guide"
     },
     {
         "key":  "tbl_glob_EmailTemplate",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_EmailTemplate.aspx",
         "label":  "תבניות דוא\"ל",
         "description":  "תבניות הודעות דוא\"ל אוטומטיות",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Email (1): Email Templates"
     },
     {
         "key":  "EmailTemplateRefType",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/EmailTemplateRefType.aspx",
         "label":  "סוגי הפניה לתבניות דוא\"ל",
         "description":  "סוגי אירועים לתבניות דוא\"ל",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Email (4): Email Templates Ref. Types"
     },
     {
         "key":  "tbl_company_Exception",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_company_Exception.aspx",
         "label":  "חריגות דוא\"ל",
         "description":  "חריגים לשליחת דוא\"ל לחברה",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Email Exception"
     },
     {
         "key":  "EmailTest",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/EmailTest.aspx",
         "label":  "בדיקת דוא\"ל",
         "description":  "שליחת הודעת דוא\"ל ניסיון",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Email Test"
     },
     {
         "key":  "tbl_external_proposal_log",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_external_proposal_log.aspx",
         "label":  "יומן הצעות חיצוניות",
         "description":  "מעקב הצעות/הזמנות ממקור חיצוני",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "External Proposal Log"
     },
     {
         "key":  "tbl_Family_Relation_type",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_Family_Relation_type.aspx",
         "label":  "סוג קרבה משפחתית",
         "description":  "סוגי קרבה משפחתית לעובד",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Family Relation type"
     },
     {
         "key":  "tbl_trip_final_history",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_trip_final_history.aspx",
         "label":  "יומן נסיעות סופי",
         "description":  "היסטוריית נסיעות שהושלמו",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Final Trip Log"
     },
     {
         "key":  "tbl_glob_Default_Form_of_Payment",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Default_Form_of_Payment.aspx",
         "label":  "אמצעי תשלום ברירת מחדל לפי שירות",
         "description":  "אמצעי תשלום ברירת מחדל לשירות",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Form of payment by service"
     },
     {
         "key":  "Debug_Watch_interface_Errors",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/Debug_Watch_interface_Errors.aspx",
         "label":  "יומן שגיאות ממשקים",
         "description":  "שגיאות בממשקי תקשורת חיצוניים",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Interface Log"
     },
     {
         "key":  "Interface_Mapping",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/Interface_Mapping.aspx",
         "label":  "מיפוי ממשקים",
         "description":  "מיפוי שדות לממשקים חיצוניים",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Interface Mapping"
     },
     {
         "key":  "tbl_system_Interface_Permition",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_Interface_Permition.aspx",
         "label":  "הרשאות ממשק",
         "description":  "הרשאות גישה לממשקי תקשורת",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Interface Permissions"
     },
     {
         "key":  "tbl_system_interface_validation",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_interface_validation.aspx",
         "label":  "אימות ממשקים",
         "description":  "כללי אימות נתונים בממשקים",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Interface Validation"
     },
     {
         "key":  "tbl_left_navigation_items",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_left_navigation_items.aspx",
         "label":  "תפריט צד",
         "description":  "פריטי תפריט צד שמאלי",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Left Menu"
     },
     {
         "key":  "tbl_system_login_log",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_login_log.aspx",
         "label":  "יומן כניסות",
         "description":  "מעקב כניסות משתמשים למערכת",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Login Log"
     },
     {
         "key":  "LogInRules",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/LogInRules.aspx",
         "label":  "כללי התחברות",
         "description":  "מדיניות סיסמאות ונעילת חשבון",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "LogIn Rules"
     },
     {
         "key":  "ManageUsersParameters",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/ManageUsersParameters.aspx",
         "label":  "ניהול סוגי פרמטרים למשתמשים",
         "description":  "סוגי פרמטרים אישיים למשתמשים",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Manage Parameters Type"
     },
     {
         "key":  "SingleSignOnSettings",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/SingleSignOnSettings.aspx",
         "label":  "ניהול כניסה יחידה (SSO)",
         "description":  "הגדרות התחברות יחידה SSO",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Manage Single sign on"
     },
     {
         "key":  "ManageTAS",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/ManageTAS.aspx",
         "label":  "ניהול TAS",
         "description":  "ניהול כללי הגדרות מערכת TAS",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Manage TAS"
     },
     {
         "key":  "tbl_system_tasks_alerts",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_tasks_alerts.aspx",
         "label":  "ניהול משימות והתראות",
         "description":  "משימות אוטומטיות והתראות מערכת",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Manage Tasks"
     },
     {
         "key":  "tbl_system_Master_New",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_Master_New.aspx",
         "label":  "קובץ מאסטר",
         "description":  "טבלת אב למבנה הגדרות מערכת",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Master File"
     },
     {
         "key":  "tbl_Company_Master_Permission",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_Company_Master_Permission.aspx",
         "label":  "הרשאות קובץ מאסטר",
         "description":  "הרשאות לטבלאות מאסטר לחברות",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Master File Permissions"
     },
     {
         "key":  "MasterInterface",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/MasterInterface.aspx",
         "label":  "ממשקי מאסטר",
         "description":  "ממשקי ליבה לתקשורת חיצונית",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Master Interfaces"
     },
     {
         "key":  "tbl_glob_meeting_name",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_meeting_name.aspx",
         "label":  "שם פגישה",
         "description":  "שמות פגישות לבקשות נסיעה",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Meeting Name"
     },
     {
         "key":  "tbl_glob_MsgByDestination",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_MsgByDestination.aspx",
         "label":  "הודעה לפי יעד",
         "description":  "הודעות מותאמות לפי יעד נסיעה",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Message By Destination"
     },
     {
         "key":  "tbl_glob_MissingReceiptReason",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_MissingReceiptReason.aspx",
         "label":  "סיבות לחוסר קבלה",
         "description":  "סיבות לחוסר קבלה בהוצאה",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Missing Receipt Reasons"
     },
     {
         "key":  "QueueManager_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/QueueManager_new.aspx",
         "label":  "ניהול תור (חדש)",
         "description":  "תורי עבודה ותהליכים אוטומטיים - חדש",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "new Queue Manage"
     },
     {
         "key":  "tbl_system_noemail_log",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_noemail_log.aspx",
         "label":  "יומן אי-שליחת דוא\"ל",
         "description":  "מעקב כשלי שליחת דוא\"ל",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "No Email Log"
     },
     {
         "key":  "tbl_system_OBT_Wizard",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_OBT_Wizard.aspx",
         "label":  "אשף הזמנה מקוונת (OBT)",
         "description":  "שלבי אשף הזמנה מקוונת OBT",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "OBT wizard"
     },
     {
         "key":  "tbl_tr_OCR_Allotment",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_tr_OCR_Allotment.aspx",
         "label":  "יומן OCR",
         "description":  "מעקב סריקת OCR של קבלות",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "OCR Log"
     },
     {
         "key":  "tbl_glob_PageTemplate",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_PageTemplate.aspx",
         "label":  "תבניות עמוד",
         "description":  "תבניות עיצוב לעמודי מערכת",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Page Templates"
     },
     {
         "key":  "tbl_system_validations_New",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_validations_New.aspx",
         "label":  "אימות עמוד",
         "description":  "כללי בקרה ואימות שדות עמוד",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Page Validation"
     },
     {
         "key":  "ParametersCheck",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/ParametersCheck.aspx",
         "label":  "בדיקת פרמטרים",
         "description":  "בדיקת תקינות פרמטרי מערכת",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Parameters Check"
     },
     {
         "key":  "Per_Diem_Expand",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/Per_Diem_Expand.aspx",
         "label":  "הרחבת אש\"ל",
         "description":  "שדות מורחבים לחישוב אש\"ל",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Per Diem Expand"
     },
     {
         "key":  "Questionnaire",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/Questionnaire.aspx",
         "label":  "שאלון",
         "description":  "שאלונים בתהליכי נסיעה",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Questionnaire"
     },
     {
         "key":  "QueueManager",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/QueueManager.aspx",
         "label":  "ניהול תור",
         "description":  "תורי עבודה ותהליכים אוטומטיים",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Queue Manage"
     },
     {
         "key":  "tbl_company_Reimburesement_Coin_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_company_Reimburesement_Coin_new.aspx",
         "label":  "מטבע החזר כספי",
         "description":  "מטבע ברירת מחדל להחזר כספי",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Reimbursement Coin"
     },
     {
         "key":  "tbl_glob_Remark_Type",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Remark_Type.aspx",
         "label":  "סוג הערה",
         "description":  "סוגי הערות לרשומות מערכת",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Remark Type"
     },
     {
         "key":  "tbl_system_Report_Log",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_Report_Log.aspx",
         "label":  "יומן דוחות",
         "description":  "מעקב הפקות דוחות ומועדן",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Report Log"
     },
     {
         "key":  "tbl_system_security_log",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_security_log.aspx",
         "label":  "יומן אבטחה",
         "description":  "מעקב אירועי אבטחה במערכת",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Security Log"
     },
     {
         "key":  "Settings_Default",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/Settings_Default.aspx",
         "label":  "הגדרות ברירת מחדל",
         "description":  "ערכי ברירת מחדל כלליים",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Settings Default"
     },
     {
         "key":  "tbl_glob_Supplier_Export_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Supplier_Export_new.aspx",
         "label":  "ייצוא נתוני ספקים",
         "description":  "ייצוא נתוני ספקים לקבצים",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Suppliers\u0027 Exports"
     },
     {
         "key":  "tbl_TAS_System_Supplier_Customer_Codes",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_TAS_System_Supplier_Customer_Codes.aspx",
         "label":  "סנכרון קודי ספק/לקוח",
         "description":  "התאמת קודי ספק/לקוח למערכות חוץ",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Sync Connections"
     },
     {
         "key":  "tbl_system_sync_settings",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_sync_settings.aspx",
         "label":  "הגדרות סנכרון",
         "description":  "פרמטרים לסנכרון נתונים אוטומטי",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Sync settings"
     },
     {
         "key":  "System_Emails",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/System_Emails.aspx",
         "label":  "דוא\"ל מערכת",
         "description":  "חשבונות דוא\"ל של המערכת",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "System Email"
     },
     {
         "key":  "tbl_system_email_files",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_email_files.aspx",
         "label":  "קבצים מצורפים לדוא\"ל מערכת",
         "description":  "קבצים מצורפים אוטומטית לדוא\"ל",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "System Email Files"
     },
     {
         "key":  "tbl_glob_system_Expense_Rules",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_system_Expense_Rules.aspx",
         "label":  "כללי הוצאות מערכתיים",
         "description":  "כללי בקרה ואישור הוצאות",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "System Expense Rules"
     },
     {
         "key":  "tbl_system_integration",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_integration.aspx",
         "label":  "אינטגרציה מערכתית",
         "description":  "חיבורי אינטגרציה לגורמים חיצוניים",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "System Integration"
     },
     {
         "key":  "tbl_glob_system_interface",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_system_interface.aspx",
         "label":  "ממשק מערכת",
         "description":  "הגדרות כלליות ממשקי תקשורת",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "System Interface"
     },
     {
         "key":  "tbl_System_Interface_Event",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_System_Interface_Event.aspx",
         "label":  "אירוע ממשק מערכת",
         "description":  "אירועים המפעילים שליחת ממשק",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "System Interface Event"
     },
     {
         "key":  "tbl_glob_System_Interface_Notify",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_System_Interface_Notify.aspx",
         "label":  "התראות ממשק מערכת",
         "description":  "התראות הצלחה/כשל בממשק",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "System Interface Notify"
     },
     {
         "key":  "tbl_system_Languages",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_Languages.aspx",
         "label":  "שפות מערכת",
         "description":  "שפות נתמכות ותרגומים",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "System Languages"
     },
     {
         "key":  "Debug_Watch_Errors",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/Debug_Watch_Errors.aspx",
         "label":  "יומן שגיאות מערכת",
         "description":  "יומן שגיאות כללי לאבחון תקלות",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "System Log"
     },
     {
         "key":  "tbl_system_Menu",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_Menu.aspx",
         "label":  "תפריט מערכת",
         "description":  "מבנה תפריטים ראשיים",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "System Menu"
     },
     {
         "key":  "tbl_system_notifications",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_notifications.aspx",
         "label":  "התראות מערכת",
         "description":  "הודעות התראה כלליות למשתמשים",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "System Notifications"
     },
     {
         "key":  "SystemSetting",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/SystemSetting.aspx",
         "label":  "הגדרות מערכת",
         "description":  "פרמטרים גלובליים של המערכת",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "System Settings"
     },
     {
         "key":  "tbl_system_Tas_Types",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_Tas_Types.aspx",
         "label":  "סוגי TAS",
         "description":  "סוגי ישויות מערכתיים פנימיים",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "System Tas Types"
     },
     {
         "key":  "System_Wizard",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/System_Wizard.aspx",
         "label":  "אשף מערכת",
         "description":  "אשף הגדרת פרמטרים כלליים",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "System Wizard"
     },
     {
         "key":  "tbl_TAS_System_UDID_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_TAS_System_UDID_new.aspx",
         "label":  "מזהה ייחודי למערכת (UDID)",
         "description":  "מזהים ייחודיים לרכיבי TAS",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Tas System UDID"
     },
     {
         "key":  "tbl_system_Tasks_Assign",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_Tasks_Assign.aspx",
         "label":  "שיוך משימות",
         "description":  "שיוך משימות אוטומטיות למשתמשים",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Tasks Assign"
     },
     {
         "key":  "tbl_glob_TravelAttributes",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_TravelAttributes.aspx",
         "label":  "מאפייני נסיעה",
         "description":  "מאפיינים נוספים לבקשת נסיעה",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Travel Attributes"
     },
     {
         "key":  "tbl_glob_TQ",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_TQ.aspx",
         "label":  "מכסת נסיעות",
         "description":  "מכסות נסיעה לעובד/יחידה",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Travel Quota"
     },
     {
         "key":  "tbl_glob_travel_status",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_travel_status.aspx",
         "label":  "סטטוס נסיעה",
         "description":  "סטטוסים למעקב שלב נסיעה",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "Travel Status"
     },
     {
         "key":  "tbl_system_UI",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_UI.aspx",
         "label":  "ממשק משתמש",
         "description":  "מאפייני תצוגה וממשק משתמש",
-        "category":  "Administrator"
+        "category":  "Administrator",
+        "labelEn":  "UI"
     },
     {
         "key":  "tbl_glob_Banks",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Banks.aspx",
         "label":  "בנק",
         "description":  "רשימת בנקים לפרטי תשלום",
-        "category":  "Bank"
+        "category":  "Bank",
+        "labelEn":  "Bank"
     },
     {
         "key":  "tbl_company_Bank_Account",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_company_Bank_Account.aspx",
         "label":  "חשבון בנק",
         "description":  "חשבונות בנק לתשלומים והחזרים",
-        "category":  "Bank"
+        "category":  "Bank",
+        "labelEn":  "Bank Account"
     },
     {
         "key":  "tbl_company_Bank_Account_Assign",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_company_Bank_Account_Assign.aspx",
         "label":  "שיוך חשבון בנק",
         "description":  "שיוך חשבון בנק ליחידה/עובד",
-        "category":  "Bank"
+        "category":  "Bank",
+        "labelEn":  "Bank Account Assign"
     },
     {
         "key":  "tbl_glob_Aircraft_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Aircraft_new.aspx",
         "label":  "כלי טיס",
         "description":  "דגמי כלי טיס במערכת",
-        "category":  "Base System Tables"
+        "category":  "Base System Tables",
+        "labelEn":  "Aircraft"
     },
     {
         "key":  "tbl_glob_AirPlane",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_AirPlane.aspx",
         "label":  "מטוסים",
         "description":  "טבלת מטוסים למודול טיסות",
-        "category":  "Base System Tables"
+        "category":  "Base System Tables",
+        "labelEn":  "Aircrafts"
     },
     {
         "key":  "tbl_glob_Airline_Fuel",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Airline_Fuel.aspx",
         "label":  "מס דלק לחברות תעופה",
         "description":  "מס דלק לפי חברת תעופה",
-        "category":  "Base System Tables"
+        "category":  "Base System Tables",
+        "labelEn":  "Airline Fuel Tax"
     },
     {
         "key":  "tbl_glob_AirLine",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_AirLine.aspx",
         "label":  "חברות תעופה",
         "description":  "רשימת חברות תעופה",
-        "category":  "Base System Tables"
+        "category":  "Base System Tables",
+        "labelEn":  "Airlines"
     },
     {
         "key":  "tbl_glob_Airline_Class_Group",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Airline_Class_Group.aspx",
         "label":  "קבוצת מחלקות טיסה",
         "description":  "קיבוץ מחלקות טיסה לחברת תעופה",
-        "category":  "Base System Tables"
+        "category":  "Base System Tables",
+        "labelEn":  "Airlines Class group"
     },
     {
         "key":  "tbl_glob_Airport",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Airport.aspx",
         "label":  "שדות תעופה",
         "description":  "רשימת שדות תעופה וקודים",
-        "category":  "Base System Tables"
+        "category":  "Base System Tables",
+        "labelEn":  "Airports"
     },
     {
         "key":  "tbl_glob_Annual_travel_plan_length",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Annual_travel_plan_length.aspx",
         "label":  "אורך תוכנית נסיעות שנתית",
         "description":  "פרק זמן שנתי לתכנון נסיעות",
-        "category":  "Base System Tables"
+        "category":  "Base System Tables",
+        "labelEn":  "Annual travel plan length"
     },
     {
         "key":  "tbl_glob_City",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_City.aspx",
         "label":  "ערים",
         "description":  "רשימת ערים לבחירת יעד",
-        "category":  "Base System Tables"
+        "category":  "Base System Tables",
+        "labelEn":  "Cities"
     },
     {
         "key":  "tbl_glob_Continent",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Continent.aspx",
         "label":  "יבשות",
         "description":  "סיווג גיאוגרפי לפי יבשת",
-        "category":  "Base System Tables"
+        "category":  "Base System Tables",
+        "labelEn":  "Continents"
     },
     {
         "key":  "tbl_glob_Country_2",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Country_2.aspx",
         "label":  "מדינות",
         "description":  "רשימת מדינות ליעדים ומסמכים",
-        "category":  "Base System Tables"
+        "category":  "Base System Tables",
+        "labelEn":  "Countries"
     },
     {
         "key":  "tbl_system_Curr",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_Curr.aspx",
         "label":  "מטבעות",
         "description":  "מטבעות נתמכים לחישובי עלות",
-        "category":  "Base System Tables"
+        "category":  "Base System Tables",
+        "labelEn":  "Currencies"
     },
     {
         "key":  "tbl_glob_GMT_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_GMT_new.aspx",
         "label":  "טבלת הפרשי שעון (GMT)",
         "description":  "הפרשי אזורי זמן מ-GMT",
-        "category":  "Base System Tables"
+        "category":  "Base System Tables",
+        "labelEn":  "GMT Time Table"
     },
     {
         "key":  "tbl_Handling_Fee_Airline",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_Handling_Fee_Airline.aspx",
         "label":  "עמלת טיפול - נטו/ברוטו לחברת תעופה",
         "description":  "חישוב עמלת טיפול נטו/ברוטו",
-        "category":  "Base System Tables"
+        "category":  "Base System Tables",
+        "labelEn":  "Handling Fee - Airline Net Gross"
     },
     {
         "key":  "tbl_Handling_Fee",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_Handling_Fee.aspx",
         "label":  "עמלת טיפול - כללים",
         "description":  "כללי חישוב עמלות טיפול",
-        "category":  "Base System Tables"
+        "category":  "Base System Tables",
+        "labelEn":  "Handling Fee - Rules"
     },
     {
         "key":  "tbl_glob_Holidays",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Holidays.aspx",
         "label":  "חגים וימי חופשה",
         "description":  "ימי חג המשפיעים על תכנון נסיעות",
-        "category":  "Base System Tables"
+        "category":  "Base System Tables",
+        "labelEn":  "Holidays"
     },
     {
         "key":  "tbl_glob_Rail_Suppliers",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Rail_Suppliers.aspx",
         "label":  "ספקי רכבות",
         "description":  "רשימת ספקי שירותי רכבת",
-        "category":  "Base System Tables"
+        "category":  "Base System Tables",
+        "labelEn":  "Rail Suppliers"
     },
     {
         "key":  "tbl_glob_Redundancy_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Redundancy_new.aspx",
         "label":  "רכיבי גיבוי (חדש)",
         "description":  "נתוני יתירות/גיבוי - מבנה חדש",
-        "category":  "Base System Tables"
+        "category":  "Base System Tables",
+        "labelEn":  "Redundancy"
     },
     {
         "key":  "tbl_glob_Redundancy",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Redundancy.aspx",
         "label":  "רכיבי גיבוי",
         "description":  "נתוני יתירות בטבלאות בסיס",
-        "category":  "Base System Tables"
+        "category":  "Base System Tables",
+        "labelEn":  "Redundancy"
     },
     {
         "key":  "tbl_glob_Redundancy_Country",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Redundancy_Country.aspx",
         "label":  "רכיבי גיבוי - מדינות",
         "description":  "נתוני יתירות משויכים למדינות",
-        "category":  "Base System Tables"
+        "category":  "Base System Tables",
+        "labelEn":  "Redundancy Countries"
     },
     {
         "key":  "tbl_glob_States_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_States_new.aspx",
         "label":  "מדינות/מחוזות (States)",
         "description":  "מחוזות/States לכתובות ויעדים",
-        "category":  "Base System Tables"
+        "category":  "Base System Tables",
+        "labelEn":  "States"
     },
     {
         "key":  "tbl_Carbon_Method",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_Carbon_Method.aspx",
         "label":  "שיטת חישוב פחמן",
         "description":  "שיטת חישוב פליטת CO2 בנסיעות",
-        "category":  "Carbon"
+        "category":  "Carbon",
+        "labelEn":  "1 - Method"
     },
     {
         "key":  "tbl_Carbon_Aircraft_Groups",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_Carbon_Aircraft_Groups.aspx",
         "label":  "קבוצות מטוסים לפחמן",
         "description":  "קיבוץ דגמי מטוסים לחישוב פחמן",
-        "category":  "Carbon"
+        "category":  "Carbon",
+        "labelEn":  "2 - Aircraft Groups"
     },
     {
         "key":  "tbl_Carbon_Aircraft_Co2",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_Carbon_Aircraft_Co2.aspx",
         "label":  "נתוני CO2 למטוס",
         "description":  "פליטת CO2 לפי דגם מטוס",
-        "category":  "Carbon"
+        "category":  "Carbon",
+        "labelEn":  "3 - Aircraft_Co2"
     },
     {
         "key":  "tbl_Carbon_Aircraft_Cabins_Ratio",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_Carbon_Aircraft_Cabins_Ratio.aspx",
         "label":  "יחס תאי מטוס לפחמן",
         "description":  "יחסי משקל מחלקות טיסה לפחמן",
-        "category":  "Carbon"
+        "category":  "Carbon",
+        "labelEn":  "4 - Aircraft Cabins Ratio"
     },
     {
         "key":  "tbl_Carbon_Aircraft_Size",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_Carbon_Aircraft_Size.aspx",
         "label":  "גודל מטוס לפחמן",
         "description":  "קטגוריות גודל מטוס לחישוב פחמן",
-        "category":  "Carbon"
+        "category":  "Carbon",
+        "labelEn":  "5 - Aircraft Size"
     },
     {
         "key":  "tbl_Carbon_Additional_Paramaeters",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_Carbon_Additional_Paramaeters.aspx",
         "label":  "פרמטרים נוספים לפחמן",
         "description":  "פרמטרים משלימים לחישוב פחמן",
-        "category":  "Carbon"
+        "category":  "Carbon",
+        "labelEn":  "6 - Additional Parameters"
     },
     {
         "key":  "tbl_Carbon_Calculate_Result",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_Carbon_Calculate_Result.aspx",
         "label":  "תוצאת חישוב פחמן",
         "description":  "תוצאות פליטת פחמן לנסיעות",
-        "category":  "Carbon"
+        "category":  "Carbon",
+        "labelEn":  "7 - Calculate Result"
     },
     {
         "key":  "tbl_company_TR_Unit",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_company_TR_Unit.aspx",
         "label":  "יחידה מותאמת",
         "description":  "יחידות ארגוניות מותאמות",
-        "category":  "Company Profile"
+        "category":  "Company Profile",
+        "labelEn":  "Adjusted Division"
     },
     {
         "key":  "tbl_Companies_2",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_Companies_2.aspx",
         "label":  "חברות",
         "description":  "רשימת חברות/ישויות ארגוניות",
-        "category":  "Company Profile"
+        "category":  "Company Profile",
+        "labelEn":  "Companies"
     },
     {
         "key":  "tbl_company_Country_Role",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_company_Country_Role.aspx",
         "label":  "תפקיד מדינה",
         "description":  "ייעוד מדינה בהקשר חברה",
-        "category":  "Company Profile"
+        "category":  "Company Profile",
+        "labelEn":  "Country Role"
     },
     {
         "key":  "tbl_Company_Custom_Items",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_Company_Custom_Items.aspx",
         "label":  "פריטים מותאמים אישית",
         "description":  "שדות מותאמים אישית לחברה",
-        "category":  "Company Profile"
+        "category":  "Company Profile",
+        "labelEn":  "Custom Items"
     },
     {
         "key":  "tbl_company_Delegates_3",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_company_Delegates_3.aspx",
         "label":  "מורשי חתימה / מיופי כוח",
         "description":  "משתמשים מורשים לפעול בשם אחרים",
-        "category":  "Company Profile"
+        "category":  "Company Profile",
+        "labelEn":  "Delegates"
     },
     {
         "key":  "tbl_company_Ranks_List",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_company_Ranks_List.aspx",
         "label":  "תפקידים/דרגות",
         "description":  "תפקידים ודרגות ארגוניות",
-        "category":  "Company Profile"
+        "category":  "Company Profile",
+        "labelEn":  "Positions"
     },
     {
         "key":  "tbl_company_Projects",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_company_Projects.aspx",
         "label":  "פרויקטים",
         "description":  "פרויקטים לשיוך נסיעות והוצאות",
-        "category":  "Company Profile"
+        "category":  "Company Profile",
+        "labelEn":  "Projects"
     },
     {
         "key":  "tbl_company_Regions",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_company_Regions.aspx",
         "label":  "אזורים",
         "description":  "חלוקת אזורים גיאוגרפיים/ארגוניים",
-        "category":  "Company Profile"
+        "category":  "Company Profile",
+        "labelEn":  "Regions"
     },
     {
         "key":  "tbl_company_Sites",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_company_Sites.aspx",
         "label":  "אתרים/סניפים",
         "description":  "אתרים וסניפים פיזיים של החברה",
-        "category":  "Company Profile"
+        "category":  "Company Profile",
+        "labelEn":  "Sites"
     },
     {
         "key":  "ManageSites",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/TAS_ETS/ManageSites.aspx",
         "label":  "פרטי אתרים",
         "description":  "פרטי אתרים במודול הזמנה מקוונת",
-        "category":  "Company Profile"
+        "category":  "Company Profile",
+        "labelEn":  "Sites Details"
     },
     {
         "key":  "tbl_glob_Company_Allow_TR_Unit_Type",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Company_Allow_TR_Unit_Type.aspx",
         "label":  "שיוך סוג יחידה",
         "description":  "סוגי יחידות מותרים לחברה",
-        "category":  "Company Profile"
+        "category":  "Company Profile",
+        "labelEn":  "Unit Type Assign"
     },
     {
         "key":  "tbl_User",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_User.aspx",
         "label":  "משתמשים",
         "description":  "ניהול משתמשים והרשאות",
-        "category":  "Company Profile"
+        "category":  "Company Profile",
+        "labelEn":  "Users"
     },
     {
         "key":  "tbl_glob_Estimate_car_price_list_2",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Estimate_car_price_list_2.aspx",
         "label":  "עלויות משוערות - השכרת רכב",
         "description":  "מחירון משוער השכרת רכב",
-        "category":  "Estimation"
+        "category":  "Estimation",
+        "labelEn":  "Estimated Car Costs"
     },
     {
         "key":  "tbl_glob_Estimate_flight_price_list",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Estimate_flight_price_list.aspx",
         "label":  "עלויות משוערות - טיסות",
         "description":  "מחירון משוער כרטיסי טיסה",
-        "category":  "Estimation"
+        "category":  "Estimation",
+        "labelEn":  "Estimated Flight Costs"
     },
     {
         "key":  "tbl_glob_Estimate_hotel_price_list_2",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Estimate_hotel_price_list_2.aspx",
         "label":  "עלויות משוערות - מלונות",
         "description":  "מחירון משוער לינה במלונות",
-        "category":  "Estimation"
+        "category":  "Estimation",
+        "labelEn":  "Estimated Hotel Costs"
     },
     {
         "key":  "tbl_glob_Estimate_Insur_price_list",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Estimate_Insur_price_list.aspx",
         "label":  "עלויות משוערות - ביטוח",
         "description":  "מחירון משוער ביטוח נסיעות",
-        "category":  "Estimation"
+        "category":  "Estimation",
+        "labelEn":  "Estimated Insurance Costs"
     },
     {
         "key":  "tbl_glob_Safety_Money_2",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Safety_Money_2.aspx",
         "label":  "עלויות משוערות - כספי ביטחון",
         "description":  "מחירון משוער כספי ביטחון",
-        "category":  "Estimation"
+        "category":  "Estimation",
+        "labelEn":  "Estimated Safety Money Costs"
     },
     {
         "key":  "tbl_profile_Connectors",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_profile_Connectors.aspx",
         "label":  "חיבורי GDS",
         "description":  "חיבורי פרופיל מול GDS",
-        "category":  "GDS Profile Connections"
+        "category":  "GDS Profile Connections",
+        "labelEn":  "1. Connection"
     },
     {
         "key":  "tbl_profile_mapping",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_profile_mapping.aspx",
         "label":  "מיפוי פרופיל חיבור",
         "description":  "מיפוי שדות פרופיל מול GDS",
-        "category":  "GDS Profile Connections"
+        "category":  "GDS Profile Connections",
+        "labelEn":  "2. Conection Profile Mapping"
     },
     {
         "key":  "tbl_profile_sync_log",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_profile_sync_log.aspx",
         "label":  "לוג סנכרון פרופילים",
         "description":  "יומן סנכרון פרופילים מול GDS",
-        "category":  "GDS Profile Connections"
+        "category":  "GDS Profile Connections",
+        "labelEn":  "3. Profile Sync Log"
     },
     {
         "key":  "tbl_profile_sync_Manually",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_profile_sync_Manually.aspx",
         "label":  "סנכרון ידני של פרופילים",
         "description":  "הפעלת סנכרון פרופילים ידני",
-        "category":  "GDS Profile Connections"
+        "category":  "GDS Profile Connections",
+        "labelEn":  "4. Sync Manualy"
     },
     {
         "key":  "SupplierIPCCGroupsManager",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/TAS_ETS/SupplierIPCCGroupsManager.aspx",
         "label":  "ניהול קודי IPCC לסוכנות",
         "description":  "קבוצות קוד IPCC לסוכנויות",
-        "category":  "On-Line Booking"
+        "category":  "On-Line Booking",
+        "labelEn":  "Agency IPCC Management"
     },
     {
         "key":  "ManageBookingLog",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/TAS_ETS/ManageBookingLog.aspx",
         "label":  "יומן תהליך הזמנה",
         "description":  "יומן פעולות הזמנה עצמית OBT",
-        "category":  "On-Line Booking"
+        "category":  "On-Line Booking",
+        "labelEn":  "Booking Proccess Log"
     },
     {
         "key":  "BookingReasons",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/TAS_ETS/BookingReasons.aspx",
         "label":  "סיבות הזמנה",
         "description":  "סיבות בחירה בהזמנה עצמית",
-        "category":  "On-Line Booking"
+        "category":  "On-Line Booking",
+        "labelEn":  "Booking Reasons"
     },
     {
         "key":  "ManageCars",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/TAS_ETS/ManageCars.aspx",
         "label":  "רכבים בהסכם",
         "description":  "רכבי השכרה בהסכם OBT",
-        "category":  "On-Line Booking"
+        "category":  "On-Line Booking",
+        "labelEn":  "Contracted Cars"
     },
     {
         "key":  "MamnageHotels",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/TAS_ETS/MamnageHotels.aspx",
         "label":  "מלונות בהסכם",
         "description":  "מלונות בהסכם להזמנה עצמית",
-        "category":  "On-Line Booking"
+        "category":  "On-Line Booking",
+        "labelEn":  "Contracted Hotels"
     },
     {
         "key":  "ETS_Master",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/TAS_ETS/ETS_Master.aspx",
         "label":  "טבלאות בקרה",
         "description":  "טבלאות בקרה כלליות OBT",
-        "category":  "On-Line Booking"
+        "category":  "On-Line Booking",
+        "labelEn":  "Control Tables"
     },
     {
         "key":  "tbl_ets_Obt_Flows_Properties",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/TAS_ETS/tbl_ets_Obt_Flows_Properties.aspx",
         "label":  "מאפייני תהליך הזמנה",
         "description":  "מאפייני זרימת תהליך הזמנה",
-        "category":  "On-Line Booking"
+        "category":  "On-Line Booking",
+        "labelEn":  "Flow Properties"
     },
     {
         "key":  "tbl_ETS_GDS_Statuses",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_ETS_GDS_Statuses.aspx",
         "label":  "סטטוסי GDS",
         "description":  "סטטוסי הזמנה מ-GDS",
-        "category":  "On-Line Booking"
+        "category":  "On-Line Booking",
+        "labelEn":  "GDS Status"
     },
     {
         "key":  "tbl_ETS_Highlight_Rule",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/TAS_ETS/tbl_ETS_Highlight_Rule.aspx",
         "label":  "כללי הדגשה",
         "description":  "כללי הדגשה וצביעת תוצאות",
-        "category":  "On-Line Booking"
+        "category":  "On-Line Booking",
+        "labelEn":  "Highlight Rule"
     },
     {
         "key":  "ManageAgreeCodes",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/TAS_ETS/ManageAgreeCodes.aspx",
         "label":  "ניהול קודי הסכם מלונות",
         "description":  "קודי הסכם למלונות מוסכמים",
-        "category":  "On-Line Booking"
+        "category":  "On-Line Booking",
+        "labelEn":  "Manage Agreement hotels Codes"
     },
     {
         "key":  "Companies_Manager_New",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/TAS_ETS/Companies_Manager_New.aspx",
         "label":  "שיוך כללים ארגוני",
         "description":  "שיוך כללי הזמנה למבנה ארגוני",
-        "category":  "On-Line Booking"
+        "category":  "On-Line Booking",
+        "labelEn":  "Organizational Rules Assignment"
     },
     {
         "key":  "tbl_ETS_Restrict_Access",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/TAS_ETS/tbl_ETS_Restrict_Access.aspx",
         "label":  "הגבלת גישה",
         "description":  "הגבלת גישה למשתמשים OBT",
-        "category":  "On-Line Booking"
+        "category":  "On-Line Booking",
+        "labelEn":  "Restrict Access"
     },
     {
         "key":  "RulesBooksManage",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/TAS_ETS/RulesBooksManage.aspx",
         "label":  "ניהול ספרי כללים",
         "description":  "ספרי כללי הזמנה עצמית",
-        "category":  "On-Line Booking"
+        "category":  "On-Line Booking",
+        "labelEn":  "Rules Books Management"
     },
     {
         "key":  "RulesGrupesManager",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/TAS_ETS/RulesGrupesManager.aspx",
         "label":  "ניהול קבוצות כללים",
         "description":  "קבוצות כללי הזמנה עצמית",
-        "category":  "On-Line Booking"
+        "category":  "On-Line Booking",
+        "labelEn":  "Rules Groups Management"
     },
     {
         "key":  "SetRulesPriority",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/TAS_ETS/SetRulesPriority.aspx",
         "label":  "עדיפויות כללים",
         "description":  "סדר עדיפות בין כללים",
-        "category":  "On-Line Booking"
+        "category":  "On-Line Booking",
+        "labelEn":  "Rules Priorities Management"
     },
     {
         "key":  "SeatMapSettings",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/TAS_ETS/SeatMapSettings.aspx",
         "label":  "הגדרות מפת מושבים",
         "description":  "מפת מושבים בהזמנה עצמית",
-        "category":  "On-Line Booking"
+        "category":  "On-Line Booking",
+        "labelEn":  "Seat Map Carrier Setting"
     },
     {
         "key":  "ETS_ServiceDestination_Permission",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/TAS_ETS/ETS_ServiceDestination_Permission.aspx",
         "label":  "הרשאות שירות ויעד",
         "description":  "הרשאות הזמנה לפי שירות ויעד",
-        "category":  "On-Line Booking"
+        "category":  "On-Line Booking",
+        "labelEn":  "Service Destination Permission"
     },
     {
         "key":  "Sites_Manager_New",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/TAS_ETS/Sites_Manager_New.aspx",
         "label":  "שיוך כללים לפי אתר",
         "description":  "שיוך כללי הזמנה לפי אתר",
-        "category":  "On-Line Booking"
+        "category":  "On-Line Booking",
+        "labelEn":  "Site Rules Assignment"
     },
     {
         "key":  "tbl_glob_Low_Cost_Services",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Low_Cost_Services.aspx",
         "label":  "ספקי לואו קוסט",
         "description":  "ספקי טיסות לואו קוסט",
-        "category":  "On-Line Booking"
+        "category":  "On-Line Booking",
+        "labelEn":  "Supplier Low Cost"
     },
     {
         "key":  "tbl_ETS_SupplierSource",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_ETS_SupplierSource.aspx",
         "label":  "מקורות ספקים (OBT)",
         "description":  "מקורות נתוני ספקים OBT",
-        "category":  "On-Line Booking"
+        "category":  "On-Line Booking",
+        "labelEn":  "tbl_ETS_SupplierSource"
     },
     {
         "key":  "tbl_Rotation_Authorization_Group",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_Rotation_Authorization_Group.aspx",
         "label":  "קבוצות אישור לרוטציה",
         "description":  "קבוצות מאשרים למסלול רוטציה",
-        "category":  "Rotation"
+        "category":  "Rotation",
+        "labelEn":  "Rotation (1): Approval Groups"
     },
     {
         "key":  "tbl_Rotation_Template",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_Rotation_Template.aspx",
         "label":  "תבניות רוטציה",
         "description":  "תבניות מסלול אישורי רוטציה",
-        "category":  "Rotation"
+        "category":  "Rotation",
+        "labelEn":  "Rotation (2): Rotation Templates"
     },
     {
         "key":  "tbl_Rotation_Template_Suppliers",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_Rotation_Template_Suppliers.aspx",
         "label":  "ספקים בתבנית רוטציה",
         "description":  "שיוך ספקים לתבנית רוטציה",
-        "category":  "Rotation"
+        "category":  "Rotation",
+        "labelEn":  "Rotation (3): Template Suppliers"
     },
     {
         "key":  "tbl_Rotation_Template_Assign",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_Rotation_Template_Assign.aspx",
         "label":  "שיוך תבנית רוטציה",
         "description":  "שיוך תבנית רוטציה לחברה",
-        "category":  "Rotation"
+        "category":  "Rotation",
+        "labelEn":  "Rotation (4): Template Assign"
     },
     {
         "key":  "tbl_company_obt_rules",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_company_obt_rules.aspx",
         "label":  "ספרי מנוע כללים",
         "description":  "ספרי כללים במנוע Rule Engine",
-        "category":  "Rotation"
+        "category":  "Rotation",
+        "labelEn":  "Rotation (5) Rule Engine Books"
     },
     {
         "key":  "tbl_company_rule_book_assign",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_company_rule_book_assign.aspx",
         "label":  "שיוך ספרי כללים",
         "description":  "שיוך ספרי כללים לחברה",
-        "category":  "Rotation"
+        "category":  "Rotation",
+        "labelEn":  "Rotation (6) Rule Engine Books Assign"
     },
     {
         "key":  "Approval_Groups_Manage",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/Approval_Groups_Manage.aspx",
         "label":  "קבוצות אישור (ישן)",
         "description":  "קבוצות מאשרים גרסה ישנה",
-        "category":  "Rotation - Old"
+        "category":  "Rotation - Old",
+        "labelEn":  "Rotation (1): Approval Groups"
     },
     {
         "key":  "Sign_Rotation",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/Sign_Rotation.aspx",
         "label":  "תבניות רוטציה (ישן)",
         "description":  "תבניות מסלול חתימות ישן",
-        "category":  "Rotation - Old"
+        "category":  "Rotation - Old",
+        "labelEn":  "Rotation (2): Rotation Templates"
     },
     {
         "key":  "tbl_mng_Template_Supplier",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_mng_Template_Supplier.aspx",
         "label":  "ספקים בתבנית (ישן)",
         "description":  "ספקים בתבנית רוטציה ישנה",
-        "category":  "Rotation - Old"
+        "category":  "Rotation - Old",
+        "labelEn":  "Rotation (3): Template Suppliers"
     },
     {
         "key":  "tbl_mng_Segment_Template",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_mng_Segment_Template.aspx",
         "label":  "שיוך תבנית לפי סגמנט (ישן)",
         "description":  "שיוך תבנית לפי סגמנט ישן",
-        "category":  "Rotation - Old"
+        "category":  "Rotation - Old",
+        "labelEn":  "Rotation (4): Template Assign"
     },
     {
         "key":  "tblCompanySegment",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tblCompanySegment.aspx",
         "label":  "סגמנט חברה",
         "description":  "הגדרת סגמנטים ארגוניים בחברה",
-        "category":  "Segment"
+        "category":  "Segment",
+        "labelEn":  "Company Segment"
     },
     {
         "key":  "tblCompanySegmentEmployeeRelation",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tblCompanySegmentEmployeeRelation.aspx",
         "label":  "שיוך עובד לסגמנט",
         "description":  "שיוך עובדים לסגמנט ארגוני",
-        "category":  "Segment"
+        "category":  "Segment",
+        "labelEn":  "Company Segment Employee Relation"
     },
     {
         "key":  "Segment_Manager",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/Segment_Manager.aspx",
         "label":  "מנהל סגמנט",
         "description":  "מנהלים אחראים על סגמנט",
-        "category":  "Segment"
+        "category":  "Segment",
+        "labelEn":  "Company Segment Manager"
     },
     {
         "key":  "tblCompanySegmentPart",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tblCompanySegmentPart.aspx",
         "label":  "חלק בסגמנט",
         "description":  "תתי חלקים בסגמנט חברה",
-        "category":  "Segment"
+        "category":  "Segment",
+        "labelEn":  "Company Segment Part"
     },
     {
         "key":  "tblCompanySegmentPartsRelation",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tblCompanySegmentPartsRelation.aspx",
         "label":  "קשרי חלקי סגמנט",
         "description":  "יחסי גומלין בין חלקי סגמנט",
-        "category":  "Segment"
+        "category":  "Segment",
+        "labelEn":  "Company Segment Parts Relation"
     },
     {
         "key":  "Actions_On_Users",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/Actions_On_Users.aspx",
         "label":  "פעולות על משתמשים",
         "description":  "פעולות מנהליות מרוכזות על משתמשים",
-        "category":  "System Admin"
+        "category":  "System Admin",
+        "labelEn":  "Action On Users"
     },
     {
         "key":  "tbl_system_tasks",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_system_tasks.aspx",
         "label":  "משימות מערכת",
         "description":  "משימות מערכת אוטומטיות וידניות",
-        "category":  "System Admin"
+        "category":  "System Admin",
+        "labelEn":  "Tasks"
     },
     {
         "key":  "In_Interfaces_Log",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/In_Interfaces_Log.aspx",
         "label":  "יומן ממשקים נכנסים",
         "description":  "יומן ממשקי נתונים נכנסים",
-        "category":  "Tas-Admin"
+        "category":  "Tas-Admin",
+        "labelEn":  "Incoming Interface Log"
     },
     {
         "key":  "ManageEmail",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/ManageEmail.aspx",
         "label":  "ניהול מיילים",
         "description":  "מעקב הודעות דואר אלקטרוני",
-        "category":  "Tas-Admin"
+        "category":  "Tas-Admin",
+        "labelEn":  "Manage Emails"
     },
     {
         "key":  "Outbound_No_Population_Interfaces_Log",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/Outbound_No_Population_Interfaces_Log.aspx",
         "label":  "יומן ממשקים יוצאים",
         "description":  "יומן ממשקי נתונים יוצאים",
-        "category":  "Tas-Admin"
+        "category":  "Tas-Admin",
+        "labelEn":  "Outbound Interfaces Log"
     },
     {
         "key":  "tbl_glob_Proposal_rules",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Proposal_rules.aspx",
         "label":  "כללי הצעת מחיר",
         "description":  "כללים ליצירת הצעות מחיר",
-        "category":  "Tas-Admin"
+        "category":  "Tas-Admin",
+        "labelEn":  "Proposal Rules"
     },
     {
         "key":  "tbl_glob_Redundancy_Extend",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Redundancy_Extend.aspx",
         "label":  "עודפות מורחבת",
         "description":  "כללי עודפות וכפילות מורחבים",
-        "category":  "Tas-Admin"
+        "category":  "Tas-Admin",
+        "labelEn":  "Redundancy"
     },
     {
         "key":  "tbl_company_report_permission_2",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_company_report_permission_2.aspx",
         "label":  "הרשאות דוחות",
         "description":  "הרשאות גישה למשתמשים לדוחות",
-        "category":  "Tas-Admin"
+        "category":  "Tas-Admin",
+        "labelEn":  "Report Permissions"
     },
     {
         "key":  "tbl_AcademicCalendar",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_AcademicCalendar.aspx",
         "label":  "לוח שנה אקדמי",
         "description":  "לוח שנה אקדמי מוסדות חינוך",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Academic Calendar"
     },
     {
         "key":  "tbl_glob_AgeRange",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_AgeRange.aspx",
         "label":  "טווחי גיל",
         "description":  "טווחי גיל לנסיעה וביטוח",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Age Range"
     },
     {
         "key":  "tbl_glob_Car_Rental_Categories_New",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Car_Rental_Categories_New.aspx",
         "label":  "קטגוריות השכרת רכב",
         "description":  "קטגוריות כלליות השכרת רכב",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Car Rental Categories"
     },
     {
         "key":  "tbl_glob_Rent_Car_companys",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Rent_Car_companys.aspx",
         "label":  "חברות השכרת רכב",
         "description":  "רשימת חברות השכרת רכב",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Car Rental Companies"
     },
     {
         "key":  "tbl_glob_Rent_Car_companys_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Rent_Car_companys_new.aspx",
         "label":  "חברות השכרת רכב (חדש)",
         "description":  "רשימת חברות השכרת רכב חדש",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Car Rental Companies"
     },
     {
         "key":  "tbl_glob_Cars_Catergory",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Cars_Catergory.aspx",
         "label":  "קטגוריות ספק רכב",
         "description":  "קטגוריות רכב לפי ספק",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Car Rental Supplier Categories"
     },
     {
         "key":  "tbl_glob_ClassService_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_ClassService_new.aspx",
         "label":  "דרגת שירות",
         "description":  "מחלקת טיסה במדיניות נסיעה",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Class of Service"
     },
     {
         "key":  "tbl_glob_Credit_Cards_Type_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Credit_Cards_Type_new.aspx",
         "label":  "סוגי כרטיסי אשראי",
         "description":  "סוגי כרטיסי אשראי לתשלום",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Credit Cards"
     },
     {
         "key":  "tbl_Company_CustomerVisit",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_Company_CustomerVisit.aspx",
         "label":  "ביקור לקוח",
         "description":  "ביקורי לקוחות בבקשת נסיעה",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Customer Visit"
     },
     {
         "key":  "tbl_glob_Documents_Types",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Documents_Types.aspx",
         "label":  "סוגי מסמכים",
         "description":  "סוגי מסמכים דרכון ואשרה",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Documents Types"
     },
     {
         "key":  "tbl_glob_Documents_Types_Assign",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Documents_Types_Assign.aspx",
         "label":  "שיוך סוגי מסמכים",
         "description":  "שיוך מסמכים לחברה או נסיעה",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Documents Types Assign"
     },
     {
         "key":  "tbl_glob_Exception_reasons",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Exception_reasons.aspx",
         "label":  "סיבות חריגה",
         "description":  "סיבות חריגה ממדיניות נסיעות",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Exception Reasons"
     },
     {
         "key":  "tbl_glob_flight_status_New",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_flight_status_New.aspx",
         "label":  "סטטוס טיסה",
         "description":  "סטטוסים אפשריים לטיסה",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Flight Status !"
     },
     {
         "key":  "tbl_glob_Hotels_Basis_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Hotels_Basis_new.aspx",
         "label":  "בסיס אירוח",
         "description":  "בסיס אירוח בוקר חצי פנסיון",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Hotel Basis"
     },
     {
         "key":  "tbl_glob_Hotels_Categories_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Hotels_Categories_new.aspx",
         "label":  "קטגוריות מלונות",
         "description":  "דירוג כוכבים למלונות",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Hotel Categories"
     },
     {
         "key":  "tbl_glob_Hotels_Names",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Hotels_Names.aspx",
         "label":  "רשימת מלונות",
         "description":  "רשימת שמות מלונות",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Hotel List"
     },
     {
         "key":  "tbl_glob_Hotels_Names_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Hotels_Names_new.aspx",
         "label":  "רשימת מלונות (חדש)",
         "description":  "רשימת שמות מלונות חדש",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Hotel List"
     },
     {
         "key":  "tbl_glob_Hotels_Locations_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Hotels_Locations_new.aspx",
         "label":  "מיקומי מלונות",
         "description":  "מיקומים גיאוגרפיים של מלונות",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Hotel Locations"
     },
     {
         "key":  "tbl_glob_Hotels_Rooms_Type_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Hotels_Rooms_Type_new.aspx",
         "label":  "סוגי חדרים במלון",
         "description":  "סוגי חדרי מלון להזמנה",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Hotel Room Types"
     },
     {
         "key":  "tbl_glob_Institutions",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Institutions.aspx",
         "label":  "מוסדות",
         "description":  "מוסדות אקדמיים ומוסדות חינוך",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Institutions"
     },
     {
         "key":  "tbl_glob_Insurance_Categorys_2",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Insurance_Categorys_2.aspx",
         "label":  "קטגוריות ביטוח נסיעה",
         "description":  "קטגוריות ביטוח נסיעה TR",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Insurance Categories (TR)"
     },
     {
         "key":  "tbl_glob_Insurance_Type",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Insurance_Type.aspx",
         "label":  "סוגי ביטוח",
         "description":  "סוגי ביטוח בהזמנת נסיעה",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Insurance Types"
     },
     {
         "key":  "tbl_glob_International_visa_type_list",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_International_visa_type_list.aspx",
         "label":  "סוגי אשרות בינלאומיות",
         "description":  "סוגי ויזה בינלאומית",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "International Visa Types"
     },
     {
         "key":  "tbl_glob_Mails_Type_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Mails_Type_new.aspx",
         "label":  "סוגי דואר",
         "description":  "סוגי דואר והודעות מערכת",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Mail Types"
     },
     {
         "key":  "tbl_glob_Airplane_Meal_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Airplane_Meal_new.aspx",
         "label":  "העדפות ארוחה בטיסה",
         "description":  "העדפת ארוחה לנוסע בטיסה",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Meal Preferences"
     },
     {
         "key":  "tbl_glob_Personal_Statuses_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Personal_Statuses_new.aspx",
         "label":  "מצב אישי",
         "description":  "מצב משפחתי של עובד",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Personal Status"
     },
     {
         "key":  "tbl_glob_Personal_Titles",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Personal_Titles.aspx",
         "label":  "תארים אישיים",
         "description":  "תארים אישיים מר וגברת",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Personal Titles"
     },
     {
         "key":  "tbl_glob_Flights_Times",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Flights_Times.aspx",
         "label":  "שעות טיסה מועדפות",
         "description":  "טווחי שעות טיסה מועדפות",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Preffered Flight Times"
     },
     {
         "key":  "tbl_glob_Saving_Reasones",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Saving_Reasones.aspx",
         "label":  "סיבת הזמנה",
         "description":  "סיבת חריגה ממחיר מומלץ",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Reason Of Booking"
     },
     {
         "key":  "tbl_glob_Aircraft_Line_Seat_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Aircraft_Line_Seat_new.aspx",
         "label":  "העדפות מושב",
         "description":  "העדפת מיקום מושב בטיסה",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Seat Preferences"
     },
     {
         "key":  "tbl_glob_Task_Type",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Task_Type.aspx",
         "label":  "סוג משימה",
         "description":  "סוגי משימות למעקב נסיעה",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Task Type"
     },
     {
         "key":  "tbl_glob_Ticket_Type",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Ticket_Type.aspx",
         "label":  "סוג כרטיס",
         "description":  "סוג כרטיס הלוך ושוב",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Ticket Type"
     },
     {
         "key":  "tbl_glob_Transfers_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Transfers_new.aspx",
         "label":  "סוגי הסעות",
         "description":  "סוגי שירותי הסעה וטרנספר",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Transfer Types"
     },
     {
         "key":  "tbl_glob_Transportation_Drivers",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Transportation_Drivers.aspx",
         "label":  "נהגי הסעות",
         "description":  "נהגים לשירותי הסעה",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Transportation Drivers"
     },
     {
         "key":  "tbl_glob_Flights_Reasons",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Flights_Reasons.aspx",
         "label":  "מטרות נסיעה",
         "description":  "מטרות וסיבות נסיעה עסקית",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Travel Purposes"
     },
     {
         "key":  "tbl_glob_Flights_Reasons_New",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Flights_Reasons_New.aspx",
         "label":  "מטרות נסיעה (חדש)",
         "description":  "מטרות נסיעה עסקית חדש",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Travel Purposes New"
     },
     {
         "key":  "tbl_glob_Declaration",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Declaration.aspx",
         "label":  "הצהרת בקשת נסיעה",
         "description":  "הצהרה באישור בקשת נסיעה",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Travel Request Declaration"
     },
     {
         "key":  "tbl_glob_Others_Items",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Others_Items.aspx",
         "label":  "פרטים נוספים בבקשת נסיעה",
         "description":  "שדות נוספים בטופס נסיעה",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Travel Request Misc."
     },
     {
         "key":  "tbl_glob_Others_Items_Extend",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Others_Items_Extend.aspx",
         "label":  "פרטים נוספים מורחבים",
         "description":  "הרחבת פרטי מידע נוספים",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Travel Request Misc. Extend"
     },
     {
         "key":  "tbl_glob_user_Body_description_list",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_user_Body_description_list.aspx",
         "label":  "צרכים מיוחדים לנוסע",
         "description":  "מגבלות פיזיות וצרכים מיוחדים",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Traveler Special Needs"
     },
     {
         "key":  "tbl_glob_Trip_Names_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Trip_Names_new.aspx",
         "label":  "שמות נסיעה",
         "description":  "שמות וכינויים לנסיעה",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Trip Names"
     },
     {
         "key":  "tbl_glob_trip_type_attribution_new",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_trip_type_attribution_new.aspx",
         "label":  "שיוך סוג נסיעה (מורחב)",
         "description":  "שיוך סוג נסיעה מורחב",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Trip Type Assign - Extend"
     },
     {
         "key":  "tbl_glob_trip_type_attribution",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_trip_type_attribution.aspx",
         "label":  "שיוך סוג נסיעה",
         "description":  "שיוך סוג נסיעה לחברה",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Trip Type Assign"
     },
     {
         "key":  "tbl_glob_Trip_Type",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_Trip_Type.aspx",
         "label":  "סוגי נסיעה",
         "description":  "סוגי נסיעה פנים וחוץ",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Trip Types"
     },
     {
         "key":  "tbl_glob_TripType_Purpose",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_TripType_Purpose.aspx",
         "label":  "מטרת סוג נסיעה",
         "description":  "קישור סוג נסיעה למטרה",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "TripType_Purpose"
     },
     {
         "key":  "tbl_glob_visas_enterns_options",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_glob_visas_enterns_options.aspx",
         "label":  "סוגי כניסה בויזה",
         "description":  "סוגי כניסה באשרת כניסה",
-        "category":  "Travel Management"
+        "category":  "Travel Management",
+        "labelEn":  "Visa Entry Types"
     },
     {
         "key":  "tbl_company_Travel_Policy",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_company_Travel_Policy.aspx",
         "label":  "מדיניות נסיעות החברה",
         "description":  "מדיניות נסיעות תקציב ומחלקה",
-        "category":  "Travel Policy"
+        "category":  "Travel Policy",
+        "labelEn":  "Company Travel Policies"
     },
     {
         "key":  "tbl_company_travel_policy_HighLight",
         "url":  "https://deveu.combtas.com/QA_3_70/Master_Pages/tbl_company_travel_policy_HighLight.aspx",
         "label":  "הדגשות מדיניות נסיעות",
         "description":  "הדגשת חריגות ממדיניות נסיעות",
-        "category":  "Travel Policy"
+        "category":  "Travel Policy",
+        "labelEn":  "Company Travel Policies Highlight"
     },
     {
         "key":  "TASR_11006_OBT_Detailed_Report",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=OBT Detailed Report\u0026ReportPage=TASR_11006_OBT_Detailed_Report",
         "label":  "דוח OBT מפורט",
         "description":  "הזמנות OBT מפורטות",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "OBT Detailed Report"
     },
     {
         "key":  "TASR_11002_TasBilling",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Tas Billing\u0026ReportPage=TASR_11002_TasBilling",
         "label":  "חיוב TAS",
         "description":  "חיוב וגבייה שירותי נסיעות",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Tas Billing"
     },
     {
         "key":  "TASR_01026_TravelStatus_By_Agency",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Travel Status By Agency\u0026ReportPage=TASR_01026_TravelStatus_By_Agency",
         "label":  "סטטוס נסיעות לפי סוכנות",
         "description":  "סטטוס נסיעות לפי סוכנות",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Travel Status By Agency"
     },
     {
         "key":  "TASR_01072_ApproversReport",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Approvers Report\u0026ReportPage=TASR_01072_ApproversReport",
         "label":  "דוח מאשרים",
         "description":  "מאשרים ותהליך אישור נסיעות",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Approvers Report"
     },
     {
         "key":  "TASR_11007_ChangesReport",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Changes Report\u0026ReportPage=TASR_11007_ChangesReport",
         "label":  "דוח שינויים",
         "description":  "שינויים בהזמנות ורשומות נסיעה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Changes Report"
     },
     {
         "key":  "TASR_11011_CyclicBilling",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Cyclic Billing\u0026ReportPage=TASR_11011_CyclicBilling",
         "label":  "חיוב מחזורי",
         "description":  "חיוב תקופתי חוזר",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Cyclic Billing"
     },
     {
         "key":  "TASR_11014_Gett_Orders",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Gett Orders\u0026ReportPage=TASR_11014_Gett_Orders",
         "label":  "הזמנות Gett",
         "description":  "הזמנות מונית Gett",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Gett Orders"
     },
     {
         "key":  "TASR_11013_NewTasBilling",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=New Tas Billing\u0026ReportPage=TASR_11013_NewTasBilling",
         "label":  "חיוב TAS חדש",
         "description":  "חיוב שירותי נסיעות גרסה חדשה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "New Tas Billing"
     },
     {
         "key":  "TASR_01040_PotentialOBTReport",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Potential OBT Report\u0026ReportPage=TASR_01040_PotentialOBTReport",
         "label":  "פוטנציאל הזמנות עצמאיות",
         "description":  "פוטנציאל הזמנה עצמאית OBT",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Potential OBT Report"
     },
     {
         "key":  "TASR_11012_TasStatus",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Tas Status\u0026ReportPage=TASR_11012_TasStatus",
         "label":  "סטטוס TAS",
         "description":  "סטטוס כללי רשומות TAS",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Tas Status"
     },
     {
         "key":  "TASR_91002_TravelExpenses",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Travel Expenses\u0026ReportPage=TASR_91002_TravelExpenses",
         "label":  "הוצאות נסיעה",
         "description":  "הוצאות נסיעה לפי תקופה/פרויקט",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Travel Expenses"
     },
     {
         "key":  "TASR_00003_UserDeclaration",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=User Declaration\u0026ReportPage=TASR_00003_UserDeclaration",
         "label":  "הצהרת משתמש",
         "description":  "הצהרות משתמשים בריאות/הוצאות",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "User Declaration"
     },
     {
         "key":  "TASR_07004_RedundancyILByMonth",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Redundancy by Month\u0026ReportPage=TASR_07004_RedundancyILByMonth",
         "label":  "כפילויות לפי חודש",
         "description":  "כפילויות נסיעות לפי חודש",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Redundancy by Month"
     },
     {
         "key":  "TASR_07032_RedundancyILByMonth2",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Redundancy by Month 2\u0026ReportPage=TASR_07032_RedundancyILByMonth2",
         "label":  "כפילויות לפי חודש 2",
         "description":  "כפילויות נסיעות לפי חודש גרסה 2",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Redundancy by Month 2"
     },
     {
         "key":  "TASR_07037_RedundancyILByMonthWithNISColumns",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Redundancy by Month With NIS Columns\u0026ReportPage=TASR_07037_RedundancyILByMonthWithNISColumns",
         "label":  "כפילויות לפי חודש עם עמודות שקל",
         "description":  "כפילויות לפי חודש עמודות שקל",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Redundancy by Month With NIS Columns"
     },
     {
         "key":  "TASR_07051_RedundancyILByMonthWithNISColumns",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Redundancy by Month With NIS Columns\u0026ReportPage=TASR_07051_RedundancyILByMonthWithNISColumns",
         "label":  "כפילויות לפי חודש עם עמודות שקל",
         "description":  "כפילויות לפי חודש עמודות שקל 2",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Redundancy by Month With NIS Columns"
     },
     {
         "key":  "TASR_07007_RedundancyILByMonthSite",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Redundancy by Month with Sites\u0026ReportPage=TASR_07007_RedundancyILByMonthSite",
         "label":  "כפילויות לפי חודש ואתר",
         "description":  "כפילויות נסיעות לפי חודש ואתר",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Redundancy by Month with Sites"
     },
     {
         "key":  "TASR_07003_RedundancyILByTrip",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Redundancy by Travel\u0026ReportPage=TASR_07003_RedundancyILByTrip",
         "label":  "כפילויות לפי נסיעה",
         "description":  "כפילויות ברמת נסיעה בודדת",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Redundancy by Travel"
     },
     {
         "key":  "TASR_07008_RedundancyILByTripSite",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Redundancy by Travel with Sites\u0026ReportPage=TASR_07008_RedundancyILByTripSite",
         "label":  "כפילויות לפי נסיעה ואתר",
         "description":  "כפילויות נסיעה בודדת לפי אתר",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Redundancy by Travel with Sites"
     },
     {
         "key":  "TASR_07005_RedundancyILByYear",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Redundancy By Year\u0026ReportPage=TASR_07005_RedundancyILByYear",
         "label":  "כפילויות לפי שנה",
         "description":  "כפילויות נסיעות לפי שנה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Redundancy By Year"
     },
     {
         "key":  "TASR_01015_TraveManagementControlExtended",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Trave Management Control\u0026ReportPage=TASR_01015_TraveManagementControlExtended",
         "label":  "בקרת ניהול נסיעות",
         "description":  "בקרה מורחבת ניהול נסיעות",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Trave Management Control"
     },
     {
         "key":  "TASR_08010_BudgetByProject",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Budget by Project\u0026ReportPage=TASR_08010_BudgetByProject",
         "label":  "תקציב לפי פרויקט",
         "description":  "ניצול תקציב לפי פרויקט",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Budget by Project"
     },
     {
         "key":  "TASR_07002_AccrualList",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Accrual\u0026ReportPage=TASR_07002_AccrualList",
         "label":  "צבירה",
         "description":  "צבירות כספיות נסיעות והוצאות",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Accrual"
     },
     {
         "key":  "TASR_07013_AccrualList",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Accrual List\u0026ReportPage=TASR_07013_AccrualList",
         "label":  "רשימת צבירות",
         "description":  "רשימה מפורטת צבירות כספיות",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Accrual List"
     },
     {
         "key":  "TASR_07047_AP_Invoice",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=AP invoice\u0026ReportPage=TASR_07047_AP_Invoice",
         "label":  "חשבונית ספקים",
         "description":  "חשבוניות ספקים AP נסיעות",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "AP invoice"
     },
     {
         "key":  "TASR_08003_BudgetByCompany",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Budget by Company\u0026ReportPage=TASR_08003_BudgetByCompany",
         "label":  "תקציב לפי חברה",
         "description":  "ניצול תקציב לפי חברה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Budget by Company"
     },
     {
         "key":  "TASR_08002_BudgetByDivision",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Budget by Division\u0026ReportPage=TASR_08002_BudgetByDivision",
         "label":  "תקציב לפי אגף",
         "description":  "ניצול תקציב לפי אגף/מחלקה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Budget by Division"
     },
     {
         "key":  "TASR_08004_BudgetByDivision2",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Budget by Division 2\u0026ReportPage=TASR_08004_BudgetByDivision2",
         "label":  "תקציב לפי אגף 2",
         "description":  "ניצול תקציב לפי אגף גרסה 2",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Budget by Division 2"
     },
     {
         "key":  "TASR_07046_InvoiceExpensesList",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Invoice \u0026 Expenses List\u0026ReportPage=TASR_07046_InvoiceExpensesList",
         "label":  "רשימת חשבוניות והוצאות",
         "description":  "חשבוניות והוצאות מעקב פיננסי",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Invoice \u0026 Expenses List"
     },
     {
         "key":  "TASR_07001_InvoiceList",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Invoice List\u0026ReportPage=TASR_07001_InvoiceList",
         "label":  "רשימת חשבוניות",
         "description":  "רשימת חשבוניות מלאה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Invoice List"
     },
     {
         "key":  "TASR_07011_InvoiceListByService",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Invoice List by Service\u0026ReportPage=TASR_07011_InvoiceListByService",
         "label":  "רשימת חשבוניות לפי שירות",
         "description":  "חשבוניות לפי סוג שירות",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Invoice List by Service"
     },
     {
         "key":  "TASR_07033_InvoiceListByService2",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Invoice List by Service 2\u0026ReportPage=TASR_07033_InvoiceListByService2",
         "label":  "רשימת חשבוניות לפי שירות 2",
         "description":  "חשבוניות לפי סוג שירות 2",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Invoice List by Service 2"
     },
     {
         "key":  "TASR_07012_NoInvoiceTrips",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Issued Services With/Without Invoice\u0026ReportPage=TASR_07012_NoInvoiceTrips",
         "label":  "שירותים עם/בלי חשבונית",
         "description":  "שירותים ללא חשבונית תואמת",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Issued Services With/Without Invoice"
     },
     {
         "key":  "TASR_07028_PMO",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=PMO\u0026ReportPage=TASR_07028_PMO",
         "label":  "PMO ניהול פרויקטים",
         "description":  "נתוני נסיעות והוצאות לפרויקט PMO",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "PMO"
     },
     {
         "key":  "TASR_01014_SavingReport",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Saving\u0026ReportPage=TASR_01014_SavingReport",
         "label":  "חיסכון",
         "description":  "חיסכון כספי בהזמנות נסיעה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Saving"
     },
     {
         "key":  "TASR_01028_FinanceSaving",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Saving Extend\u0026ReportPage=TASR_01028_FinanceSaving",
         "label":  "חיסכון מורחב",
         "description":  "חיסכון כספי נסיעות מורחב",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Saving Extend"
     },
     {
         "key":  "TASR_10002_VacationList",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Special Days Report\u0026ReportPage=TASR_10002_VacationList",
         "label":  "דוח ימים מיוחדים",
         "description":  "ימי חופשה וימים מיוחדים",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Special Days Report"
     },
     {
         "key":  "TASR_06001_TravelDaysForInsurance",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Travel Days for Insurance\u0026ReportPage=TASR_06001_TravelDaysForInsurance",
         "label":  "ימי נסיעה לביטוח",
         "description":  "ימי נסיעה לחישוב ביטוח",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Travel Days for Insurance"
     },
     {
         "key":  "TASR_07019_AccrualListSegment",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Accrual\u0026ReportPage=TASR_07019_AccrualListSegment",
         "label":  "צבירה לפי מקטע",
         "description":  "צבירות כספיות לפי מקטע נסיעה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Accrual"
     },
     {
         "key":  "TASR_07038_Billable_Projects",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Billable\u0026ReportPage=TASR_07038_Billable_Projects",
         "label":  "פרויקטים לחיוב",
         "description":  "פרויקטים והוצאות לחיוב ללקוח",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Billable"
     },
     {
         "key":  "TASR_07054_Billable_Extend_1",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Billable Extend 1\u0026ReportPage=TASR_07054_Billable_Extend_1",
         "label":  "חיוב מורחב 1",
         "description":  "פרויקטים לחיוב מורחב 1",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Billable Extend 1"
     },
     {
         "key":  "TASR_07055_Billable_Extend_2",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Billable Extend 2\u0026ReportPage=TASR_07055_Billable_Extend_2",
         "label":  "חיוב מורחב 2",
         "description":  "פרויקטים לחיוב מורחב 2",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Billable Extend 2"
     },
     {
         "key":  "TASR_08013_BudgetByDivision2",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Budget by Division 2\u0026ReportPage=TASR_08013_BudgetByDivision2",
         "label":  "תקציב לפי אגף 2",
         "description":  "ניצול תקציב לפי אגף/מחלקה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Budget by Division 2"
     },
     {
         "key":  "TASR_08005_BudgetByTravel",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Budget By Travel\u0026ReportPage=TASR_08005_BudgetByTravel",
         "label":  "תקציב לפי נסיעה",
         "description":  "ניצול תקציב לפי נסיעה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Budget By Travel"
     },
     {
         "key":  "TASR_08007_BudgetByTravelNew",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Budget By Travel New\u0026ReportPage=TASR_08007_BudgetByTravelNew",
         "label":  "תקציב לפי נסיעה חדש",
         "description":  "תקציב לפי נסיעה גרסה חדשה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Budget By Travel New"
     },
     {
         "key":  "TASR_08009_BudgetNonCalanderProjects",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Budget Non Calander Projects\u0026ReportPage=TASR_08009_BudgetNonCalanderProjects",
         "label":  "תקציב פרויקטים לא שנתיים",
         "description":  "תקציב פרויקטים לא קלנדריים",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Budget Non Calander Projects"
     },
     {
         "key":  "TASR_08008_BudgetByCompanyNew",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Budget Utilization Overview\u0026ReportPage=TASR_08008_BudgetByCompanyNew",
         "label":  "סקירת ניצול תקציב",
         "description":  "סקירת ניצול תקציב חברה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Budget Utilization Overview"
     },
     {
         "key":  "TASR_01074_CustomizedTransactionReportKennemer",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Customized Transaction Status Report\u0026ReportPage=TASR_01074_CustomizedTransactionReportKennemer",
         "label":  "דוח סטטוס עסקאות מותאם",
         "description":  "סטטוס עסקאות מותאם אישית",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Customized Transaction Status Report"
     },
     {
         "key":  "TASR_01027_EstimationVersusActual",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Estimation Versus Actual\u0026ReportPage=TASR_01027_EstimationVersusActual",
         "label":  "אומדן מול בפועל",
         "description":  "עלות משוערת מול בפועל",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Estimation Versus Actual"
     },
     {
         "key":  "TASR_07039_InvoiceListByService_New",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Invoice List by Service 3\u0026ReportPage=TASR_07039_InvoiceListByService_New",
         "label":  "רשימת חשבוניות לפי שירות 3",
         "description":  "חשבוניות לפי שירות גרסה 3",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Invoice List by Service 3"
     },
     {
         "key":  "TASR_07056_InvoiceListByServiceNew",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Invoice List by Service New\u0026ReportPage=TASR_07056_InvoiceListByServiceNew",
         "label":  "רשימת חשבוניות לפי שירות חדש",
         "description":  "חשבוניות לפי שירות גרסה חדשה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Invoice List by Service New"
     },
     {
         "key":  "TASR_07001_InvoiceListExtended",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Invoice List Extended\u0026ReportPage=TASR_07001_InvoiceListExtended",
         "label":  "רשימת חשבוניות מורחבת",
         "description":  "רשימת חשבוניות מורחבת",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Invoice List Extended"
     },
     {
         "key":  "TASR_06004_TravelDaysAbroad",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Travel Days Abroad\u0026ReportPage=TASR_06004_TravelDaysAbroad",
         "label":  "ימי נסיעה בחו״ל",
         "description":  "ימי שהייה בנסיעות לחו״ל",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Travel Days Abroad"
     },
     {
         "key":  "TASR_06001_TravelDaysForInsuranceExtended",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Travel Days for Insuranced Extended\u0026ReportPage=TASR_06001_TravelDaysForInsuranceExtended",
         "label":  "ימי נסיעה לביטוח מורחב",
         "description":  "ימי נסיעה לביטוח מורחב",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Travel Days for Insuranced Extended"
     },
     {
         "key":  "TASR_07034_Travel_Expenses_Balance_By_Employee",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Travel Expenses Balance by Employee\u0026ReportPage=TASR_07034_Travel_Expenses_Balance_By_Employee",
         "label":  "יתרת הוצאות לפי עובד",
         "description":  "יתרת הוצאות וזכאות עובד",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Travel Expenses Balance by Employee"
     },
     {
         "key":  "TASR_10003_VacationInTrip",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Vacation In Trip\u0026ReportPage=TASR_10003_VacationInTrip",
         "label":  "חופשה בתוך נסיעה",
         "description":  "ימי חופשה במהלך נסיעת עסקים",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Vacation In Trip"
     },
     {
         "key":  "TASR_01214_ExternalInsurance",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=External Insurance\u0026ReportPage=TASR_01214_ExternalInsurance",
         "label":  "ביטוח חיצוני",
         "description":  "ביטוח נסיעות מגורם חיצוני",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "External Insurance"
     },
     {
         "key":  "TASR_07006_ExpenseReport",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Expense Report by Type\u0026ReportPage=TASR_07006_ExpenseReport",
         "label":  "דוח הוצאות לפי סוג",
         "description":  "הוצאות נסיעה לפי סוג הוצאה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Expense Report by Type"
     },
     {
         "key":  "TASR_07050_ExpenseReportByWorkerCode",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Expense Report by Employee\u0026ReportPage=TASR_07050_ExpenseReportByWorkerCode",
         "label":  "דוח הוצאות לפי עובד",
         "description":  "הוצאות לפי עובד/קוד עובד",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Expense Report by Employee"
     },
     {
         "key":  "TASR_01003_AdvancePurchaseSummary",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Advance Purchase Summary\u0026ReportPage=TASR_01003_AdvancePurchaseSummary",
         "label":  "סיכום רכישה מוקדמת",
         "description":  "סיכום הזמנות מראש וחיסכון",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Advance Purchase Summary"
     },
     {
         "key":  "TASR_01007_TripsByDayOfWeek",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=No. of Trips by Day of Week\u0026ReportPage=TASR_01007_TripsByDayOfWeek",
         "label":  "מספר נסיעות לפי יום בשבוע",
         "description":  "נסיעות לפי יום בשבוע",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "No. of Trips by Day of Week"
     },
     {
         "key":  "TASR_03001_HotelByVendors",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Hotels By Agency and Destination\u0026ReportPage=TASR_03001_HotelByVendors",
         "label":  "מלונות לפי סוכנות ויעד",
         "description":  "הזמנות מלונות לפי סוכנות ויעד",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Hotels By Agency and Destination"
     },
     {
         "key":  "TASR_03002_HotelReservationDetailed",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Hotels By Destination - detailed\u0026ReportPage=TASR_03002_HotelReservationDetailed",
         "label":  "מלונות לפי יעד מפורט",
         "description":  "הזמנות מלונות מפורט לפי יעד",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Hotels By Destination - detailed"
     },
     {
         "key":  "TASR_12001_ActualCosts",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Actual Costs\u0026ReportPage=TASR_12001_ActualCosts",
         "label":  "עלויות בפועל",
         "description":  "עלויות נסיעות ושירותים בפועל",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Actual Costs"
     },
     {
         "key":  "TASR_00001_Agent_Response_Time",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Agent Response Time\u0026ReportPage=TASR_00001_Agent_Response_Time",
         "label":  "זמן תגובת סוכן",
         "description":  "זמן תגובת סוכני נסיעות",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Agent Response Time"
     },
     {
         "key":  "TASR_01075_BusinessTripSummary",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Business Trip Summary\u0026ReportPage=TASR_01075_BusinessTripSummary",
         "label":  "סיכום נסיעת עסקים",
         "description":  "סיכום נסיעת עסקים שירותים והוצאות",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Business Trip Summary"
     },
     {
         "key":  "TASR_01021_CashAdvance",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Cash Advance\u0026ReportPage=TASR_01021_CashAdvance",
         "label":  "מקדמות",
         "description":  "מקדמות כספיות לעובדים לנסיעה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Cash Advance"
     },
     {
         "key":  "TASR_01021_CashAdvance_EoD",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Cash Advance EoD\u0026ReportPage=TASR_01021_CashAdvance_EoD",
         "label":  "מקדמות סוף יום",
         "description":  "מקדמות נתוני סוף יום EoD",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Cash Advance EoD"
     },
     {
         "key":  "TASR_01021_CashAdvance_Extended",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Cash Advance Extended\u0026ReportPage=TASR_01021_CashAdvance_Extended",
         "label":  "מקדמות מורחב",
         "description":  "מקדמות כספיות מורחב",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Cash Advance Extended"
     },
     {
         "key":  "TASR_01044_CommitteeApprovals",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Committee Approvals\u0026ReportPage=TASR_01044_CommitteeApprovals",
         "label":  "אישורי ועדה",
         "description":  "נסיעות באישור ועדה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Committee Approvals"
     },
     {
         "key":  "TASR_01023_DailyReport",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Daily Report\u0026ReportPage=TASR_01023_DailyReport",
         "label":  "דוח יומי",
         "description":  "פעילות ונתונים יומיים נסיעות",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Daily Report"
     },
     {
         "key":  "TASR_01065_DelayedExpenseReport",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Delayed Travel Expenses\u0026ReportPage=TASR_01065_DelayedExpenseReport",
         "label":  "הוצאות נסיעה מתעכבות",
         "description":  "דיווחי הוצאות נסיעה מתעכבים",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Delayed Travel Expenses"
     },
     {
         "key":  "TASR_01063_Exception",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Exception\u0026ReportPage=TASR_01063_Exception",
         "label":  "חריגות",
         "description":  "חריגות ממדיניות נסיעות ואישור",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Exception"
     },
     {
         "key":  "TASR_01056_Flight_Dates",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Flight Dates\u0026ReportPage=TASR_01056_Flight_Dates",
         "label":  "תאריכי טיסה",
         "description":  "תאריכי טיסות שהוזמנו",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Flight Dates"
     },
     {
         "key":  "TASR_01066_PaperLess",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=PaperLess\u0026ReportPage=TASR_01066_PaperLess",
         "label":  "ללא נייר",
         "description":  "נסיעות ותהליכים ללא נייר",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "PaperLess"
     },
     {
         "key":  "TASR_01060_Personal_Driver",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Personal Driver\u0026ReportPage=TASR_01060_Personal_Driver",
         "label":  "נהג פרטי",
         "description":  "שימוש בנהג פרטי בנסיעות",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Personal Driver"
     },
     {
         "key":  "TASR_01069_Proposals",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Proposals\u0026ReportPage=TASR_01069_Proposals",
         "label":  "הצעות מחיר",
         "description":  "הצעות נסיעה לפני הזמנה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Proposals"
     },
     {
         "key":  "TASR_01069_Proposals_Extended",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Proposals Extended\u0026ReportPage=TASR_01069_Proposals_Extended",
         "label":  "הצעות מחיר מורחב",
         "description":  "הצעות נסיעה מורחב",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Proposals Extended"
     },
     {
         "key":  "TASR_01049_Questionnarie",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Questionarie\u0026ReportPage=TASR_01049_Questionnarie",
         "label":  "שאלון",
         "description":  "תוצאות שאלונים למשתמשים",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Questionarie"
     },
     {
         "key":  "TASR_00003_Agent_SLA",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=SLA Report\u0026ReportPage=TASR_00003_Agent_SLA",
         "label":  "דוח SLA",
         "description":  "עמידה בזמני שירות SLA",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "SLA Report"
     },
     {
         "key":  "TASR_01019_TravelExpenses_Expand",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=tbl_system_Reports\u0026ReportPage=TASR_01019_TravelExpenses_Expand",
         "label":  "הוצאות נסיעה מורחב מערכת",
         "description":  "הוצאות נסיעה מורחב מערכתי",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "tbl_system_Reports"
     },
     {
         "key":  "TASR_01004_TopSpender",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Top Spender\u0026ReportPage=TASR_01004_TopSpender",
         "label":  "המוציאים המובילים",
         "description":  "דירוג הוצאות גבוהות בנסיעות",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Top Spender"
     },
     {
         "key":  "TASR_01022_Transporation_V2",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Transportation\u0026ReportPage=TASR_01022_Transporation_V2",
         "label":  "תחבורה",
         "description":  "שימוש בשירותי תחבורה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Transportation"
     },
     {
         "key":  "TASR_11015_TraveManagementAndPurposeControl",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Trave Management And Purpose Control\u0026ReportPage=TASR_11015_TraveManagementAndPurposeControl",
         "label":  "בקרת ניהול ומטרת נסיעה",
         "description":  "בקרת ניהול ומטרת נסיעה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Trave Management And Purpose Control"
     },
     {
         "key":  "TASR_01001_TravelByCategory",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Travel by Categories\u0026ReportPage=TASR_01001_TravelByCategory",
         "label":  "נסיעות לפי קטגוריה",
         "description":  "נסיעות לפי קטגוריה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Travel by Categories"
     },
     {
         "key":  "TASR_01036_TravelCoordinatorReport",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Travel Coordinator Repor\u0026ReportPage=TASR_01036_TravelCoordinatorReport",
         "label":  "דוח רכז נסיעות",
         "description":  "ניהול ומעקב לרכז נסיעות",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Travel Coordinator Repor"
     },
     {
         "key":  "TASR_01002_TravelExpenses",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Travel Expenses\u0026ReportPage=TASR_01002_TravelExpenses",
         "label":  "הוצאות נסיעה",
         "description":  "הוצאות נסיעה של עובדים",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Travel Expenses"
     },
     {
         "key":  "TASR_01202_TravelExpenses",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Travel Expenses - DSP\u0026ReportPage=TASR_01202_TravelExpenses",
         "label":  "הוצאות נסיעה DSP",
         "description":  "הוצאות נסיעה גרסת DSP",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Travel Expenses - DSP"
     },
     {
         "key":  "TASR_01064_TravelExpensesByCategoriesNew",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Travel Expenses By Categories New\u0026ReportPage=TASR_01064_TravelExpensesByCategoriesNew",
         "label":  "הוצאות נסיעה לפי קטגוריה חדש",
         "description":  "הוצאות נסיעה לפי קטגוריה חדש",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Travel Expenses By Categories New"
     },
     {
         "key":  "TASR_01064_TravelExpensesByCategoriesNewExtended",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Travel Expenses By Categories New Extended\u0026ReportPage=TASR_01064_TravelExpensesByCategoriesNewExtended",
         "label":  "הוצאות נסיעה לפי קטגוריה מורחב",
         "description":  "הוצאות נסיעה לפי קטגוריה מורחב",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Travel Expenses By Categories New Extended"
     },
     {
         "key":  "TASR_01002_TravelExpensesExtended",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Travel Expenses Extended\u0026ReportPage=TASR_01002_TravelExpensesExtended",
         "label":  "הוצאות נסיעה מורחב",
         "description":  "הוצאות נסיעה מורחב",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Travel Expenses Extended"
     },
     {
         "key":  "TASR_01020_TravelExpensesPerTas",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Travel Expenses Per Tas\u0026ReportPage=TASR_01020_TravelExpensesPerTas",
         "label":  "הוצאות נסיעה לפי TAS",
         "description":  "הוצאות נסיעה לפי רשומת TAS",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Travel Expenses Per Tas"
     },
     {
         "key":  "TASR_01006_TravelStatus",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Travel Status\u0026ReportPage=TASR_01006_TravelStatus",
         "label":  "סטטוס נסיעה",
         "description":  "סטטוס נסיעה מאושרת/ממתינה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Travel Status"
     },
     {
         "key":  "TASR_12010_TravelStatus_By_Agency",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Travel Status By Agency\u0026ReportPage=TASR_12010_TravelStatus_By_Agency",
         "label":  "סטטוס נסיעה לפי סוכנות",
         "description":  "סטטוס נסיעה לפי סוכנות",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Travel Status By Agency"
     },
     {
         "key":  "TASR_01047_TravelStatusExtended2",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Travel Status Extended\u0026ReportPage=TASR_01047_TravelStatusExtended2",
         "label":  "סטטוס נסיעה מורחב",
         "description":  "סטטוס נסיעה מורחב",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Travel Status Extended"
     },
     {
         "key":  "TASR_01006_TravelStatusWithPaidData",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Travel Status With Paid Data\u0026ReportPage=TASR_01006_TravelStatusWithPaidData",
         "label":  "סטטוס נסיעה עם נתוני תשלום",
         "description":  "סטטוס נסיעה עם נתוני תשלום",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Travel Status With Paid Data"
     },
     {
         "key":  "TASR_01070_TravelByType",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Travel Type\u0026ReportPage=TASR_01070_TravelByType",
         "label":  "סוג נסיעה",
         "description":  "נסיעות לפי סוג נסיעה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Travel Type"
     },
     {
         "key":  "TASR_01067_TravelsByDestinations",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Travels by destinations\u0026ReportPage=TASR_01067_TravelsByDestinations",
         "label":  "נסיעות לפי יעדים",
         "description":  "התפלגות נסיעות לפי יעד",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Travels by destinations"
     },
     {
         "key":  "TASR_01013_TripSummarizing",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Trip Summarizing\u0026ReportPage=TASR_01013_TripSummarizing",
         "label":  "סיכום נסיעות",
         "description":  "סיכום כללי נתוני נסיעות",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Trip Summarizing"
     },
     {
         "key":  "TASR_01073_NewTripSummarizing",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Trip Summarizing New\u0026ReportPage=TASR_01073_NewTripSummarizing",
         "label":  "סיכום נסיעות חדש",
         "description":  "סיכום נסיעות גרסה חדשה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Trip Summarizing New"
     },
     {
         "key":  "TASR_01005_VolumeByAgent",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Volume by Agent\u0026ReportPage=TASR_01005_VolumeByAgent",
         "label":  "היקף פעילות לפי סוכן",
         "description":  "היקף הזמנות לפי סוכן",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Volume by Agent"
     },
     {
         "key":  "TASR_02003_AgreementTargets",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Agreement Targets\u0026ReportPage=TASR_02003_AgreementTargets",
         "label":  "יעדי הסכם",
         "description":  "יעדי הסכם ספקים מול ביצוע",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Agreement Targets"
     },
     {
         "key":  "TASR_02004_AirlineClassOfBooking",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Airline Class of Booking\u0026ReportPage=TASR_02004_AirlineClassOfBooking",
         "label":  "מחלקת הזמנה בטיסה",
         "description":  "מחלקת הזמנת טיסה עסקים/תיירים",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Airline Class of Booking"
     },
     {
         "key":  "TASR_02010_AirlineTicket",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Airline Ticket\u0026ReportPage=TASR_02010_AirlineTicket",
         "label":  "כרטיס טיסה",
         "description":  "פרטי כרטיסי טיסה שהונפקו",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Airline Ticket"
     },
     {
         "key":  "TASR_02001_AirlineVolume",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Airline Volume\u0026ReportPage=TASR_02001_AirlineVolume",
         "label":  "היקף טיסות",
         "description":  "היקף רכישות טיסות כולל",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Airline Volume"
     },
     {
         "key":  "TASR_02006_ATCTickets",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=UATP / AirPlus Tickets\u0026ReportPage=TASR_02006_ATCTickets",
         "label":  "כרטיסי UATP AirPlus",
         "description":  "כרטיסי טיסה UATP AirPlus",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "UATP / AirPlus Tickets"
     },
     {
         "key":  "TASR_02009_AirlineByVendors",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Volume By Agency and Airline\u0026ReportPage=TASR_02009_AirlineByVendors",
         "label":  "היקף לפי סוכנות וחברת תעופה",
         "description":  "היקף טיסות לפי סוכנות וחברה",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Volume By Agency and Airline"
     },
     {
         "key":  "TASR_02005_VolumeByAirlineDestination",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Volume By Airline and Destination\u0026ReportPage=TASR_02005_VolumeByAirlineDestination",
         "label":  "היקף לפי חברת תעופה ויעד",
         "description":  "היקף טיסות לפי חברה ויעד",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Volume By Airline and Destination"
     },
     {
         "key":  "TASR_02002_VolumeByDestination",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Volume By Destination\u0026ReportPage=TASR_02002_VolumeByDestination",
         "label":  "היקף לפי יעד",
         "description":  "היקף נסיעות/טיסות לפי יעד",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Volume By Destination"
     },
     {
         "key":  "TASR_04002_CarByVendors",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Cars By Agency and Destination\u0026ReportPage=TASR_04002_CarByVendors",
         "label":  "רכבים לפי סוכנות ויעד",
         "description":  "השכרת רכב לפי סוכנות ויעד",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Cars By Agency and Destination"
     },
     {
         "key":  "TASR_04001_CarByVendorsDetailed",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Cars By Rental Company and Destination -detailed\u0026ReportPage=TASR_04001_CarByVendorsDetailed",
         "label":  "רכבים לפי חברת השכרה ויעד מפורט",
         "description":  "השכרת רכב מפורט לפי חברה ויעד",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Cars By Rental Company and Destination -detailed"
     },
     {
         "key":  "TASR_01012_Refund",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Refund\u0026ReportPage=TASR_01012_Refund",
         "label":  "החזר כספי",
         "description":  "בקשות והחזרים כספיים לעובדים",
-        "category":  "Reports"
+        "category":  "Reports",
+        "labelEn":  "Refund"
     }
 ]

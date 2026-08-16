@@ -74,8 +74,10 @@ public class PageLinkConfig
     public string Key { get; set; } = "";
     /// <summary>Absolute URL to navigate the top-level window to.</summary>
     public string Url { get; set; } = "";
-    /// <summary>Link text shown to the user (in whatever language fits the deployment).</summary>
+    /// <summary>Link text shown to the user when replying in Hebrew (the default/fallback).</summary>
     public string Label { get; set; } = "";
+    /// <summary>Link text shown to the user when replying in English.</summary>
+    public string LabelEn { get; set; } = "";
     /// <summary>Short hint for the AI on when this page is relevant — not shown to the user.</summary>
     public string Description { get; set; } = "";
     /// <summary>Grouping only (e.g. "Settings > Accounting", "Reports") — not shown to the user.</summary>
