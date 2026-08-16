@@ -2499,7 +2499,7 @@
         "key":  "TASR_07050_ExpenseReportByWorkerCode",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Expense Report by Employee\u0026ReportPage=TASR_07050_ExpenseReportByWorkerCode",
         "label":  "דוח הוצאות לפי עובד",
-        "description":  "הוצאות לפי עובד/קוד עובד",
+        "description":  "פירוט הוצאות בנפרד לכל עובד ועובד, לא סיכום כולל",
         "category":  "Reports",
         "labelEn":  "Expense Report by Employee"
     },
