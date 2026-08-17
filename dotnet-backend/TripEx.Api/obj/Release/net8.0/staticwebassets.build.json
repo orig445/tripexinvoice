@@ -1,11 +1,1 @@
-{
-  "Version": 1,
-  "Hash": "vcCNWz+S6X18VUQEVzT1XsVZiF5VXbBOjVBVG3GP/oA=",
-  "Source": "TripEx.Api",
-  "BasePath": "_content/TripEx.Api",
-  "Mode": "Default",
-  "ManifestType": "Build",
-  "ReferencedProjectsConfiguration": [],
-  "DiscoveryPatterns": [],
-  "Assets": []
-}
+{"Version":1,"Hash":"0attlowHs/L5a7utKG/heIEtgWflWNLD4hbJvosI+Dc=","Source":"TripEx.Api","BasePath":"/","Mode":"Root","ManifestType":"Build","ReferencedProjectsConfiguration":[],"DiscoveryPatterns":[],"Assets":[],"Endpoints":[]}

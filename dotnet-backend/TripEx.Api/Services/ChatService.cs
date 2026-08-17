@@ -237,22 +237,28 @@ public class ChatService
 
         // The model has proven far more reliable at naming the exact right specific report
         // INLINE in its own "text" than at keeping the separate structured "page" field in
-        // sync with it (observed repeatedly: text correctly says "TASR_07050_..." while
-        // "page" still says the general hub). So scan the text itself for any known
-        // specific-page key and prefer the EARLIEST one mentioned over whatever "page" says —
-        // this derives the link from what the user actually reads, not a second, less
-        // reliable field. Hub/Navigation keys are excluded here since they're the fallback
-        // we're specifically trying to override.
+        // sync with it (observed repeatedly: text correctly names the report while "page"
+        // still says the general hub). So scan the text itself for any known page's name —
+        // by design the model now names reports by their human-readable Label/LabelEn, never
+        // the raw key (users must never see the internal key), so that's what we scan for —
+        // and prefer the EARLIEST one mentioned over whatever "page" says. This derives the
+        // link from what the user actually reads, not a second, less reliable field.
+        // Hub/Navigation entries are excluded since they're the fallback we're overriding.
+        // A minimum length guard on the candidate strings avoids a short, generic label
+        // (a few characters) causing a false-positive match against unrelated text.
         // Strip Unicode bidi control marks first — the model sometimes inserts them (e.g.
-        // U+200F RLM) around an embedded LTR report code inside Hebrew text, which silently
-        // breaks a plain substring match against the clean dictionary key.
+        // U+200F RLM) around an embedded LTR name inside Hebrew text, which silently breaks
+        // a plain substring match against the clean dictionary value.
+        const int minMatchLength = 8;
         var textForKeyScan = new string(responseText.Where(ch =>
             (ch < (char)0x200B || ch > (char)0x200F) &&
             (ch < (char)0x202A || ch > (char)0x202E) &&
             (ch < (char)0x2066 || ch > (char)0x2069)).ToArray());
         var mentionedKey = _pageLinks
             .Where(kv => kv.Value.Category != "Navigation")
-            .Select(kv => new { kv.Key, Index = textForKeyScan.IndexOf(kv.Key, StringComparison.OrdinalIgnoreCase) })
+            .SelectMany(kv => new[] { kv.Value.LabelEn, kv.Value.Label, kv.Value.Key }
+                .Where(s => !string.IsNullOrWhiteSpace(s) && s.Length >= minMatchLength)
+                .Select(s => new { kv.Key, Index = textForKeyScan.IndexOf(s, StringComparison.OrdinalIgnoreCase) }))
             .Where(x => x.Index >= 0)
             .OrderBy(x => x.Index)
             .Select(x => x.Key)
@@ -706,6 +712,13 @@ public class ChatService
         }
     }
 
+    // The AI is given each page's human-readable name (both languages) alongside its
+    // internal key — without this it had no real name to reference and would sometimes
+    // write the raw key (e.g. "TASR_07050_ExpenseReportByWorkerCode") directly into
+    // "text", which users then saw verbatim in the chat.
+    private static string FormatPageEntry(PageLinkConfig p) =>
+        $"- \"{p.Key}\" (name: \"{p.LabelEn}\" / \"{p.Label}\"): {p.Description}";
+
     private static string BuildSystemPrompt(
         ChatRequest request, GeoInfo geo, string knowledgeContext, string userRole,
         List<PageLinkConfig> allPages)
@@ -720,8 +733,8 @@ public class ChatService
         {
             var hubPages = allPages.Where(p => p.Category == "Navigation").ToList();
             var specificPages = allPages.Where(p => p.Category != "Navigation").ToList();
-            var hubList = string.Join("\n", hubPages.Select(p => $"- \"{p.Key}\": {p.Description}"));
-            var specificList = string.Join("\n", specificPages.Select(p => $"- \"{p.Key}\": {p.Description}"));
+            var hubList = string.Join("\n", hubPages.Select(FormatPageEntry));
+            var specificList = string.Join("\n", specificPages.Select(FormatPageEntry));
             navigationSection = $@"
 
 ## Navigation — sending the user to a page
@@ -742,12 +755,18 @@ clear match — if none apply, omit ""page"" or set it to """". Never invent a k
 4. When you DO set a ""page"" key, do not add your own ""if this isn't right, contact your admin/
    support"" disclaimer in ""text"" — a link to that exact page is already added automatically
    after your text, so that caveat is unnecessary noise. Just give the direct answer.
-5. 🔴 CONSISTENCY RULE: if ""text"" names ONE specific report/page (by its title or key) as THE
-   answer — not just mentioned in passing — ""page"" MUST be that exact same key. Do not write a
-   specific report in ""text"" and then set ""page"" to a different, more general key (e.g. a hub) —
-   that mismatch is worse than picking neither. Committing to your best specific guess in BOTH
-   fields together is correct even when you're not fully certain; hedging by keeping ""text""
-   specific but ""page"" general is not allowed.
+5. 🔴 CONSISTENCY RULE: if ""text"" names ONE specific report/page as THE answer — not just
+   mentioned in passing — ""page"" MUST be that exact same key. Do not write a specific report in
+   ""text"" and then set ""page"" to a different, more general key (e.g. a hub) — that mismatch is
+   worse than picking neither. Committing to your best specific guess in BOTH fields together is
+   correct even when you're not fully certain; hedging by keeping ""text"" specific but ""page""
+   general is not allowed.
+6. 🔴 NAME, NEVER THE KEY: when you name that report/page inside ""text"", always use its
+   human-readable name — the ""name: EN / HE"" shown for each entry below — picking whichever of
+   the two matches the language you're replying in. NEVER write the raw internal key (the quoted
+   identifier before ""name:"", e.g. ""TASR_07050_ExpenseReportByWorkerCode"") inside ""text"" — that
+   key is an internal identifier only; a user seeing it verbatim is a bug. The key belongs ONLY in
+   the ""page"" field.
 
 Specific pages/reports — scan ALL of these before considering anything else:
 {specificList}

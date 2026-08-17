@@ -1,25 +1,31 @@
 {
   "format": 1,
   "restore": {
-    "/dev-server/dotnet-backend/TripEx.Api/TripEx.Api.csproj": {}
+    "C:\\Users\\roik\\Downloads\\tripexinvoice\\dotnet-backend\\TripEx.Api\\TripEx.Api.csproj": {}
   },
   "projects": {
-    "/dev-server/dotnet-backend/TripEx.Api/TripEx.Api.csproj": {
+    "C:\\Users\\roik\\Downloads\\tripexinvoice\\dotnet-backend\\TripEx.Api\\TripEx.Api.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/dev-server/dotnet-backend/TripEx.Api/TripEx.Api.csproj",
+        "projectUniqueName": "C:\\Users\\roik\\Downloads\\tripexinvoice\\dotnet-backend\\TripEx.Api\\TripEx.Api.csproj",
         "projectName": "TripEx.Api",
-        "projectPath": "/dev-server/dotnet-backend/TripEx.Api/TripEx.Api.csproj",
-        "packagesPath": "/root/.nuget/packages/",
-        "outputPath": "/dev-server/dotnet-backend/TripEx.Api/obj/",
+        "projectPath": "C:\\Users\\roik\\Downloads\\tripexinvoice\\dotnet-backend\\TripEx.Api\\TripEx.Api.csproj",
+        "packagesPath": "C:\\Users\\roik\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\roik\\Downloads\\tripexinvoice\\dotnet-backend\\TripEx.Api\\obj\\",
         "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+        ],
         "configFilePaths": [
-          "/root/.nuget/NuGet/NuGet.Config"
+          "C:\\Users\\roik\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
         "originalTargetFrameworks": [
           "net8.0"
         ],
         "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
@@ -37,7 +43,8 @@
           "enableAudit": "true",
           "auditLevel": "low",
           "auditMode": "direct"
-        }
+        },
+        "SdkAnalysisLevel": "10.0.200"
       },
       "frameworks": {
         "net8.0": {
@@ -51,6 +58,10 @@
               "target": "Package",
               "version": "[4.0.3, )"
             },
+            "DocumentFormat.OpenXml": {
+              "target": "Package",
+              "version": "[3.1.0, )"
+            },
             "Microsoft.AspNetCore.Authentication.JwtBearer": {
               "target": "Package",
               "version": "[8.0.0, )"
@@ -63,21 +74,25 @@
               "target": "Package",
               "version": "[8.0.0, )"
             },
-            "Serilog.AspNetCore": {
+            "Microsoft.Extensions.Logging.Log4Net.AspNetCore": {
               "target": "Package",
-              "version": "[8.0.1, )"
+              "version": "[8.0.0, )"
             },
-            "Serilog.Sinks.Console": {
+            "PdfPig": {
               "target": "Package",
-              "version": "[5.0.1, )"
+              "version": "[0.1.9, )"
             },
-            "Serilog.Sinks.File": {
+            "SixLabors.ImageSharp": {
               "target": "Package",
-              "version": "[5.0.0, )"
+              "version": "[3.1.11, )"
             },
             "Swashbuckle.AspNetCore": {
               "target": "Package",
               "version": "[6.5.0, )"
+            },
+            "log4net": {
+              "target": "Package",
+              "version": "[3.3.1, )"
             }
           },
           "imports": [
@@ -91,6 +106,24 @@
           ],
           "assetTargetFallback": true,
           "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Ref",
+              "version": "[8.0.27, 8.0.27]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Host.win-x64",
+              "version": "[8.0.27, 8.0.27]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Ref",
+              "version": "[8.0.27, 8.0.27]"
+            },
+            {
+              "name": "Microsoft.WindowsDesktop.App.Ref",
+              "version": "[8.0.27, 8.0.27]"
+            }
+          ],
           "frameworkReferences": {
             "Microsoft.AspNetCore.App": {
               "privateAssets": "none"
@@ -99,7 +132,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "/tmp/dotnet/sdk/8.0.420/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.204/PortableRuntimeIdentifierGraph.json"
         }
       }
     }
