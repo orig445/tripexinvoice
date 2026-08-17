@@ -53,7 +53,19 @@ public class ChatService
         }
     }
 
-    private static bool ContainsHebrew(string text) => Regex.IsMatch(text, @"[֐-׿]");
+    // Majority-language check, not mere presence — a reply that's fundamentally in English
+    // can still quote one Hebrew term (e.g. a report's Hebrew label) without being a Hebrew
+    // reply; counting which script actually dominates avoids misreading that as Hebrew.
+    private static bool IsHebrewDominant(string text)
+    {
+        int hebrew = 0, latin = 0;
+        foreach (var ch in text)
+        {
+            if (ch >= (char)0x0590 && ch <= (char)0x05FF) hebrew++;
+            else if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z')) latin++;
+        }
+        return hebrew > latin;
+    }
 
     // Intent → Actions mapping
     private static readonly Dictionary<string, (List<string> Actions, string? RedirectPage)> ActionMapping = new()
@@ -255,7 +267,7 @@ public class ChatService
         // The widget renders "text" as raw HTML (innerHTML), so a plain <a> tag with
         // target="_top" becomes a real clickable link that breaks out of the chat
         // iframe on click — no frontend change needed to support this.
-        var isHebrewReply = ContainsHebrew(responseText);
+        var isHebrewReply = IsHebrewDominant(responseText);
         if (pageLink != null)
         {
             // Match the link label to whatever language the reply actually came out in —
