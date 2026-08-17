@@ -262,10 +262,18 @@ public class ChatService
         }
 
         var escalated = intent == "escalate";
-        // The support contact line is added here (deterministically, in code) rather than
-        // left to the AI's own wording — guarantees it always names the real address and
-        // always comes AFTER the page link above, never before it.
-        if (escalated)
+        // The support/admin contact line is added here (deterministically, in code) rather
+        // than left to the AI's own wording — guarantees it always names the real address
+        // and always comes AFTER the page link above, never before it. Whenever a page link
+        // was shown, this is a "in case that wasn't quite right" fallback; when there's no
+        // link (a true escalation), it's the main point of the message.
+        if (pageLink != null)
+        {
+            responseText += isHebrewReply
+                ? $"\n\nאם זה לא בדיוק הדף שחיפשת, ניתן לפנות למנהל המערכת שלך או לתמיכה במייל {_supportContact}"
+                : $"\n\nIf this isn't exactly the page you were looking for, you can contact your System Admin or reach support by email at {_supportContact}";
+        }
+        else if (escalated)
         {
             responseText += isHebrewReply
                 ? $"\n\nניתן לפנות לתמיכה במייל {_supportContact}"
