@@ -2499,7 +2499,7 @@
         "key":  "TASR_07050_ExpenseReportByWorkerCode",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Expense Report by Employee\u0026ReportPage=TASR_07050_ExpenseReportByWorkerCode",
         "label":  "דוח הוצאות לפי עובד",
-        "description":  "פירוט הוצאות בנפרד לכל עובד ועובד, לא סיכום כולל",
+        "description":  "פירוט הוצאות נפרד לכל עובד/עובדת - זה מה שרוצים כששואלים \u0027הוצאות של כל העובדים\u0027",
         "category":  "Reports",
         "labelEn":  "Expense Report by Employee"
     },
@@ -2723,7 +2723,7 @@
         "key":  "TASR_01002_TravelExpenses",
         "url":  "https://deveu.combtas.com/QA_3_70/AdvancedReports/AdvReportsManager.aspx?ReportName=Travel Expenses\u0026ReportPage=TASR_01002_TravelExpenses",
         "label":  "הוצאות נסיעה",
-        "description":  "הוצאות נסיעה של עובדים",
+        "description":  "סיכום כללי של הוצאות נסיעה, לא מפורט לפי עובד בנפרד",
         "category":  "Reports",
         "labelEn":  "Travel Expenses"
     },
