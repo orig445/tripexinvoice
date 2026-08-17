@@ -249,15 +249,32 @@ public class ChatService
         // Strip Unicode bidi control marks first — the model sometimes inserts them (e.g.
         // U+200F RLM) around an embedded LTR name inside Hebrew text, which silently breaks
         // a plain substring match against the clean dictionary value.
+        //
+        // Excluding by Category=="Navigation" alone isn't enough: some non-Navigation pages
+        // (e.g. an Administrator-category "Analysis Reports" admin screen for managing report
+        // definitions) happen to share the same hub-like label as a real Navigation entry
+        // ("דוחות ניתוח" is literally the tail of the Navigation entry's "מעבר לדוחות ניתוח").
+        // Every Reports answer's boilerplate opening line ("go to Analysis Reports") contains
+        // that phrase BEFORE the specific report name mentioned later, so without this check
+        // the earliest-match rule always locked onto that admin page instead of the report —
+        // live-tested and confirmed 2026-08-17. So also drop any candidate that is itself a
+        // substring of a Navigation entry's Label/LabelEn — that marks it as a duplicate of
+        // the hub we're already excluding, regardless of which category it happens to live in.
         const int minMatchLength = 8;
         var textForKeyScan = new string(responseText.Where(ch =>
             (ch < (char)0x200B || ch > (char)0x200F) &&
             (ch < (char)0x202A || ch > (char)0x202E) &&
             (ch < (char)0x2066 || ch > (char)0x2069)).ToArray());
+        var navigationPhrases = _pageLinks.Values
+            .Where(p => p.Category == "Navigation")
+            .SelectMany(p => new[] { p.Label, p.LabelEn })
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToList();
         var mentionedKey = _pageLinks
             .Where(kv => kv.Value.Category != "Navigation")
             .SelectMany(kv => new[] { kv.Value.LabelEn, kv.Value.Label, kv.Value.Key }
-                .Where(s => !string.IsNullOrWhiteSpace(s) && s.Length >= minMatchLength)
+                .Where(s => !string.IsNullOrWhiteSpace(s) && s.Length >= minMatchLength
+                    && !navigationPhrases.Any(nav => nav.Contains(s, StringComparison.OrdinalIgnoreCase)))
                 .Select(s => new { kv.Key, Index = textForKeyScan.IndexOf(s, StringComparison.OrdinalIgnoreCase) }))
             .Where(x => x.Index >= 0)
             .OrderBy(x => x.Index)
