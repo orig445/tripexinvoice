@@ -274,6 +274,26 @@ public class ChatService
         // target="_top" becomes a real clickable link that breaks out of the chat
         // iframe on click — no frontend change needed to support this.
         var isHebrewReply = IsHebrewDominant(responseText);
+
+        // Defense-in-depth for the "never show the raw key" rule: the prompt instructs
+        // the AI to always name a report/page by its human-readable Label/LabelEn (never
+        // the raw key), but live testing showed it still leaks the raw key sometimes on
+        // questions that push it to be maximally precise (e.g. disambiguating near-duplicate
+        // report names). Rather than rely on the model to comply every time, scrub any
+        // literal page key that slipped into the visible text and swap in its name — this
+        // guarantees the user never sees an internal identifier regardless of what the
+        // model wrote.
+        foreach (var kv in _pageLinks)
+        {
+            if (kv.Key.Length < minMatchLength) continue;
+            if (responseText.Contains(kv.Key, StringComparison.OrdinalIgnoreCase))
+            {
+                var replacement = isHebrewReply ? kv.Value.Label : kv.Value.LabelEn;
+                if (!string.IsNullOrWhiteSpace(replacement))
+                    responseText = responseText.Replace(kv.Key, replacement, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
         if (pageLink != null)
         {
             // Match the link label to whatever language the reply actually came out in —
