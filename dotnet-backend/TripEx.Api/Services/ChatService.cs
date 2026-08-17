@@ -320,6 +320,19 @@ public class ChatService
             var label = isHebrewReply ? pageLink.Label : pageLink.LabelEn;
             var safeUrl = System.Net.WebUtility.HtmlEncode(pageLink.Url);
             var safeLabel = System.Net.WebUtility.HtmlEncode(label);
+
+            // Show the report/page selector in the language of the reply, but always use
+            // English report name + numeric code (how TAS displays it) so the user knows
+            // exactly what to search for in the system.
+            var reportCode = System.Text.RegularExpressions.Regex.Match(page, @"TASR_(\d+)_").Groups[1].Value;
+            if (!string.IsNullOrEmpty(reportCode))
+            {
+                var reportSelectText = isHebrewReply
+                    ? $"בחר {pageLink.LabelEn} - {reportCode}"
+                    : $"Select {pageLink.LabelEn} - {reportCode}";
+                responseText += $"\n\n{reportSelectText}";
+            }
+
             responseText += $"\n\n<a href=\"{safeUrl}\" target=\"_top\" rel=\"noopener\">{safeLabel}</a>";
         }
 
