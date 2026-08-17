@@ -231,9 +231,16 @@ public class ChatService
         // this derives the link from what the user actually reads, not a second, less
         // reliable field. Hub/Navigation keys are excluded here since they're the fallback
         // we're specifically trying to override.
+        // Strip Unicode bidi control marks first — the model sometimes inserts them (e.g.
+        // U+200F RLM) around an embedded LTR report code inside Hebrew text, which silently
+        // breaks a plain substring match against the clean dictionary key.
+        var textForKeyScan = new string(responseText.Where(ch =>
+            (ch < (char)0x200B || ch > (char)0x200F) &&
+            (ch < (char)0x202A || ch > (char)0x202E) &&
+            (ch < (char)0x2066 || ch > (char)0x2069)).ToArray());
         var mentionedKey = _pageLinks
             .Where(kv => kv.Value.Category != "Navigation")
-            .Select(kv => new { kv.Key, Index = responseText.IndexOf(kv.Key, StringComparison.OrdinalIgnoreCase) })
+            .Select(kv => new { kv.Key, Index = textForKeyScan.IndexOf(kv.Key, StringComparison.OrdinalIgnoreCase) })
             .Where(x => x.Index >= 0)
             .OrderBy(x => x.Index)
             .Select(x => x.Key)
