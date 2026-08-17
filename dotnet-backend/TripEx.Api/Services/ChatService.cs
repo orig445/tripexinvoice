@@ -223,9 +223,26 @@ public class ChatService
         // ── Map intent to actions ──
         var mapping = ActionMapping.GetValueOrDefault(intent, ActionMapping["general"]);
 
-        // ── Map page → a real TAS URL + button label (Chatbot:PageLinks config) ──
+        // The model has proven far more reliable at naming the exact right specific report
+        // INLINE in its own "text" than at keeping the separate structured "page" field in
+        // sync with it (observed repeatedly: text correctly says "TASR_07050_..." while
+        // "page" still says the general hub). So scan the text itself for any known
+        // specific-page key and prefer the EARLIEST one mentioned over whatever "page" says —
+        // this derives the link from what the user actually reads, not a second, less
+        // reliable field. Hub/Navigation keys are excluded here since they're the fallback
+        // we're specifically trying to override.
+        var mentionedKey = _pageLinks
+            .Where(kv => kv.Value.Category != "Navigation")
+            .Select(kv => new { kv.Key, Index = responseText.IndexOf(kv.Key, StringComparison.OrdinalIgnoreCase) })
+            .Where(x => x.Index >= 0)
+            .OrderBy(x => x.Index)
+            .Select(x => x.Key)
+            .FirstOrDefault();
+        if (mentionedKey != null) page = mentionedKey;
+
+        // ── Map page → a real TAS URL + button label (Data/page-links.json) ──
         // The AI only ever sees the page KEY (and its Description); the actual URL
-        // lives in config so pages can be added/changed without a code deploy.
+        // lives in the data file so pages can be added/changed without a code deploy.
         var pageLink = !string.IsNullOrEmpty(page) && _pageLinks.TryGetValue(page, out var pl) ? pl : null;
 
         // The widget renders "text" as raw HTML (innerHTML), so a plain <a> tag with
