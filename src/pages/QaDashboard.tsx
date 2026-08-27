@@ -29,6 +29,21 @@ import {
 import { Loader2, MessageSquare, HelpCircle, Bot, Download, RefreshCw, CalendarIcon, X } from "lucide-react";
 import { format, startOfDay, endOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip as RTooltip,
+  CartesianGrid,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+} from "recharts";
 
 interface QaPair {
   id: string;
@@ -39,10 +54,19 @@ interface QaPair {
   answer: string;
   askedAt: string;
   answeredAt: string | null;
+  userId: string | null;
+  userLabel: string;
 }
 
 const PAGE_SIZE = 1000;
 const MAX_MESSAGES = 20000;
+const CHART_COLORS = [
+  "hsl(var(--primary))",
+  "hsl(var(--triplex-info, 200 80% 50%))",
+  "hsl(var(--triplex-amber, 38 92% 50%))",
+  "hsl(var(--triplex-success, 152 60% 40%))",
+  "hsl(var(--muted-foreground))",
+];
 
 export default function QaDashboard() {
   const [pairs, setPairs] = useState<QaPair[]>([]);
@@ -53,7 +77,9 @@ export default function QaDashboard() {
   const [source, setSource] = useState("all");
   const [intent, setIntent] = useState("all");
   const [status, setStatus] = useState("all");
+  const [user, setUser] = useState("all");
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
+
 
   const load = async () => {
     setIsLoading(true);
