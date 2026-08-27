@@ -130,12 +130,9 @@ export default function QaDashboard() {
       if (source !== "all" && p.source !== source) return false;
       if (intent !== "all" && p.intent !== intent) return false;
       if (dateRange.from || dateRange.to) {
-        const asked = new Date(p.askedAt);
-        const from = dateRange.from ? startOfDay(dateRange.from) : undefined;
-        const to = dateRange.to ? endOfDay(dateRange.to) : undefined;
-        if (!isWithinInterval(asked, { start: from || asked, end: to || asked })) {
-          return false;
-        }
+        const askedTime = new Date(p.askedAt).getTime();
+        if (dateRange.from && askedTime < startOfDay(dateRange.from).getTime()) return false;
+        if (dateRange.to && askedTime > endOfDay(dateRange.to).getTime()) return false;
       }
       if (!q) return true;
       return (
