@@ -104,7 +104,7 @@ export function ChatMessage({ message, onAction, question, audience = "external"
 
         {showTranslation && translation && (
           <div
-           
+            dir="rtl"
             className="rounded-2xl border border-primary/20 bg-background px-3.5 py-2.5 text-sm leading-relaxed text-foreground"
           >
             <p className="mb-1 text-[11px] font-medium text-muted-foreground">Hebrew translation</p>
