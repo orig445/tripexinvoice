@@ -79,6 +79,16 @@ export default function QaDashboard() {
   const [status, setStatus] = useState("all");
   const [user, setUser] = useState("all");
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
+  const [sortKey, setSortKey] = useState<"askedAt" | "userLabel" | "source" | "intent" | "question" | "answer">("askedAt");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  const toggleSort = (key: typeof sortKey) => {
+    if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortKey(key);
+      setSortDir(key === "askedAt" ? "desc" : "asc");
+    }
+  };
 
 
   const load = async () => {
