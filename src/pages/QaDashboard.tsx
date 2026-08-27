@@ -219,6 +219,7 @@ export default function QaDashboard() {
     return pairs.filter((p) => {
       if (source !== "all" && p.source !== source) return false;
       if (intent !== "all" && (p.intent || "none") !== intent) return false;
+      if (user !== "all" && p.userLabel !== user) return false;
       if (status === "answered" && !p.answer) return false;
       if (status === "unanswered" && p.answer) return false;
 
@@ -234,14 +235,54 @@ export default function QaDashboard() {
         p.question.toLowerCase().includes(q) ||
         p.answer.toLowerCase().includes(q) ||
         p.source.toLowerCase().includes(q) ||
+        p.userLabel.toLowerCase().includes(q) ||
         (p.intent || "").toLowerCase().includes(q)
       );
     });
-  }, [pairs, search, questionFilter, answerFilter, source, intent, status, dateRange]);
+  }, [pairs, search, questionFilter, answerFilter, source, intent, status, user, dateRange]);
 
 
   const unanswered = filtered.filter((p) => !p.answer).length;
   const sessionCount = new Set(filtered.map((p) => p.sessionId)).size;
+
+  const byDay = useMemo(() => {
+    const map = new Map<string, number>();
+    filtered.forEach((p) => {
+      const key = format(new Date(p.askedAt), "yyyy-MM-dd");
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return Array.from(map.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([day, count]) => ({ day: format(new Date(day), "dd/MM"), count }));
+  }, [filtered]);
+
+  const byIntent = useMemo(() => {
+    const map = new Map<string, number>();
+    filtered.forEach((p) => {
+      const key = p.intent || "no intent";
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return Array.from(map.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([name, count]) => ({ name, count }));
+  }, [filtered]);
+
+  const bySource = useMemo(() => {
+    const map = new Map<string, number>();
+    filtered.forEach((p) => map.set(p.source, (map.get(p.source) || 0) + 1));
+    return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
+  }, [filtered]);
+
+  const byUser = useMemo(() => {
+    const map = new Map<string, number>();
+    filtered.forEach((p) => map.set(p.userLabel, (map.get(p.userLabel) || 0) + 1));
+    return Array.from(map.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([name, count]) => ({ name, count }));
+  }, [filtered]);
+
 
   const exportCsv = () => {
     const esc = (v: string) => `"${(v || "").replace(/"/g, '""')}"`;
