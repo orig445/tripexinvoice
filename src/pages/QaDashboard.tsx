@@ -286,6 +286,7 @@ export default function QaDashboard() {
                   setDateRange({ from: range?.from, to: range?.to })
                 }
                 numberOfMonths={2}
+                className="p-3 pointer-events-auto"
               />
             </PopoverContent>
           </Popover>
