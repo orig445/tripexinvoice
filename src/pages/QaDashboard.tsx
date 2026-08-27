@@ -115,12 +115,20 @@ export default function QaDashboard() {
     return pairs.filter((p) => {
       if (source !== "all" && p.source !== source) return false;
       if (intent !== "all" && p.intent !== intent) return false;
+      if (dateRange.from || dateRange.to) {
+        const asked = new Date(p.askedAt);
+        const from = dateRange.from ? startOfDay(dateRange.from) : undefined;
+        const to = dateRange.to ? endOfDay(dateRange.to) : undefined;
+        if (!isWithinInterval(asked, { start: from || asked, end: to || asked })) {
+          return false;
+        }
+      }
       if (!q) return true;
       return (
         p.question.toLowerCase().includes(q) || p.answer.toLowerCase().includes(q)
       );
     });
-  }, [pairs, search, source, intent]);
+  }, [pairs, search, source, intent, dateRange]);
 
   const unanswered = filtered.filter((p) => !p.answer).length;
   const sessionCount = new Set(filtered.map((p) => p.sessionId)).size;
