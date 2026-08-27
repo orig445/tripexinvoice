@@ -357,6 +357,71 @@ export default function QaDashboard() {
           ))}
         </div>
 
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card>
+            <CardContent className="p-4 md:p-6">
+              <p className="text-sm font-medium mb-4">Questions over time</p>
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={byDay}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="day" fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                  <YAxis allowDecimals={false} fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                  <RTooltip />
+                  <Line type="monotone" dataKey="count" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4 md:p-6">
+              <p className="text-sm font-medium mb-4">Top intents</p>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={byIntent}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="name" fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                  <YAxis allowDecimals={false} fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                  <RTooltip />
+                  <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4 md:p-6">
+              <p className="text-sm font-medium mb-4">By source</p>
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <Pie data={bySource} dataKey="value" nameKey="name" outerRadius={80} label>
+                    {bySource.map((_, i) => (
+                      <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Legend />
+                  <RTooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4 md:p-6">
+              <p className="text-sm font-medium mb-4">Top users</p>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={byUser} layout="vertical" margin={{ left: 40 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis type="number" allowDecimals={false} fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                  <YAxis type="category" dataKey="name" width={140} fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                  <RTooltip />
+                  <Bar dataKey="count" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
+
+
         <div className="flex flex-wrap gap-3 items-center">
           <Input
             placeholder="Search questions or answers..."
