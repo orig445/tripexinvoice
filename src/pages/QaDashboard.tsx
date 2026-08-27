@@ -287,16 +287,18 @@ export default function QaDashboard() {
   const exportCsv = () => {
     const esc = (v: string) => `"${(v || "").replace(/"/g, '""')}"`;
     const rows = [
-      ["Date", "Source", "Intent", "Question", "Answer"].join(","),
+      ["Date", "User", "Source", "Intent", "Question", "Answer"].join(","),
       ...filtered.map((p) =>
         [
           esc(new Date(p.askedAt).toISOString()),
+          esc(p.userLabel),
           esc(p.source),
           esc(p.intent || ""),
           esc(p.question),
           esc(p.answer),
         ].join(",")
       ),
+
     ].join("\n");
 
     const url = URL.createObjectURL(new Blob(["\uFEFF" + rows], { type: "text/csv;charset=utf-8" }));
