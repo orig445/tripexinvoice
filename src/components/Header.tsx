@@ -98,7 +98,7 @@ export function Header({ onNewChat }: HeaderProps = {}) {
               onClick={() => navigate("/qa")}
             >
               <BarChart3 className="h-4 w-4" />
-              <span className="hidden sm:inline">Q&amp;A</span>
+              <span className="hidden sm:inline">פילוח תשובות</span>
             </Button>
           )}
 

@@ -29,6 +29,7 @@ import {
 import { Loader2, MessageSquare, HelpCircle, Bot, Download, RefreshCw, CalendarIcon, X, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { format, startOfDay, endOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
+import { QaInsightsBot } from "@/components/qa/QaInsightsBot";
 import {
   ResponsiveContainer,
   BarChart,
@@ -397,7 +398,7 @@ export default function QaDashboard() {
       <main className="container py-6 md:py-10 space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold">Q&amp;A Dashboard</h1>
+            <h1 className="text-2xl font-bold">פילוח תשובות</h1>
             <p className="text-muted-foreground">
               Every question users asked Milo, with the answer that was given.
             </p>
@@ -751,6 +752,18 @@ export default function QaDashboard() {
           </div>
         )}
       </main>
+
+      <QaInsightsBot
+        rows={sorted.map((p) => ({
+          date: new Date(p.askedAt).toLocaleString("en-GB"),
+          user: p.userLabel,
+          source: p.source,
+          intent: p.intent,
+          question: p.question,
+          answer: p.answer,
+        }))}
+        stats={Object.fromEntries(stats.map((s) => [s.label, s.value]))}
+      />
     </div>
   );
 }
