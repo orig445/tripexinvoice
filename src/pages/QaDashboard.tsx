@@ -364,15 +364,25 @@ export default function QaDashboard() {
             </PopoverContent>
           </Popover>
 
-          {(dateRange.from || dateRange.to || source !== "all" || intent !== "all" || search) && (
+          {(dateRange.from ||
+            dateRange.to ||
+            source !== "all" ||
+            intent !== "all" ||
+            status !== "all" ||
+            questionFilter ||
+            answerFilter ||
+            search) && (
             <Button
               variant="ghost"
               size="sm"
               className="gap-1 text-muted-foreground"
               onClick={() => {
                 setSearch("");
+                setQuestionFilter("");
+                setAnswerFilter("");
                 setSource("all");
                 setIntent("all");
+                setStatus("all");
                 setDateRange({});
               }}
             >
@@ -380,6 +390,7 @@ export default function QaDashboard() {
               Clear filters
             </Button>
           )}
+
         </div>
 
         {isLoading ? (
