@@ -391,6 +391,20 @@ export default function QaDashboard() {
               <SelectItem value="none">No intent</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={user} onValueChange={setUser}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="User" />
+            </SelectTrigger>
+            <SelectContent className="max-h-[300px]">
+              <SelectItem value="all">All users</SelectItem>
+              {users.map((u) => (
+                <SelectItem key={u} value={u}>
+                  {u}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <Select value={status} onValueChange={setStatus}>
             <SelectTrigger className="w-[160px]">
               <SelectValue placeholder="Status" />
