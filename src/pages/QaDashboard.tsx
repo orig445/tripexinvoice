@@ -295,8 +295,32 @@ export default function QaDashboard() {
                   {s}
                 </SelectItem>
               ))}
+              <SelectItem value="none">No intent</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="answered">Answered</SelectItem>
+              <SelectItem value="unanswered">Unanswered</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
+            placeholder="Filter question..."
+            value={questionFilter}
+            onChange={(e) => setQuestionFilter(e.target.value)}
+            className="w-[200px]"
+          />
+          <Input
+            placeholder="Filter answer..."
+            value={answerFilter}
+            onChange={(e) => setAnswerFilter(e.target.value)}
+            className="w-[200px]"
+          />
+
 
           <Popover>
             <PopoverTrigger asChild>
