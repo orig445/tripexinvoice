@@ -74,18 +74,32 @@ export default function QaDashboard() {
       bySession.set(m.session_id, list);
     });
 
+    const isOcrPair = (question: string, answer: string, intent: string | null) => {
+      const text = `${question} ${answer}`.toLowerCase();
+      return (
+        intent === "scan" ||
+        question.toLowerCase().includes("[user scanned an invoice/receipt]") ||
+        answer.toLowerCase().includes("invoice scanned successfully") ||
+        answer.toLowerCase().includes("scanned invoice")
+      );
+    };
+
     const result: QaPair[] = [];
     bySession.forEach((list, sessionId) => {
       list.forEach((msg, i) => {
         if (msg.role !== "user") return;
         const reply = list.slice(i + 1).find((m) => m.role !== "user");
+        const intent = reply?.intent || msg.intent || null;
+        const question = msg.content;
+        const answer = reply?.content || "";
+        if (isOcrPair(question, answer, intent)) return;
         result.push({
           id: msg.id,
           sessionId,
           source: sourceById.get(sessionId) || "web",
-          intent: reply?.intent || msg.intent || null,
-          question: msg.content,
-          answer: reply?.content || "",
+          intent,
+          question,
+          answer,
           askedAt: msg.created_at,
           answeredAt: reply?.created_at || null,
         });
