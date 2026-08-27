@@ -1,4 +1,4 @@
-import { Receipt, LogOut, User, Shield, Bot, Brain, Lock, RotateCcw, BarChart3 } from "lucide-react";
+import { Receipt, LogOut, User, Shield, Bot, Brain, Lock, RotateCcw, BarChart3, Video } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -101,6 +101,26 @@ export function Header({ onNewChat }: HeaderProps = {}) {
               <span className="hidden sm:inline">Q&amp;A</span>
             </Button>
           )}
+
+          {user?.email?.toLowerCase() === "avik@tripex.io" && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() =>
+                window.open(
+                  "https://supabase-recordings-viewer.vercel.app/",
+                  "_blank",
+                  "noopener,noreferrer"
+                )
+              }
+            >
+              <Video className="h-4 w-4" />
+              <span className="hidden sm:inline">Recordings</span>
+            </Button>
+          )}
+
+
 
           <Button
             variant="outline"
