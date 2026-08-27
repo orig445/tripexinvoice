@@ -5,6 +5,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -20,7 +26,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, MessageSquare, HelpCircle, Bot, Download, RefreshCw } from "lucide-react";
+import { Loader2, MessageSquare, HelpCircle, Bot, Download, RefreshCw, CalendarIcon, X } from "lucide-react";
+import { format, isWithinInterval, startOfDay, endOfDay } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface QaPair {
   id: string;
