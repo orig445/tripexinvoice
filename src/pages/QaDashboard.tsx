@@ -189,6 +189,11 @@ export default function QaDashboard() {
     () => Array.from(new Set(pairs.map((p) => p.intent).filter(Boolean) as string[])).sort(),
     [pairs]
   );
+  const users = useMemo(
+    () => Array.from(new Set(pairs.map((p) => p.userLabel))).sort(),
+    [pairs]
+  );
+
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
