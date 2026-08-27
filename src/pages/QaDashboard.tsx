@@ -5,6 +5,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -20,7 +26,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, MessageSquare, HelpCircle, Bot, Download, RefreshCw } from "lucide-react";
+import { Loader2, MessageSquare, HelpCircle, Bot, Download, RefreshCw, CalendarIcon, X } from "lucide-react";
+import { format, isWithinInterval, startOfDay, endOfDay } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface QaPair {
   id: string;
@@ -41,6 +49,7 @@ export default function QaDashboard() {
   const [search, setSearch] = useState("");
   const [source, setSource] = useState("all");
   const [intent, setIntent] = useState("all");
+  const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
 
   const load = async () => {
     setIsLoading(true);
@@ -106,12 +115,20 @@ export default function QaDashboard() {
     return pairs.filter((p) => {
       if (source !== "all" && p.source !== source) return false;
       if (intent !== "all" && p.intent !== intent) return false;
+      if (dateRange.from || dateRange.to) {
+        const asked = new Date(p.askedAt);
+        const from = dateRange.from ? startOfDay(dateRange.from) : undefined;
+        const to = dateRange.to ? endOfDay(dateRange.to) : undefined;
+        if (!isWithinInterval(asked, { start: from || asked, end: to || asked })) {
+          return false;
+        }
+      }
       if (!q) return true;
       return (
         p.question.toLowerCase().includes(q) || p.answer.toLowerCase().includes(q)
       );
     });
-  }, [pairs, search, source, intent]);
+  }, [pairs, search, source, intent, dateRange]);
 
   const unanswered = filtered.filter((p) => !p.answer).length;
   const sessionCount = new Set(filtered.map((p) => p.sessionId)).size;
@@ -187,7 +204,7 @@ export default function QaDashboard() {
           ))}
         </div>
 
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-3 items-center">
           <Input
             placeholder="Search questions or answers..."
             value={search}
@@ -220,6 +237,64 @@ export default function QaDashboard() {
               ))}
             </SelectContent>
           </Select>
+
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={cn(
+                  "w-[260px] justify-start text-left font-normal",
+                  !dateRange.from && !dateRange.to && "text-muted-foreground"
+                )}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {dateRange.from ? (
+                  dateRange.to ? (
+                    <>
+                      {format(dateRange.from, "LLL dd, y")} -{" "}
+                      {format(dateRange.to, "LLL dd, y")}
+                    </>
+                  ) : (
+                    format(dateRange.from, "LLL dd, y")
+                  )
+                ) : (
+                  <span>Pick a date range</span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                initialFocus
+                mode="range"
+                defaultMonth={dateRange.from}
+                selected={{
+                  from: dateRange.from,
+                  to: dateRange.to,
+                }}
+                onSelect={(range) =>
+                  setDateRange({ from: range?.from, to: range?.to })
+                }
+                numberOfMonths={2}
+              />
+            </PopoverContent>
+          </Popover>
+
+          {(dateRange.from || dateRange.to || source !== "all" || intent !== "all" || search) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1 text-muted-foreground"
+              onClick={() => {
+                setSearch("");
+                setSource("all");
+                setIntent("all");
+                setDateRange({});
+              }}
+            >
+              <X className="h-4 w-4" />
+              Clear filters
+            </Button>
+          )}
         </div>
 
         {isLoading ? (
