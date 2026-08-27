@@ -49,6 +49,7 @@ export default function QaDashboard() {
   const [search, setSearch] = useState("");
   const [source, setSource] = useState("all");
   const [intent, setIntent] = useState("all");
+  const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
 
   const load = async () => {
     setIsLoading(true);
