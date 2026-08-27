@@ -18,4 +18,14 @@
     <ProjectReference Include="..\TripEx.Api\TripEx.Api.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- ChatService.LoadPageLinks() looks for Data/page-links.json under its own
+         AppContext.BaseDirectory, which is this test project's output dir, not
+         TripEx.Api's — copy it in explicitly so MiloLinkResolutionTests sees the
+         real, current catalog instead of silently running against zero entries. -->
+    <Content Include="..\TripEx.Api\Data\page-links.json" Link="Data\page-links.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

@@ -72,7 +72,7 @@ public class PageLinkConfig
 {
     /// <summary>Unique, stable identifier (the TAS page's own filename/report code).</summary>
     public string Key { get; set; } = "";
-    /// <summary>Absolute URL to navigate the top-level window to.</summary>
+    /// <summary>Path relative to page-links.json's top-level "baseUrl" (e.g. "/Master_Pages/x.aspx").</summary>
     public string Url { get; set; } = "";
     /// <summary>Link text shown to the user when replying in Hebrew (the default/fallback).</summary>
     public string Label { get; set; } = "";

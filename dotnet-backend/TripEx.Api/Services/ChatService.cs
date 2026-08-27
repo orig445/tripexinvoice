@@ -25,9 +25,50 @@ public class ChatService
     // pages) — load it once per process (like log4net's LogDir) rather than per request.
     // Anchored to AppContext.BaseDirectory because IIS in-process hosting changes the
     // process's current directory to C:\Windows\System32\inetsrv (see Program.cs LogDir).
-    private static readonly Dictionary<string, PageLinkConfig> _pageLinks = LoadPageLinks();
+    private static readonly Dictionary<string, PageLinkConfig> _pageLinks;
 
-    private static Dictionary<string, PageLinkConfig> LoadPageLinks()
+    // The TAS host + site-folder (e.g. "https://deveu.combtas.com/QA_3_70"), read from the
+    // "baseUrl" field at the top of page-links.json. Every page's "url" is just the relative
+    // path from there, so promoting this file to a different environment (dev → prod) only
+    // ever requires editing this one line — no per-page edits, no code change/redeploy.
+    private static readonly string _pageLinksBaseUrl;
+
+    static ChatService()
+    {
+        (_pageLinks, _pageLinksBaseUrl) = LoadPageLinks();
+    }
+
+    // Read-only view for TripEx.Api.Tests — lets the full-catalog link-resolution regression
+    // test enumerate every real page-links.json entry without duplicating the load logic.
+    public static IReadOnlyDictionary<string, PageLinkConfig> AllPageLinks => _pageLinks;
+
+    // Pages whose description is broad enough to look relevant to almost any admin
+    // question (e.g. "System Settings", "Master File") even though they're essentially
+    // never the actually-correct answer to a specific question. Excluded from BOTH the
+    // AI's visible options (BuildSystemPrompt) AND the post-hoc mentioned-page substring
+    // scan in ProcessAsync — a single shared list so the two can't drift out of sync.
+    private static readonly HashSet<string> _excludedGenericKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "SystemSetting",         // "System Settings" — global system parameters
+        "tbl_system_Master_New", // "Master File" — generic master table
+        "ManageTAS",             // "Manage TAS" — general TAS system management
+        "Settings_Default",      // "Settings Default" — general default values
+        "System_Wizard",         // "System Wizard" — general parameter setup wizard
+    };
+
+    // A minimum length guard on any page-name substring match (mentioned-key scan, and the
+    // raw-key scrub below) avoids a short, generic label (a few characters) causing a
+    // false-positive match against unrelated text.
+    private const int MinPageNameMatchLength = 8;
+
+    // Mirrors the top-level shape of page-links.json: { "baseUrl": "...", "pages": [...] }.
+    private class PageLinksFile
+    {
+        public string BaseUrl { get; set; } = "";
+        public List<PageLinkConfig> Pages { get; set; } = new();
+    }
+
+    private static (Dictionary<string, PageLinkConfig>, string) LoadPageLinks()
     {
         try
         {
@@ -35,21 +76,21 @@ public class ChatService
             if (!File.Exists(path))
             {
                 Console.WriteLine($"⚠️ [CHAT] Data/page-links.json not found at '{path}' — Milo will answer without page links.");
-                return new();
+                return (new(), "");
             }
-            var list = JsonSerializer.Deserialize<List<PageLinkConfig>>(
+            var file = JsonSerializer.Deserialize<PageLinksFile>(
                 File.ReadAllText(path),
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
-            var dict = list
+            var dict = file.Pages
                 .Where(p => !string.IsNullOrWhiteSpace(p.Key))
                 .ToDictionary(p => p.Key, p => p, StringComparer.OrdinalIgnoreCase);
-            Console.WriteLine($"✅ [CHAT] Loaded {dict.Count} page links from Data/page-links.json");
-            return dict;
+            Console.WriteLine($"✅ [CHAT] Loaded {dict.Count} page links from Data/page-links.json (baseUrl={file.BaseUrl})");
+            return (dict, file.BaseUrl);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"⚠️ [CHAT] Failed to load Data/page-links.json — Milo will answer without page links: {ex.Message}");
-            return new();
+            return (new(), "");
         }
     }
 
@@ -65,6 +106,81 @@ public class ChatService
             else if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z')) latin++;
         }
         return hebrew > latin;
+    }
+
+    // Given the AI's own stated "page" and its full "text" reply, returns the page key that
+    // should actually be linked. Public + static so TripEx.Api.Tests can run it directly
+    // against the real production logic — the same 366-entry catalog this loads — as a
+    // permanent regression test (`dotnet test`), rather than a one-off reimplementation that
+    // could silently drift from what actually ships. See git history 2026-08-17 for why this
+    // exists and what it fixed (the "ManageTAS" / "Travel Status" family collision bugs).
+    public static string? ResolvePageOverride(string? page, string responseText)
+    {
+        // The model has proven far more reliable at naming the exact right specific report
+        // INLINE in its own "text" than at keeping the separate structured "page" field in
+        // sync with it (observed repeatedly: text correctly names the report while "page"
+        // still says the general hub). So scan the text itself for any known page's name —
+        // by design the model now names reports by their human-readable Label/LabelEn, never
+        // the raw key (users must never see the internal key), so that's what we scan for —
+        // and prefer the EARLIEST one mentioned over whatever "page" says. This derives the
+        // link from what the user actually reads, not a second, less reliable field.
+        // Hub/Navigation entries are excluded since they're the fallback we're overriding.
+        // A minimum length guard on the candidate strings avoids a short, generic label
+        // (a few characters) causing a false-positive match against unrelated text.
+        // Strip Unicode bidi control marks first — the model sometimes inserts them (e.g.
+        // U+200F RLM) around an embedded LTR name inside Hebrew text, which silently breaks
+        // a plain substring match against the clean dictionary value.
+        //
+        // Excluding by Category=="Navigation" alone isn't enough: some non-Navigation pages
+        // (e.g. an Administrator-category "Analysis Reports" admin screen for managing report
+        // definitions) happen to share the same hub-like label as a real Navigation entry
+        // ("דוחות ניתוח" is literally the tail of the Navigation entry's "מעבר לדוחות ניתוח").
+        // Every Reports answer's boilerplate opening line ("go to Analysis Reports") contains
+        // that phrase BEFORE the specific report name mentioned later, so without this check
+        // the earliest-match rule always locked onto that admin page instead of the report —
+        // live-tested and confirmed 2026-08-17. So also drop any candidate that is itself a
+        // substring of a Navigation entry's Label/LabelEn — that marks it as a duplicate of
+        // the hub we're already excluding, regardless of which category it happens to live in.
+        const int minMatchLength = MinPageNameMatchLength;
+        var textForKeyScan = new string(responseText.Where(ch =>
+            (ch < (char)0x200B || ch > (char)0x200F) &&
+            (ch < (char)0x202A || ch > (char)0x202E) &&
+            (ch < (char)0x2066 || ch > (char)0x2069)).ToArray());
+        var navigationPhrases = _pageLinks.Values
+            .Where(p => p.Category == "Navigation")
+            .SelectMany(p => new[] { p.Label, p.LabelEn })
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToList();
+        // When one candidate's name is itself a prefix of another's (e.g. "Company Segment"
+        // vs "Company Segment Manager"), both match at the SAME starting index in the text
+        // if the AI wrote the longer name — a plain OrderBy(Index) then breaks that tie by
+        // JSON file order, not by which name is actually the more specific/correct match.
+        // Prefer the longer (more specific) match on a tie.
+        var mentionedKey = _pageLinks
+            .Where(kv => kv.Value.Category != "Navigation" && !_excludedGenericKeys.Contains(kv.Key))
+            .SelectMany(kv => new[] { kv.Value.LabelEn, kv.Value.Label, kv.Value.Key }
+                .Where(s => !string.IsNullOrWhiteSpace(s) && s.Length >= minMatchLength
+                    && !navigationPhrases.Any(nav => nav.Contains(s, StringComparison.OrdinalIgnoreCase)))
+                .Select(s => new { kv.Key, Index = textForKeyScan.IndexOf(s, StringComparison.OrdinalIgnoreCase), Length = s.Length }))
+            .Where(x => x.Index >= 0)
+            .OrderBy(x => x.Index)
+            .ThenByDescending(x => x.Length)
+            .Select(x => x.Key)
+            .FirstOrDefault();
+        // Only let the substring scan OVERRIDE the AI's own "page" field when that field
+        // needs correcting in the first place (missing, a Navigation hub, an excluded
+        // generic key, or an invalid/hallucinated key) — the documented failure mode this
+        // scan exists for (text names a specific report while "page" lazily still says the
+        // general hub). When the AI already committed to a valid, specific page, trust it:
+        // otherwise a short/common page name (e.g. "Travel Status", "Suppliers", "Aircraft")
+        // that merely appears in passing, earlier in the text than the AI's real answer,
+        // silently hijacks an already-correct link — confirmed via static analysis on
+        // 2026-08-17 that "Travel Status" alone collides with 26 other entries' own text.
+        var pageIsAlreadySpecific = !string.IsNullOrEmpty(page)
+            && _pageLinks.TryGetValue(page, out var existingPageEntry)
+            && existingPageEntry.Category != "Navigation"
+            && !_excludedGenericKeys.Contains(page);
+        return (mentionedKey != null && !pageIsAlreadySpecific) ? mentionedKey : page;
     }
 
     // Intent → Actions mapping
@@ -235,57 +351,16 @@ public class ChatService
         // ── Map intent to actions ──
         var mapping = ActionMapping.GetValueOrDefault(intent, ActionMapping["general"]);
 
-        // The model has proven far more reliable at naming the exact right specific report
-        // INLINE in its own "text" than at keeping the separate structured "page" field in
-        // sync with it (observed repeatedly: text correctly names the report while "page"
-        // still says the general hub). So scan the text itself for any known page's name —
-        // by design the model now names reports by their human-readable Label/LabelEn, never
-        // the raw key (users must never see the internal key), so that's what we scan for —
-        // and prefer the EARLIEST one mentioned over whatever "page" says. This derives the
-        // link from what the user actually reads, not a second, less reliable field.
-        // Hub/Navigation entries are excluded since they're the fallback we're overriding.
-        // A minimum length guard on the candidate strings avoids a short, generic label
-        // (a few characters) causing a false-positive match against unrelated text.
-        // Strip Unicode bidi control marks first — the model sometimes inserts them (e.g.
-        // U+200F RLM) around an embedded LTR name inside Hebrew text, which silently breaks
-        // a plain substring match against the clean dictionary value.
-        //
-        // Excluding by Category=="Navigation" alone isn't enough: some non-Navigation pages
-        // (e.g. an Administrator-category "Analysis Reports" admin screen for managing report
-        // definitions) happen to share the same hub-like label as a real Navigation entry
-        // ("דוחות ניתוח" is literally the tail of the Navigation entry's "מעבר לדוחות ניתוח").
-        // Every Reports answer's boilerplate opening line ("go to Analysis Reports") contains
-        // that phrase BEFORE the specific report name mentioned later, so without this check
-        // the earliest-match rule always locked onto that admin page instead of the report —
-        // live-tested and confirmed 2026-08-17. So also drop any candidate that is itself a
-        // substring of a Navigation entry's Label/LabelEn — that marks it as a duplicate of
-        // the hub we're already excluding, regardless of which category it happens to live in.
-        const int minMatchLength = 8;
-        var textForKeyScan = new string(responseText.Where(ch =>
-            (ch < (char)0x200B || ch > (char)0x200F) &&
-            (ch < (char)0x202A || ch > (char)0x202E) &&
-            (ch < (char)0x2066 || ch > (char)0x2069)).ToArray());
-        var navigationPhrases = _pageLinks.Values
-            .Where(p => p.Category == "Navigation")
-            .SelectMany(p => new[] { p.Label, p.LabelEn })
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .ToList();
-        var mentionedKey = _pageLinks
-            .Where(kv => kv.Value.Category != "Navigation")
-            .SelectMany(kv => new[] { kv.Value.LabelEn, kv.Value.Label, kv.Value.Key }
-                .Where(s => !string.IsNullOrWhiteSpace(s) && s.Length >= minMatchLength
-                    && !navigationPhrases.Any(nav => nav.Contains(s, StringComparison.OrdinalIgnoreCase)))
-                .Select(s => new { kv.Key, Index = textForKeyScan.IndexOf(s, StringComparison.OrdinalIgnoreCase) }))
-            .Where(x => x.Index >= 0)
-            .OrderBy(x => x.Index)
-            .Select(x => x.Key)
-            .FirstOrDefault();
-        if (mentionedKey != null) page = mentionedKey;
+        page = ResolvePageOverride(page, responseText);
 
         // ── Map page → a real TAS URL + button label (Data/page-links.json) ──
         // The AI only ever sees the page KEY (and its Description); the actual URL
         // lives in the data file so pages can be added/changed without a code deploy.
         var pageLink = !string.IsNullOrEmpty(page) && _pageLinks.TryGetValue(page, out var pl) ? pl : null;
+
+        // pageLink.Url is only the relative path (e.g. "/Master_Pages/x.aspx") — prepend the
+        // per-environment host once here so every consumer below gets the full, real URL.
+        var pageUrl = pageLink != null ? _pageLinksBaseUrl + pageLink.Url : "";
 
         // The widget renders "text" as raw HTML (innerHTML), so a plain <a> tag with
         // target="_top" becomes a real clickable link that breaks out of the chat
@@ -302,7 +377,7 @@ public class ChatService
         // model wrote.
         foreach (var kv in _pageLinks)
         {
-            if (kv.Key.Length < minMatchLength) continue;
+            if (kv.Key.Length < MinPageNameMatchLength) continue;
             if (responseText.Contains(kv.Key, StringComparison.OrdinalIgnoreCase))
             {
                 var replacement = isHebrewReply ? kv.Value.Label : kv.Value.LabelEn;
@@ -318,7 +393,7 @@ public class ChatService
             // rather than asking the AI for a separate field, so it can't get out of sync
             // with what the user actually sees.
             var label = isHebrewReply ? pageLink.Label : pageLink.LabelEn;
-            var safeUrl = System.Net.WebUtility.HtmlEncode(pageLink.Url);
+            var safeUrl = System.Net.WebUtility.HtmlEncode(pageUrl);
             var safeLabel = System.Net.WebUtility.HtmlEncode(label);
 
             // Show the report/page selector in the language of the reply, but always use
@@ -376,7 +451,7 @@ public class ChatService
                 Role = "assistant",
                 Content = responseText,
                 Intent = intent,
-                Metadata = JsonSerializer.Serialize(new { actions = mapping.Actions, page, redirectPage = pageLink?.Url ?? "" })
+                Metadata = JsonSerializer.Serialize(new { actions = mapping.Actions, page, redirectPage = pageUrl })
             });
 
             _db.ChatbotLogs.Add(new ChatbotLog
@@ -389,7 +464,7 @@ public class ChatService
                     intent,
                     actions = mapping.Actions,
                     page,
-                    redirectPage = pageLink?.Url ?? "",
+                    redirectPage = pageUrl,
                     source = request.Source,
                     latency_ms = latencyMs,
                     rag_chars = ragChars,
@@ -426,7 +501,7 @@ public class ChatService
         {
             Text = responseText,
             Actions = mapping.Actions,
-            RedirectPage = pageLink?.Url ?? "",
+            RedirectPage = pageUrl,
             RedirectLabel = pageLink?.Label,
             SessionId = sessionId.ToString(),
             Escalated = escalated,
@@ -781,8 +856,19 @@ public class ChatService
         var navigationSection = "";
         if (allPages.Count > 0)
         {
+            // A handful of entries live outside the "Navigation" category (e.g. under
+            // "Administrator") but are themselves generic catch-all screens ("System
+            // Settings", "Master File") rather than a specific report/feature page. Their
+            // broad descriptions act as a semantic vacuum cleaner for anything the model
+            // isn't fully sure about — live-tested and confirmed 2026-08-17 that even
+            // demoting them to the "General sections — last resort" list wasn't enough;
+            // the model still picked them over an exact-match specific page (e.g.
+            // "Additional Services" losing to "Master File", "1 - Method" (Carbon) losing
+            // to "Master File"). They are essentially never the actually-correct answer to
+            // a specific question, so drop them from the prompt entirely rather than rely
+            // on the model to rank them low.
             var hubPages = allPages.Where(p => p.Category == "Navigation").ToList();
-            var specificPages = allPages.Where(p => p.Category != "Navigation").ToList();
+            var specificPages = allPages.Where(p => p.Category != "Navigation" && !_excludedGenericKeys.Contains(p.Key)).ToList();
             var hubList = string.Join("\n", hubPages.Select(FormatPageEntry));
             var specificList = string.Join("\n", specificPages.Select(FormatPageEntry));
             navigationSection = $@"
@@ -817,6 +903,21 @@ clear match — if none apply, omit ""page"" or set it to """". Never invent a k
    identifier before ""name:"", e.g. ""TASR_07050_ExpenseReportByWorkerCode"") inside ""text"" — that
    key is an internal identifier only; a user seeing it verbatim is a bug. The key belongs ONLY in
    the ""page"" field.
+7. 🔴 AN ACTION-PHRASED QUESTION STILL GETS A ""page"": walking the user through how-to steps
+   (per ""What you CAN do"" below) and setting ""page"" are NOT alternatives — do BOTH whenever the
+   steps take place on one specific page from the list below. A question phrased as an action
+   (""how do I ADD a user"", ""how do I DELETE a user"", ""how do I add a bank account"") is just as
+   much a navigation match as one phrased as a location (""where do I manage users"") — the verb
+   does not change which page the answer lives on. Do not let ""you cannot perform actions for the
+   user"" (below) make you omit ""page"": you are not performing the action, you are still pointing
+   them to the exact page where THEY perform it, same as for any other specific-page answer.
+   Example: ""how do I add/delete a user"" -> steps happen on the Users page -> set ""page"" to
+   that entry's key, exactly as you would for ""where do I manage users"". This applies EQUALLY to
+   other entities, not just users — ""how do I remove/delete a company"" is a navigation match to
+   the Companies page in exactly the same way; do not treat ""company"" as more sensitive than
+   ""user"" and escalate instead of answering. Removing/deleting ANY entity (user, company, bank
+   account, etc.) that has its own specific page below always gets that page's key set, never a
+   bare escalation with no ""page"" at all.
 
 Specific pages/reports — scan ALL of these before considering anything else:
 {specificList}
@@ -839,6 +940,12 @@ CRITICAL LANGUAGE RULE: Detect the language of the user's latest message and rep
 ## What you CANNOT do — be honest, never pretend
 - You do NOT perform actions for the user. You cannot upload invoices, create or submit expense reports, book flights or hotels, or change anything in the system on their behalf.
 - If the user asks you to DO such an action, say clearly that you can't do it for them, then either guide them how to do it themselves (from the Knowledge Base) or escalate (see below).
+- 🔴 This does NOT mean omitting ""page"" for these questions. Guiding them how to do it themselves
+  (per ""What you CAN do"" above) still applies to admin-sounding or destructive-sounding actions
+  (add/delete/deactivate a user, remove a company, etc.) exactly like any other how-to — and per the
+  Navigation rules below, that still means setting ""page"" to the one specific page those steps take
+  place on. ""You cannot do this for them"" only means you won't perform the click yourself; it is
+  never a reason to withhold the link to the page where they can.
 
 ## Escalation — routing to a human
 Escalate when: you don't know the answer, the Knowledge Base has nothing relevant, or the user needs a human to take action.
