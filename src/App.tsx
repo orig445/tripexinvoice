@@ -12,6 +12,7 @@ import Chat from "./pages/Chat";
 import KnowledgeUpload from "./pages/KnowledgeUpload";
 import KnowledgeUploadInternal from "./pages/KnowledgeUploadInternal";
 import ChatInternal from "./pages/ChatInternal";
+import QaDashboard from "./pages/QaDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -66,6 +67,15 @@ const App = () => (
               }
             />
             <Route
+              path="/qa"
+              element={
+                <ProtectedRoute>
+                  <QaDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+
               path="/admin/chatbot"
               element={
                 <ProtectedRoute>
