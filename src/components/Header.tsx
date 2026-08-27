@@ -102,7 +102,7 @@ export function Header({ onNewChat }: HeaderProps = {}) {
             </Button>
           )}
 
-          {user?.email?.toLowerCase() === "avik@tripex.io" && (
+          {isAdmin && (
             <Button
               variant="outline"
               size="sm"
