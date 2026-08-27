@@ -29,6 +29,21 @@ import {
 import { Loader2, MessageSquare, HelpCircle, Bot, Download, RefreshCw, CalendarIcon, X } from "lucide-react";
 import { format, startOfDay, endOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip as RTooltip,
+  CartesianGrid,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+} from "recharts";
 
 interface QaPair {
   id: string;
@@ -39,10 +54,19 @@ interface QaPair {
   answer: string;
   askedAt: string;
   answeredAt: string | null;
+  userId: string | null;
+  userLabel: string;
 }
 
 const PAGE_SIZE = 1000;
 const MAX_MESSAGES = 20000;
+const CHART_COLORS = [
+  "hsl(var(--primary))",
+  "hsl(var(--triplex-info, 200 80% 50%))",
+  "hsl(var(--triplex-amber, 38 92% 50%))",
+  "hsl(var(--triplex-success, 152 60% 40%))",
+  "hsl(var(--muted-foreground))",
+];
 
 export default function QaDashboard() {
   const [pairs, setPairs] = useState<QaPair[]>([]);
@@ -53,7 +77,9 @@ export default function QaDashboard() {
   const [source, setSource] = useState("all");
   const [intent, setIntent] = useState("all");
   const [status, setStatus] = useState("all");
+  const [user, setUser] = useState("all");
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
+
 
   const load = async () => {
     setIsLoading(true);
@@ -75,16 +101,31 @@ export default function QaDashboard() {
     for (let offset = 0; offset < MAX_MESSAGES; offset += PAGE_SIZE) {
       const { data, error } = await supabase
         .from("chat_sessions")
-        .select("id, source")
+        .select("id, source, user_id")
         .range(offset, offset + PAGE_SIZE - 1);
       if (error || !data || data.length === 0) break;
       sessions.push(...data);
       if (data.length < PAGE_SIZE) break;
     }
 
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("user_id, email, display_name");
+
+    const userLabelById = new Map<string, string>(
+      (profiles || []).map((p: any) => [
+        p.user_id,
+        p.email || p.display_name || p.user_id.slice(0, 8),
+      ])
+    );
+
     const sourceById = new Map<string, string>(
       sessions.map((s: any) => [s.id, s.source || "web"])
     );
+    const userIdBySession = new Map<string, string | null>(
+      sessions.map((s: any) => [s.id, s.user_id || null])
+    );
+
 
     // Restore chronological order inside each session
     messages.sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
@@ -107,6 +148,7 @@ export default function QaDashboard() {
 
     const result: QaPair[] = [];
     bySession.forEach((list, sessionId) => {
+      const uid = userIdBySession.get(sessionId) || null;
       list.forEach((msg, i) => {
         if (msg.role !== "user") return;
         const reply = list.slice(i + 1).find((m) => m.role !== "user");
@@ -123,9 +165,12 @@ export default function QaDashboard() {
           answer,
           askedAt: msg.created_at,
           answeredAt: reply?.created_at || null,
+          userId: uid,
+          userLabel: uid ? userLabelById.get(uid) || uid.slice(0, 8) : "Anonymous",
         });
       });
     });
+
 
     result.sort((a, b) => +new Date(b.askedAt) - +new Date(a.askedAt));
     setPairs(result);
@@ -144,6 +189,11 @@ export default function QaDashboard() {
     () => Array.from(new Set(pairs.map((p) => p.intent).filter(Boolean) as string[])).sort(),
     [pairs]
   );
+  const users = useMemo(
+    () => Array.from(new Set(pairs.map((p) => p.userLabel))).sort(),
+    [pairs]
+  );
+
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -169,6 +219,7 @@ export default function QaDashboard() {
     return pairs.filter((p) => {
       if (source !== "all" && p.source !== source) return false;
       if (intent !== "all" && (p.intent || "none") !== intent) return false;
+      if (user !== "all" && p.userLabel !== user) return false;
       if (status === "answered" && !p.answer) return false;
       if (status === "unanswered" && p.answer) return false;
 
@@ -184,28 +235,70 @@ export default function QaDashboard() {
         p.question.toLowerCase().includes(q) ||
         p.answer.toLowerCase().includes(q) ||
         p.source.toLowerCase().includes(q) ||
+        p.userLabel.toLowerCase().includes(q) ||
         (p.intent || "").toLowerCase().includes(q)
       );
     });
-  }, [pairs, search, questionFilter, answerFilter, source, intent, status, dateRange]);
+  }, [pairs, search, questionFilter, answerFilter, source, intent, status, user, dateRange]);
 
 
   const unanswered = filtered.filter((p) => !p.answer).length;
   const sessionCount = new Set(filtered.map((p) => p.sessionId)).size;
 
+  const byDay = useMemo(() => {
+    const map = new Map<string, number>();
+    filtered.forEach((p) => {
+      const key = format(new Date(p.askedAt), "yyyy-MM-dd");
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return Array.from(map.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([day, count]) => ({ day: format(new Date(day), "dd/MM"), count }));
+  }, [filtered]);
+
+  const byIntent = useMemo(() => {
+    const map = new Map<string, number>();
+    filtered.forEach((p) => {
+      const key = p.intent || "no intent";
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return Array.from(map.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([name, count]) => ({ name, count }));
+  }, [filtered]);
+
+  const bySource = useMemo(() => {
+    const map = new Map<string, number>();
+    filtered.forEach((p) => map.set(p.source, (map.get(p.source) || 0) + 1));
+    return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
+  }, [filtered]);
+
+  const byUser = useMemo(() => {
+    const map = new Map<string, number>();
+    filtered.forEach((p) => map.set(p.userLabel, (map.get(p.userLabel) || 0) + 1));
+    return Array.from(map.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([name, count]) => ({ name, count }));
+  }, [filtered]);
+
+
   const exportCsv = () => {
     const esc = (v: string) => `"${(v || "").replace(/"/g, '""')}"`;
     const rows = [
-      ["Date", "Source", "Intent", "Question", "Answer"].join(","),
+      ["Date", "User", "Source", "Intent", "Question", "Answer"].join(","),
       ...filtered.map((p) =>
         [
           esc(new Date(p.askedAt).toISOString()),
+          esc(p.userLabel),
           esc(p.source),
           esc(p.intent || ""),
           esc(p.question),
           esc(p.answer),
         ].join(",")
       ),
+
     ].join("\n");
 
     const url = URL.createObjectURL(new Blob(["\uFEFF" + rows], { type: "text/csv;charset=utf-8" }));
@@ -264,6 +357,71 @@ export default function QaDashboard() {
           ))}
         </div>
 
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card>
+            <CardContent className="p-4 md:p-6">
+              <p className="text-sm font-medium mb-4">Questions over time</p>
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={byDay}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="day" fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                  <YAxis allowDecimals={false} fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                  <RTooltip />
+                  <Line type="monotone" dataKey="count" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4 md:p-6">
+              <p className="text-sm font-medium mb-4">Top intents</p>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={byIntent}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="name" fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                  <YAxis allowDecimals={false} fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                  <RTooltip />
+                  <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4 md:p-6">
+              <p className="text-sm font-medium mb-4">By source</p>
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <Pie data={bySource} dataKey="value" nameKey="name" outerRadius={80} label>
+                    {bySource.map((_, i) => (
+                      <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Legend />
+                  <RTooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4 md:p-6">
+              <p className="text-sm font-medium mb-4">Top users</p>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={byUser} layout="vertical" margin={{ left: 40 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis type="number" allowDecimals={false} fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                  <YAxis type="category" dataKey="name" width={140} fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                  <RTooltip />
+                  <Bar dataKey="count" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
+
+
         <div className="flex flex-wrap gap-3 items-center">
           <Input
             placeholder="Search questions or answers..."
@@ -298,6 +456,20 @@ export default function QaDashboard() {
               <SelectItem value="none">No intent</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={user} onValueChange={setUser}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="User" />
+            </SelectTrigger>
+            <SelectContent className="max-h-[300px]">
+              <SelectItem value="all">All users</SelectItem>
+              {users.map((u) => (
+                <SelectItem key={u} value={u}>
+                  {u}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <Select value={status} onValueChange={setStatus}>
             <SelectTrigger className="w-[160px]">
               <SelectValue placeholder="Status" />
@@ -369,6 +541,7 @@ export default function QaDashboard() {
             source !== "all" ||
             intent !== "all" ||
             status !== "all" ||
+            user !== "all" ||
             questionFilter ||
             answerFilter ||
             search) && (
@@ -383,9 +556,11 @@ export default function QaDashboard() {
                 setSource("all");
                 setIntent("all");
                 setStatus("all");
+                setUser("all");
                 setDateRange({});
               }}
             >
+
               <X className="h-4 w-4" />
               Clear filters
             </Button>
@@ -403,6 +578,7 @@ export default function QaDashboard() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[140px]">Date</TableHead>
+                  <TableHead className="w-[180px]">User</TableHead>
                   <TableHead className="w-[110px]">Source</TableHead>
                   <TableHead className="w-[110px]">Intent</TableHead>
                   <TableHead>Question</TableHead>
@@ -412,7 +588,8 @@ export default function QaDashboard() {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground py-10">
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-10">
+
                       No questions found
                     </TableCell>
                   </TableRow>
@@ -422,6 +599,10 @@ export default function QaDashboard() {
                       <TableCell className="text-xs whitespace-nowrap">
                         {new Date(p.askedAt).toLocaleString("en-GB")}
                       </TableCell>
+                      <TableCell className="text-xs break-all max-w-[180px]">
+                        {p.userLabel}
+                      </TableCell>
+
                       <TableCell>
                         <Badge variant="outline" className="text-xs">
                           {p.source}
