@@ -596,25 +596,52 @@ export default function QaDashboard() {
                 ) : (
                   filtered.map((p) => (
                     <TableRow key={p.id} className="align-top">
-                      <TableCell className="text-xs whitespace-nowrap">
+                      <TableCell
+                        className="text-xs whitespace-nowrap cursor-pointer hover:bg-muted/60"
+                        onClick={() => {
+                          const d = new Date(p.askedAt);
+                          setDateRange({ from: startOfDay(d), to: endOfDay(d) });
+                        }}
+                        title="Filter by this day"
+                      >
                         {new Date(p.askedAt).toLocaleString("en-GB")}
                       </TableCell>
-                      <TableCell className="text-xs break-all max-w-[180px]">
+                      <TableCell
+                        className="text-xs break-all max-w-[180px] cursor-pointer hover:bg-muted/60"
+                        onClick={() => setUser(p.userLabel)}
+                        title="Filter by this user"
+                      >
                         {p.userLabel}
                       </TableCell>
 
                       <TableCell>
-                        <Badge variant="outline" className="text-xs">
+                        <Badge
+                          variant="outline"
+                          className="text-xs cursor-pointer hover:bg-muted"
+                          onClick={() => setSource(p.source)}
+                          title="Filter by source"
+                        >
                           {p.source}
                         </Badge>
                       </TableCell>
                       <TableCell>
                         {p.intent ? (
-                          <Badge variant="secondary" className="text-xs">
+                          <Badge
+                            variant="secondary"
+                            className="text-xs cursor-pointer hover:bg-muted"
+                            onClick={() => setIntent(p.intent || "none")}
+                            title="Filter by intent"
+                          >
                             {p.intent}
                           </Badge>
                         ) : (
-                          <span className="text-xs text-muted-foreground">-</span>
+                          <span
+                            className="text-xs text-muted-foreground cursor-pointer hover:text-foreground"
+                            onClick={() => setIntent("none")}
+                            title="Filter by no intent"
+                          >
+                            -
+                          </span>
                         )}
                       </TableCell>
                       <TableCell className="text-sm font-medium max-w-[280px] whitespace-pre-wrap">
