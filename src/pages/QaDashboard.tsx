@@ -27,7 +27,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Loader2, MessageSquare, HelpCircle, Bot, Download, RefreshCw, CalendarIcon, X } from "lucide-react";
-import { format, isWithinInterval, startOfDay, endOfDay } from "date-fns";
+import { format, startOfDay, endOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 
 interface QaPair {
