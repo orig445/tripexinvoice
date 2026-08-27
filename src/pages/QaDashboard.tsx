@@ -575,6 +575,7 @@ export default function QaDashboard() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[140px]">Date</TableHead>
+                  <TableHead className="w-[180px]">User</TableHead>
                   <TableHead className="w-[110px]">Source</TableHead>
                   <TableHead className="w-[110px]">Intent</TableHead>
                   <TableHead>Question</TableHead>
@@ -584,7 +585,8 @@ export default function QaDashboard() {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground py-10">
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-10">
+
                       No questions found
                     </TableCell>
                   </TableRow>
