@@ -181,6 +181,61 @@ export default function QaDashboard() {
       });
     });
 
+    // ---- External channels ----
+
+    // WhatsApp conversations
+    const { data: waMessages } = await supabase
+      .from("whatsapp_messages")
+      .select("id, chat_id, sender_name, role, content, created_at")
+      .order("created_at", { ascending: true })
+      .limit(PAGE_SIZE * 5);
+
+    const byChat = new Map<string, any[]>();
+    (waMessages || []).forEach((m: any) => {
+      const list = byChat.get(m.chat_id) || [];
+      list.push(m);
+      byChat.set(m.chat_id, list);
+    });
+    byChat.forEach((list, chatId) => {
+      list.forEach((msg: any, i: number) => {
+        if (msg.role !== "user") return;
+        const reply = list.slice(i + 1).find((m: any) => m.role !== "user");
+        result.push({
+          id: msg.id,
+          sessionId: chatId,
+          source: "whatsapp",
+          intent: null,
+          question: msg.content || "",
+          answer: reply?.content || "",
+          askedAt: msg.created_at,
+          answeredAt: reply?.created_at || null,
+          userId: null,
+          userLabel: msg.sender_name || chatId.replace(/@c\.us$/, ""),
+        });
+      });
+    });
+
+    // Outlook support emails
+    const { data: emails } = await supabase
+      .from("outlook_processed_emails")
+      .select("id, from_address, from_name, subject, body_preview, reply_text, received_at, created_at")
+      .order("created_at", { ascending: false })
+      .limit(PAGE_SIZE);
+
+    (emails || []).forEach((e: any) => {
+      result.push({
+        id: e.id,
+        sessionId: e.id,
+        source: "email",
+        intent: null,
+        question: [e.subject, e.body_preview].filter(Boolean).join(" — "),
+        answer: e.reply_text || "",
+        askedAt: e.received_at || e.created_at,
+        answeredAt: e.reply_text ? e.created_at : null,
+        userId: null,
+        userLabel: e.from_address || e.from_name || "Unknown",
+      });
+    });
 
     result.sort((a, b) => +new Date(b.askedAt) - +new Date(a.askedAt));
     setPairs(result);
