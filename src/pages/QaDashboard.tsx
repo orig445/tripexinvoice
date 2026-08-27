@@ -594,6 +594,10 @@ export default function QaDashboard() {
                       <TableCell className="text-xs whitespace-nowrap">
                         {new Date(p.askedAt).toLocaleString("en-GB")}
                       </TableCell>
+                      <TableCell className="text-xs break-all max-w-[180px]">
+                        {p.userLabel}
+                      </TableCell>
+
                       <TableCell>
                         <Badge variant="outline" className="text-xs">
                           {p.source}
