@@ -148,6 +148,7 @@ export default function QaDashboard() {
 
     const result: QaPair[] = [];
     bySession.forEach((list, sessionId) => {
+      const uid = userIdBySession.get(sessionId) || null;
       list.forEach((msg, i) => {
         if (msg.role !== "user") return;
         const reply = list.slice(i + 1).find((m) => m.role !== "user");
@@ -164,9 +165,12 @@ export default function QaDashboard() {
           answer,
           askedAt: msg.created_at,
           answeredAt: reply?.created_at || null,
+          userId: uid,
+          userLabel: uid ? userLabelById.get(uid) || uid.slice(0, 8) : "Anonymous",
         });
       });
     });
+
 
     result.sort((a, b) => +new Date(b.askedAt) - +new Date(a.askedAt));
     setPairs(result);
