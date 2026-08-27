@@ -26,6 +26,9 @@ Edit `appsettings.json` or set environment variables:
 | `Jwt:Audience` | — | Token audience (default: `TripEx.Client`) |
 | `Jwt:ExpirationHours` | — | Token lifetime (default: 24) |
 | `Oracle:ApiKey` | `ORACLE_API_KEY` | Oracle Generative AI key |
+| `Oracle:UseCustomModel` | `ORACLE_USE_CUSTOM_MODEL` | `true` to route Milo's chat (not OCR) through the fine-tuned custom model below (default: `false` = Gemini) |
+| `Oracle:CustomModelEndpoint` | `ORACLE_CUSTOM_MODEL_ENDPOINT` | Hosting-cluster endpoint URL for the fine-tuned Milo model |
+| `Oracle:CustomModelId` | `ORACLE_CUSTOM_MODEL_ID` | Model OCID of the fine-tuned custom model |
 | `Storage:Provider` | `STORAGE_PROVIDER` | `local` or `s3` (default: `local`) |
 | `Storage:LocalPath` | `STORAGE_PATH` | Local storage directory (default: `./storage`) |
 | `Storage:S3:BucketName` | `S3_BUCKET_NAME` | S3 bucket name |

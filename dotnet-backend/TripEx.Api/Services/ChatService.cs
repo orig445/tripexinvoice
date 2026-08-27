@@ -341,8 +341,12 @@ public class ChatService
             messages.Add(new OracleMessage { Role = "user", Content = request.Text });
 
         // ── Call Oracle AI ──
+        // allowCustomModel: true opts the Milo conversational path into the fine-tuned
+        // custom model IF Oracle:UseCustomModel is also enabled in config (see
+        // OracleAiService.ResolveChatTarget). OCR/invoice-scan call sites never pass
+        // this, so they always stay on the vision-capable default model regardless.
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        var rawContent = await _oracle.ChatAsync(messages, maxTokens, temperature);
+        var rawContent = await _oracle.ChatAsync(messages, maxTokens, temperature, allowCustomModel: true);
         sw.Stop();
 
         // ── Parse response ──

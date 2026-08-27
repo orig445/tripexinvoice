@@ -27,3 +27,8 @@ dist-ssr
 # .NET production secrets — never commit the filled file (use the .example template)
 appsettings.Production.json
 **/appsettings.Production.json
+
+# Fine-tune data prep output — real (lightly PII-scrubbed) customer support
+# conversation content. Never commit to this public repo; scripts that generate
+# it stay tracked, the generated data does not.
+tools/finetune-data-prep/out/
