@@ -26,7 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, MessageSquare, HelpCircle, Bot, Download, RefreshCw, CalendarIcon, X } from "lucide-react";
+import { Loader2, MessageSquare, HelpCircle, Bot, Download, RefreshCw, CalendarIcon, X, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { format, startOfDay, endOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
@@ -79,6 +79,16 @@ export default function QaDashboard() {
   const [status, setStatus] = useState("all");
   const [user, setUser] = useState("all");
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
+  const [sortKey, setSortKey] = useState<"askedAt" | "userLabel" | "source" | "intent" | "question" | "answer">("askedAt");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  const toggleSort = (key: typeof sortKey) => {
+    if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortKey(key);
+      setSortDir(key === "askedAt" ? "desc" : "asc");
+    }
+  };
 
 
   const load = async () => {
@@ -240,6 +250,16 @@ export default function QaDashboard() {
       );
     });
   }, [pairs, search, questionFilter, answerFilter, source, intent, status, user, dateRange]);
+
+  const sorted = useMemo(() => {
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      if (sortKey === "askedAt") return (+new Date(a.askedAt) - +new Date(b.askedAt)) * dir;
+      const av = ((a[sortKey] as string) || "").toLowerCase();
+      const bv = ((b[sortKey] as string) || "").toLowerCase();
+      return av.localeCompare(bv) * dir;
+    });
+  }, [filtered, sortKey, sortDir]);
 
 
   const unanswered = filtered.filter((p) => !p.answer).length;
@@ -577,12 +597,30 @@ export default function QaDashboard() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[140px]">Date</TableHead>
-                  <TableHead className="w-[180px]">User</TableHead>
-                  <TableHead className="w-[110px]">Source</TableHead>
-                  <TableHead className="w-[110px]">Intent</TableHead>
-                  <TableHead>Question</TableHead>
-                  <TableHead>Answer</TableHead>
+                  {([
+                    ["askedAt", "Date", "w-[140px]"],
+                    ["userLabel", "User", "w-[180px]"],
+                    ["source", "Source", "w-[110px]"],
+                    ["intent", "Intent", "w-[110px]"],
+                    ["question", "Question", ""],
+                    ["answer", "Answer", ""],
+                  ] as const).map(([key, label, w]) => (
+                    <TableHead
+                      key={key}
+                      className={cn(w, "cursor-pointer select-none hover:text-foreground")}
+                      onClick={() => toggleSort(key as any)}
+                      title="Click to sort"
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        {label}
+                        {sortKey === key ? (
+                          sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                        ) : (
+                          <ArrowUpDown className="h-3 w-3 opacity-30" />
+                        )}
+                      </span>
+                    </TableHead>
+                  ))}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -594,7 +632,7 @@ export default function QaDashboard() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((p) => (
+                  sorted.map((p) => (
                     <TableRow key={p.id} className="align-top">
                       <TableCell
                         className="text-xs whitespace-nowrap cursor-pointer hover:bg-muted/60"
