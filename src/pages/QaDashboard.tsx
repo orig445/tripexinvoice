@@ -541,6 +541,7 @@ export default function QaDashboard() {
             source !== "all" ||
             intent !== "all" ||
             status !== "all" ||
+            user !== "all" ||
             questionFilter ||
             answerFilter ||
             search) && (
@@ -555,9 +556,11 @@ export default function QaDashboard() {
                 setSource("all");
                 setIntent("all");
                 setStatus("all");
+                setUser("all");
                 setDateRange({});
               }}
             >
+
               <X className="h-4 w-4" />
               Clear filters
             </Button>
