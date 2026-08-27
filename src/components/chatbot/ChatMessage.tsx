@@ -104,10 +104,10 @@ export function ChatMessage({ message, onAction, question, audience = "external"
 
         {showTranslation && translation && (
           <div
-            dir="rtl"
+           
             className="rounded-2xl border border-primary/20 bg-background px-3.5 py-2.5 text-sm leading-relaxed text-foreground"
           >
-            <p className="mb-1 text-[11px] font-medium text-muted-foreground">תרגום לעברית</p>
+            <p className="mb-1 text-[11px] font-medium text-muted-foreground">Hebrew translation</p>
             {translation.split("\n").map((line, i) => (
               <span key={i}>
                 {line}
@@ -198,10 +198,10 @@ export function ChatMessage({ message, onAction, question, audience = "external"
               className="h-6 px-1.5 text-[11px] gap-1 text-muted-foreground hover:text-primary"
               onClick={handleTranslate}
               disabled={translating}
-              title="תרגם לעברית"
+              title="Translate to Hebrew"
             >
               {translating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Languages className="h-3 w-3" />}
-              {showTranslation ? "הצג מקור" : "תרגם לעברית"}
+              {showTranslation ? "Show original" : "Translate to Hebrew"}
             </Button>
           </div>
         )}

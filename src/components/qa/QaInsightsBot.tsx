@@ -81,7 +81,7 @@ export function QaInsightsBot({ rows, stats }: Props) {
         aria-label="Ask about this data"
       >
         <Sparkles className="h-5 w-5" />
-        <span className="text-sm font-medium hidden sm:inline">שאל על הנתונים</span>
+        <span className="text-sm font-medium hidden sm:inline">Ask about this data</span>
       </button>
     );
   }

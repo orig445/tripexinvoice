@@ -251,7 +251,7 @@ export async function getKnowledgeDownloadUrl(
   const path = doc.file_url;
   if (!path) {
     if (doc.external_url) return { url: doc.external_url, error: null };
-    return { url: null, error: new Error("לא נמצא קובץ מקור להורדה") };
+    return { url: null, error: new Error("No source file available for download") };
   }
   if (/^https?:\/\//i.test(path)) return { url: path, error: null };
 
@@ -352,7 +352,7 @@ export async function uploadKnowledgeFile(params: {
         return {
           data: null,
           error: new Error(
-            "בסיס הידע הפנימי דורש עדכון סכימה (עמודת audience). הריצו את ה-SQL שסופק ב-Supabase ואז נסו שוב.",
+            "The internal knowledge base requires a schema update (audience column). Run the provided SQL and try again.",
           ),
         };
       }

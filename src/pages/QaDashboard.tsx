@@ -398,7 +398,7 @@ export default function QaDashboard() {
       <main className="container py-6 md:py-10 space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold">פילוח תשובות</h1>
+            <h1 className="text-2xl font-bold">Answer analytics</h1>
             <p className="text-muted-foreground">
               Every question users asked Milo, with the answer that was given.
             </p>

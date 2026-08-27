@@ -43,12 +43,12 @@ export function ChatbotSettings() {
 
     if (error) {
       console.error("Save config error:", error);
-      toast.error("שגיאה בשמירת ההגדרות: " + error.message);
+      toast.error("Failed to save settings: " + error.message);
     } else if (!data || data.length === 0) {
       console.error("No rows updated - likely RLS blocking. User may not have admin role.");
-      toast.error("אין הרשאה לעדכן הגדרות. נדרשת הרשאת מנהל.");
+      toast.error("You do not have permission to update settings. Admin role required.");
     } else {
-      toast.success("ההגדרות נשמרו בהצלחה");
+      toast.success("Settings saved successfully");
     }
     setIsSaving(false);
   };
@@ -61,18 +61,18 @@ export function ChatbotSettings() {
     );
   }
 
-  if (!config) return <p className="text-muted-foreground">לא נמצאו הגדרות</p>;
+  if (!config) return <p className="text-muted-foreground">No settings found</p>;
 
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">הגדרות כלליות</CardTitle>
+          <CardTitle className="text-lg">General settings</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label>שם הבוט</Label>
+              <Label>Bot name</Label>
               <Input
                 value={config.bot_name}
                 onChange={(e) => setConfig({ ...config, bot_name: e.target.value })}
@@ -83,11 +83,11 @@ export function ChatbotSettings() {
                 checked={config.is_active}
                 onCheckedChange={(checked) => setConfig({ ...config, is_active: checked })}
               />
-              <Label>בוט פעיל</Label>
+              <Label>Bot active</Label>
             </div>
           </div>
           <div className="space-y-2">
-            <Label>הודעת פתיחה</Label>
+            <Label>Welcome message</Label>
             <Textarea
               value={config.welcome_message}
               onChange={(e) => setConfig({ ...config, welcome_message: e.target.value })}
@@ -113,11 +113,11 @@ export function ChatbotSettings() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">הגדרות מודל</CardTitle>
+          <CardTitle className="text-lg">Model settings</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>שם מודל</Label>
+            <Label>Model name</Label>
             <Input
               value={config.model_name}
               onChange={(e) => setConfig({ ...config, model_name: e.target.value })}
@@ -149,7 +149,7 @@ export function ChatbotSettings() {
 
       <Button onClick={handleSave} disabled={isSaving} className="gap-2">
         {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-        שמור הגדרות
+        Save settings
       </Button>
     </div>
   );

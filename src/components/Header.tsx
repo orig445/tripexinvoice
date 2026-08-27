@@ -62,7 +62,7 @@ export function Header({ onNewChat }: HeaderProps = {}) {
               onClick={() => navigate("/knowledge")}
             >
               <Brain className="h-4 w-4" />
-              <span className="hidden sm:inline">ידע לקוחות</span>
+              <span className="hidden sm:inline">Customer knowledge</span>
             </Button>
           )}
 
@@ -74,7 +74,7 @@ export function Header({ onNewChat }: HeaderProps = {}) {
               onClick={() => navigate("/knowledge-internal")}
             >
               <Lock className="h-4 w-4" />
-              <span className="hidden sm:inline">ידע פנימי</span>
+              <span className="hidden sm:inline">Internal knowledge</span>
             </Button>
           )}
 
@@ -86,7 +86,7 @@ export function Header({ onNewChat }: HeaderProps = {}) {
               onClick={() => navigate("/chat-internal")}
             >
               <Lock className="h-4 w-4" />
-              <span className="hidden sm:inline">צ'אט פנימי</span>
+              <span className="hidden sm:inline">Internal chat</span>
             </Button>
           )}
 
@@ -98,7 +98,7 @@ export function Header({ onNewChat }: HeaderProps = {}) {
               onClick={() => navigate("/qa")}
             >
               <BarChart3 className="h-4 w-4" />
-              <span className="hidden sm:inline">פילוח תשובות</span>
+              <span className="hidden sm:inline">Answer analytics</span>
             </Button>
           )}
 
