@@ -101,16 +101,31 @@ export default function QaDashboard() {
     for (let offset = 0; offset < MAX_MESSAGES; offset += PAGE_SIZE) {
       const { data, error } = await supabase
         .from("chat_sessions")
-        .select("id, source")
+        .select("id, source, user_id")
         .range(offset, offset + PAGE_SIZE - 1);
       if (error || !data || data.length === 0) break;
       sessions.push(...data);
       if (data.length < PAGE_SIZE) break;
     }
 
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("user_id, email, display_name");
+
+    const userLabelById = new Map<string, string>(
+      (profiles || []).map((p: any) => [
+        p.user_id,
+        p.email || p.display_name || p.user_id.slice(0, 8),
+      ])
+    );
+
     const sourceById = new Map<string, string>(
       sessions.map((s: any) => [s.id, s.source || "web"])
     );
+    const userIdBySession = new Map<string, string | null>(
+      sessions.map((s: any) => [s.id, s.user_id || null])
+    );
+
 
     // Restore chronological order inside each session
     messages.sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
