@@ -67,6 +67,15 @@ const App = () => (
               }
             />
             <Route
+              path="/qa"
+              element={
+                <ProtectedRoute>
+                  <QaDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+
               path="/admin/chatbot"
               element={
                 <ProtectedRoute>
