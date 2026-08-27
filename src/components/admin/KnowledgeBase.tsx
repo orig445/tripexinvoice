@@ -42,24 +42,24 @@ import {
 
 // Domains (business area) — helps the agent decide WHEN a document is relevant.
 const DOMAINS = [
-  { value: "travel", label: "נסיעות והזמנות" },
-  { value: "expenses", label: "הוצאות" },
-  { value: "invoices", label: "חשבוניות ו-OCR" },
-  { value: "billing", label: "תשלומים וחיוב" },
-  { value: "policy", label: "מדיניות ונהלים" },
-  { value: "account", label: "חשבון והרשאות" },
-  { value: "technical", label: "טכני ותמיכה" },
-  { value: "general", label: "כללי" },
+  { value: "travel", label: "Travel & bookings" },
+  { value: "expenses", label: "Expenses" },
+  { value: "invoices", label: "Invoices & OCR" },
+  { value: "billing", label: "Payments & billing" },
+  { value: "policy", label: "Policies & procedures" },
+  { value: "account", label: "Account & permissions" },
+  { value: "technical", label: "Technical & support" },
+  { value: "general", label: "General" },
 ];
 
 // Types (kind of content).
 const DOC_TYPES = [
-  { value: "faq", label: "שאלות ותשובות" },
-  { value: "guide", label: "מדריך / הדרכה" },
-  { value: "policy", label: "מסמך מדיניות" },
-  { value: "reference", label: "מידע עיוני / הגדרות" },
-  { value: "troubleshooting", label: "פתרון תקלות" },
-  { value: "other", label: "אחר" },
+  { value: "faq", label: "FAQ" },
+  { value: "guide", label: "Guide / tutorial" },
+  { value: "policy", label: "Policy document" },
+  { value: "reference", label: "Reference / definitions" },
+  { value: "troubleshooting", label: "Troubleshooting" },
+  { value: "other", label: "Other" },
 ];
 
 const labelFor = (list: { value: string; label: string }[], value: string | null) =>
@@ -128,14 +128,14 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
         try {
           const inner = await expandZip(file);
           if (inner.length === 0) {
-            toast.error(`לא נמצאו קבצים נתמכים בתוך ${file.name}`);
+            toast.error(`No supported files found inside ${file.name}`);
             continue;
           }
-          toast.success(`${file.name}: חולצו ${inner.length} קבצים`);
+          toast.success(`${file.name}: extracted ${inner.length} files`);
           expanded.push(...inner);
         } catch (err) {
           console.error("zip error", err);
-          toast.error(`שגיאה בפתיחת ${file.name}`);
+          toast.error(`Failed to open ${file.name}`);
         }
         continue;
       }
@@ -145,7 +145,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
     const incoming: StagedFile[] = [];
     for (const file of expanded) {
       if (file.size > MAX_SIZE) {
-        toast.error(`הקובץ ${file.name} גדול מדי (מקסימום 25MB)`);
+        toast.error(`File ${file.name} is too large (max 25MB)`);
         continue;
       }
       incoming.push({
@@ -196,7 +196,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
       if (error || data?.success === false) {
         patchStaged(item.key, {
           status: "error",
-          error: error?.message || data?.error || "שגיאה בהעלאה",
+          error: error?.message || data?.error || "Upload failed",
         });
       } else {
         ok++;
@@ -206,21 +206,21 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
 
     setIsUploading(false);
     if (ok > 0) {
-      toast.success(`${ok} קבצים הועלו לבסיס הידע של הסוכן`);
+      toast.success(`${ok} files uploaded to the agent knowledge base`);
       await loadDocuments();
       // Clear the successfully-uploaded items after a short beat.
       setStaged((prev) => prev.filter((s) => s.status !== "done"));
     }
-    if (ok < pending.length) toast.error(`${pending.length - ok} קבצים נכשלו`);
+    if (ok < pending.length) toast.error(`${pending.length - ok} files failed`);
   };
 
   const handleDelete = async (doc: KnowledgeDoc) => {
     const { error } = await deleteKnowledgeDocument(doc.id);
     if (error) {
-      toast.error("שגיאה במחיקת הקובץ");
+      toast.error("Failed to delete the file");
       return;
     }
-    toast.success("הקובץ נמחק");
+    toast.success("File deleted");
     loadDocuments();
   };
 
@@ -232,7 +232,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
     const { url, error } = await getKnowledgeDownloadUrl(doc);
     setDownloadingId(null);
     if (error || !url) {
-      toast.error(error?.message || "לא ניתן להוריד את הקובץ");
+      toast.error(error?.message || "Could not download the file");
       return;
     }
     const a = document.createElement("a");
@@ -268,32 +268,32 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
       await sleep(800); // throttle between files
     }
     setBulk(null);
-    toast.success(`${label}: ${ok}/${docs.length} הצליחו${ok < docs.length ? `, ${docs.length - ok} עדיין נכשלו` : ""}`,
+    toast.success(`${label}: ${ok}/${docs.length} succeeded${ok < docs.length ? `, ${docs.length - ok} still failed` : ""}`,
       { duration: 8000 });
     loadDocuments();
   };
 
   // Re-run the ingest pipeline (PII scrub + distill + auto-classify) on every
   // document currently listed — used to clean up files uploaded before distillation.
-  const handleReprocessAll = () => runBatch([...documents], "זוקקו");
+  const handleReprocessAll = () => runBatch([...documents], "Reprocessed");
 
   // Retry only the documents that ended in "error".
-  const handleRetryFailed = () => runBatch(documents.filter((d) => d.status === "error"), "שוחזרו");
+  const handleRetryFailed = () => runBatch(documents.filter((d) => d.status === "error"), "Retried");
 
   const handleSync = async () => {
     setIsSyncing(true);
-    toast.info("מסנכרן מ-SharePoint ו-Zoho CRM...");
+    toast.info("Syncing from SharePoint and Zoho CRM...");
     const { data, error } = await triggerKnowledgeSync();
     setIsSyncing(false);
     if (error) {
-      toast.error(`שגיאת סנכרון: ${error.message}`, { duration: 10000 });
+      toast.error(`Sync error: ${error.message}`, { duration: 10000 });
     } else {
       const sums = (data?.summaries || []) as Array<any>;
       const totals = sums.reduce(
         (a, s) => ({ created: a.created + (s.created || 0), updated: a.updated + (s.updated || 0), errors: a.errors + (s.errors || 0) }),
         { created: 0, updated: 0, errors: 0 },
       );
-      toast.success(`סנכרון הושלם: ${totals.created} חדשים, ${totals.updated} עודכנו${totals.errors ? `, ${totals.errors} שגיאות` : ""}`);
+      toast.success(`Sync complete: ${totals.created} new, ${totals.updated} updated${totals.errors ? `, ${totals.errors} errors` : ""}`);
       // Surface per-source problems (e.g. "not configured") so setup gaps are visible.
       sums.filter((s) => !s.ok || s.message).forEach((s) => {
         if (s.message) toast.warning(`${s.source}: ${s.message}`, { duration: 12000 });
@@ -304,13 +304,13 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
 
   const handleReprocess = async (doc: KnowledgeDoc) => {
     setReprocessingId(doc.id);
-    toast.info(`מעבד מחדש את ${doc.file_name}...`);
+    toast.info(`Reprocessing ${doc.file_name}...`);
     const { error } = await processKnowledgeDocument(doc.id);
     setReprocessingId(null);
     if (error) {
-      toast.error(`שגיאה בעיבוד: ${error.message}`, { duration: 10000 });
+      toast.error(`Processing error: ${error.message}`, { duration: 10000 });
     } else {
-      toast.success("העיבוד הושלם");
+      toast.success("Processing complete");
     }
     loadDocuments();
   };
@@ -326,18 +326,18 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "ready":
-        return <Badge className="bg-green-600 hover:bg-green-600">מוכן</Badge>;
+        return <Badge className="bg-green-600 hover:bg-green-600">Ready</Badge>;
       case "processing":
         return (
           <Badge variant="secondary">
             <Loader2 className="h-3 w-3 animate-spin ml-1" />
-            מעבד
+            Processing
           </Badge>
         );
       case "pending":
-        return <Badge variant="outline">ממתין</Badge>;
+        return <Badge variant="outline">Pending</Badge>;
       case "error":
-        return <Badge variant="destructive">שגיאה</Badge>;
+        return <Badge variant="destructive">Error</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -359,11 +359,11 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
         <CardHeader>
           <div className="flex items-center gap-2">
             <Brain className="h-5 w-5 text-primary" />
-            <CardTitle className="text-lg">העלאת קבצים לבסיס הידע</CardTitle>
+            <CardTitle className="text-lg">Upload files to the knowledge base</CardTitle>
           </div>
           <p className="text-sm text-muted-foreground">
-            העלה כמה קבצים שתרצה. לכל קובץ בחר <strong>תחום</strong> ו<strong>סוג</strong>, והוסף
-            הסבר קצר (אופציונלי) שיכוון את הסוכן מתי להשתמש בו. הקבצים נכנסים אוטומטית ל-RAG של הסוכן.
+            Upload as many files as you like. For each file pick a <strong>domain</strong> and <strong>type</strong>, and add
+            a short description (optional) telling the agent when to use it. Files are indexed into the agent RAG automatically.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -380,7 +380,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
             }`}
           >
             <UploadCloud className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
-            <p className="text-sm mb-3">גרור לכאן קבצים או בחר מהמחשב</p>
+            <p className="text-sm mb-3">Drag files here or pick from your computer</p>
             <input
               type="file"
               id="knowledge-upload"
@@ -391,10 +391,10 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
             />
             <Button variant="outline" onClick={() => document.getElementById("knowledge-upload")?.click()}>
               <Upload className="h-4 w-4 ml-2" />
-              בחר קבצים
+              Choose files
             </Button>
             <p className="text-xs text-muted-foreground mt-3">
-              PDF, Word, Excel, CSV, טקסט, Markdown, JSON, XML, ZIP · עד 25MB לקובץ
+              PDF, Word, Excel, CSV, text, Markdown, JSON, XML, ZIP · up to 25MB per file
             </p>
           </div>
 
@@ -429,7 +429,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <Label className="text-xs">תחום</Label>
+                      <Label className="text-xs">Domain</Label>
                       <Select value={item.domain} onValueChange={(v) => patchStaged(item.key, { domain: v })}>
                         <SelectTrigger className="h-9">
                           <SelectValue />
@@ -444,7 +444,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
                       </Select>
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">סוג</Label>
+                      <Label className="text-xs">Type</Label>
                       <Select value={item.docType} onValueChange={(v) => patchStaged(item.key, { docType: v })}>
                         <SelectTrigger className="h-9">
                           <SelectValue />
@@ -461,9 +461,9 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
                   </div>
 
                   <div className="space-y-1">
-                    <Label className="text-xs">הסבר קצר לסוכן (אופציונלי)</Label>
+                    <Label className="text-xs">Short description for the agent (optional)</Label>
                     <Input
-                      placeholder="למשל: נוהל החזר הוצאות נסיעה לחו״ל 2026"
+                      placeholder="e.g. Overseas travel expense reimbursement policy 2026"
                       value={item.description}
                       onChange={(e) => patchStaged(item.key, { description: e.target.value })}
                     />
@@ -477,7 +477,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
 
               <div className="flex items-center justify-end gap-2">
                 <Button variant="ghost" onClick={() => setStaged([])} disabled={isUploading}>
-                  נקה הכל
+                  Clear all
                 </Button>
                 <Button onClick={uploadAll} disabled={isUploading || pendingCount === 0}>
                   {isUploading ? (
@@ -485,7 +485,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
                   ) : (
                     <Upload className="h-4 w-4 ml-2" />
                   )}
-                  העלה {pendingCount > 0 ? `(${pendingCount})` : ""}
+                  Upload {pendingCount > 0 ? `(${pendingCount})` : ""}
                 </Button>
               </div>
             </div>
@@ -497,24 +497,24 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <CardTitle className="text-lg">קבצים בבסיס הידע ({documents.length})</CardTitle>
+            <CardTitle className="text-lg">Knowledge base files ({documents.length})</CardTitle>
             <div className="flex items-center gap-2">
               {documents.some((d) => d.status === "error") && (
                 <Button variant="outline" size="sm" className="gap-2 text-amber-700 border-amber-300" onClick={handleRetryFailed} disabled={!!bulk}>
                   <RefreshCw className={`h-4 w-4 ${bulk ? "animate-spin" : ""}`} />
-                  {bulk ? `משחזר ${bulk.done}/${bulk.total}...` : `נסה שוב את השגיאות (${documents.filter((d) => d.status === "error").length})`}
+                  {bulk ? `Retrying ${bulk.done}/${bulk.total}...` : `Retry failed (${documents.filter((d) => d.status === "error").length})`}
                 </Button>
               )}
               {documents.length > 0 && (
                 <Button variant="outline" size="sm" className="gap-2" onClick={handleReprocessAll} disabled={!!bulk}>
                   <RefreshCw className={`h-4 w-4 ${bulk ? "animate-spin" : ""}`} />
-                  {bulk ? `מזקק ${bulk.done}/${bulk.total}...` : "נקה וזקק הכל"}
+                  {bulk ? `Reprocessing ${bulk.done}/${bulk.total}...` : "Clean & reprocess all"}
                 </Button>
               )}
               {audience === "internal" && (
                 <Button variant="outline" size="sm" className="gap-2" onClick={handleSync} disabled={isSyncing}>
                   <CloudDownload className={`h-4 w-4 ${isSyncing ? "animate-pulse" : ""}`} />
-                  {isSyncing ? "מסנכרן..." : "סנכרן מ-SharePoint / Zoho"}
+                  {isSyncing ? "Syncing..." : "Sync from SharePoint / Zoho"}
                 </Button>
               )}
             </div>
@@ -524,7 +524,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
           {documents.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Brain className="h-12 w-12 mx-auto mb-3 opacity-30" />
-              <p>אין עדיין קבצים בבסיס הידע</p>
+              <p>No files in the knowledge base yet</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -567,7 +567,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
-                      title="הורד קובץ"
+                      title="Download file"
                       disabled={downloadingId === doc.id}
                       onClick={() => handleDownload(doc)}
                     >
@@ -582,7 +582,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
-                      title="עבד מחדש"
+                      title="Reprocess"
                       disabled={reprocessingId === doc.id}
                       onClick={() => handleReprocess(doc)}
                     >
@@ -592,7 +592,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 text-destructive hover:text-destructive"
-                      title="מחק"
+                      title="Delete"
                       onClick={() => handleDelete(doc)}
                     >
                       <Trash2 className="h-4 w-4" />

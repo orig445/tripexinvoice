@@ -12,7 +12,7 @@ import { Brain } from "lucide-react";
  */
 const KnowledgeUpload = () => {
   return (
-    <div className="min-h-screen bg-background" dir="rtl">
+    <div className="min-h-screen bg-background">
       <Header />
       <main className="container py-6 md:py-10 space-y-6 max-w-4xl">
         <div className="flex items-start gap-3">
@@ -20,10 +20,10 @@ const KnowledgeUpload = () => {
             <Brain className="h-6 w-6 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold">מרכז הידע — סוכן הלקוחות</h1>
+            <h1 className="text-2xl font-bold">Knowledge center — customer agent</h1>
             <p className="text-muted-foreground">
-              בסיס הידע של הצ'אטבוט <strong>הפונה ללקוחות</strong>. העלו מסמכים והם ייכנסו אוטומטית
-              ל-RAG. תייגו כל קובץ לתחום ולסוג והוסיפו הסבר קצר — כך הסוכן ידע מתי להשתמש בכל מסמך.
+              Knowledge base for the <strong>customer-facing</strong> chatbot. Upload documents and they are indexed automatically
+              into RAG. Tag each file with a domain and type and add a short description so the agent knows when to use it.
             </p>
           </div>
         </div>
