@@ -41,41 +41,62 @@ interface QaPair {
   answeredAt: string | null;
 }
 
-const MESSAGE_LIMIT = 2000;
+const PAGE_SIZE = 1000;
+const MAX_MESSAGES = 20000;
 
 export default function QaDashboard() {
   const [pairs, setPairs] = useState<QaPair[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [questionFilter, setQuestionFilter] = useState("");
+  const [answerFilter, setAnswerFilter] = useState("");
   const [source, setSource] = useState("all");
   const [intent, setIntent] = useState("all");
+  const [status, setStatus] = useState("all");
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
 
   const load = async () => {
     setIsLoading(true);
 
-    const [{ data: messages }, { data: sessions }] = await Promise.all([
-      supabase
+    // Fetch newest-first in pages so the dashboard always reflects recent data
+    const messages: any[] = [];
+    for (let offset = 0; offset < MAX_MESSAGES; offset += PAGE_SIZE) {
+      const { data, error } = await supabase
         .from("chat_messages")
         .select("id, session_id, role, content, intent, created_at")
-        .order("created_at", { ascending: true })
-        .limit(MESSAGE_LIMIT),
-      supabase.from("chat_sessions").select("id, source"),
-    ]);
+        .order("created_at", { ascending: false })
+        .range(offset, offset + PAGE_SIZE - 1);
+      if (error || !data || data.length === 0) break;
+      messages.push(...data);
+      if (data.length < PAGE_SIZE) break;
+    }
+
+    const sessions: any[] = [];
+    for (let offset = 0; offset < MAX_MESSAGES; offset += PAGE_SIZE) {
+      const { data, error } = await supabase
+        .from("chat_sessions")
+        .select("id, source")
+        .range(offset, offset + PAGE_SIZE - 1);
+      if (error || !data || data.length === 0) break;
+      sessions.push(...data);
+      if (data.length < PAGE_SIZE) break;
+    }
 
     const sourceById = new Map<string, string>(
-      (sessions || []).map((s: any) => [s.id, s.source || "web"])
+      sessions.map((s: any) => [s.id, s.source || "web"])
     );
 
+    // Restore chronological order inside each session
+    messages.sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
+
     const bySession = new Map<string, any[]>();
-    (messages || []).forEach((m: any) => {
+    messages.forEach((m: any) => {
       const list = bySession.get(m.session_id) || [];
       list.push(m);
       bySession.set(m.session_id, list);
     });
 
     const isOcrPair = (question: string, answer: string, intent: string | null) => {
-      const text = `${question} ${answer}`.toLowerCase();
       return (
         intent === "scan" ||
         question.toLowerCase().includes("[user scanned an invoice/receipt]") ||
@@ -90,7 +111,7 @@ export default function QaDashboard() {
         if (msg.role !== "user") return;
         const reply = list.slice(i + 1).find((m) => m.role !== "user");
         const intent = reply?.intent || msg.intent || null;
-        const question = msg.content;
+        const question = msg.content || "";
         const answer = reply?.content || "";
         if (isOcrPair(question, answer, intent)) return;
         result.push({
@@ -126,20 +147,48 @@ export default function QaDashboard() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const qf = questionFilter.trim().toLowerCase();
+    const af = answerFilter.trim().toLowerCase();
+
+    // Normalize an inverted range so filtering never silently returns nothing
+    const rawFrom = dateRange.from;
+    const rawTo = dateRange.to ?? dateRange.from;
+    const fromTime =
+      rawFrom && rawTo
+        ? startOfDay(rawFrom < rawTo ? rawFrom : rawTo).getTime()
+        : rawFrom
+        ? startOfDay(rawFrom).getTime()
+        : null;
+    const toTime =
+      rawFrom && rawTo
+        ? endOfDay(rawFrom < rawTo ? rawTo : rawFrom).getTime()
+        : rawTo
+        ? endOfDay(rawTo).getTime()
+        : null;
+
     return pairs.filter((p) => {
       if (source !== "all" && p.source !== source) return false;
-      if (intent !== "all" && p.intent !== intent) return false;
-      if (dateRange.from || dateRange.to) {
-        const askedTime = new Date(p.askedAt).getTime();
-        if (dateRange.from && askedTime < startOfDay(dateRange.from).getTime()) return false;
-        if (dateRange.to && askedTime > endOfDay(dateRange.to).getTime()) return false;
-      }
+      if (intent !== "all" && (p.intent || "none") !== intent) return false;
+      if (status === "answered" && !p.answer) return false;
+      if (status === "unanswered" && p.answer) return false;
+
+      const askedTime = new Date(p.askedAt).getTime();
+      if (fromTime !== null && askedTime < fromTime) return false;
+      if (toTime !== null && askedTime > toTime) return false;
+
+      if (qf && !p.question.toLowerCase().includes(qf)) return false;
+      if (af && !p.answer.toLowerCase().includes(af)) return false;
+
       if (!q) return true;
       return (
-        p.question.toLowerCase().includes(q) || p.answer.toLowerCase().includes(q)
+        p.question.toLowerCase().includes(q) ||
+        p.answer.toLowerCase().includes(q) ||
+        p.source.toLowerCase().includes(q) ||
+        (p.intent || "").toLowerCase().includes(q)
       );
     });
-  }, [pairs, search, source, intent, dateRange]);
+  }, [pairs, search, questionFilter, answerFilter, source, intent, status, dateRange]);
+
 
   const unanswered = filtered.filter((p) => !p.answer).length;
   const sessionCount = new Set(filtered.map((p) => p.sessionId)).size;
@@ -246,8 +295,32 @@ export default function QaDashboard() {
                   {s}
                 </SelectItem>
               ))}
+              <SelectItem value="none">No intent</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="answered">Answered</SelectItem>
+              <SelectItem value="unanswered">Unanswered</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
+            placeholder="Filter question..."
+            value={questionFilter}
+            onChange={(e) => setQuestionFilter(e.target.value)}
+            className="w-[200px]"
+          />
+          <Input
+            placeholder="Filter answer..."
+            value={answerFilter}
+            onChange={(e) => setAnswerFilter(e.target.value)}
+            className="w-[200px]"
+          />
+
 
           <Popover>
             <PopoverTrigger asChild>
@@ -291,15 +364,25 @@ export default function QaDashboard() {
             </PopoverContent>
           </Popover>
 
-          {(dateRange.from || dateRange.to || source !== "all" || intent !== "all" || search) && (
+          {(dateRange.from ||
+            dateRange.to ||
+            source !== "all" ||
+            intent !== "all" ||
+            status !== "all" ||
+            questionFilter ||
+            answerFilter ||
+            search) && (
             <Button
               variant="ghost"
               size="sm"
               className="gap-1 text-muted-foreground"
               onClick={() => {
                 setSearch("");
+                setQuestionFilter("");
+                setAnswerFilter("");
                 setSource("all");
                 setIntent("all");
+                setStatus("all");
                 setDateRange({});
               }}
             >
@@ -307,6 +390,7 @@ export default function QaDashboard() {
               Clear filters
             </Button>
           )}
+
         </div>
 
         {isLoading ? (
