@@ -251,6 +251,16 @@ export default function QaDashboard() {
     });
   }, [pairs, search, questionFilter, answerFilter, source, intent, status, user, dateRange]);
 
+  const sorted = useMemo(() => {
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      if (sortKey === "askedAt") return (+new Date(a.askedAt) - +new Date(b.askedAt)) * dir;
+      const av = ((a[sortKey] as string) || "").toLowerCase();
+      const bv = ((b[sortKey] as string) || "").toLowerCase();
+      return av.localeCompare(bv) * dir;
+    });
+  }, [filtered, sortKey, sortDir]);
+
 
   const unanswered = filtered.filter((p) => !p.answer).length;
   const sessionCount = new Set(filtered.map((p) => p.sessionId)).size;
