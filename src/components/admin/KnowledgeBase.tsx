@@ -152,6 +152,8 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
   };
 
   const addFiles = async (files: FileList | File[]) => {
+    let cameFromZip = false;
+
     const expanded: File[] = [];
     for (const file of Array.from(files)) {
       if (isZip(file)) {
