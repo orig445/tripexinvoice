@@ -125,7 +125,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
     try {
       const entries = await reader.getEntries();
       for (const entry of entries) {
-        if (entry.directory) continue;
+        if (entry.directory || !("getData" in entry)) continue;
         const name = entry.filename.split("/").pop() || entry.filename;
         if (name.startsWith(".") || entry.filename.startsWith("__MACOSX/")) continue;
         if (entry.encrypted) throw new Error("The archive is password protected");
@@ -134,8 +134,6 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
         if (!isNestedZip && !SUPPORTED_EXT.test(name)) continue;
         // Reject oversized expanded entries before allocating their contents.
         if (!isNestedZip && (!entry.uncompressedSize || entry.uncompressedSize > MAX_SIZE)) continue;
-        if (!entry.getData) continue;
-
         try {
           const blob = await entry.getData(new BlobWriter(mimeForName(name)));
           if (isNestedZip) {
