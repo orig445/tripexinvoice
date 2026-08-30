@@ -235,7 +235,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
   const removeStaged = (key: string) =>
     setStaged((prev) => prev.filter((s) => s.key !== key));
 
-  const uploadBatch = async (pending: StagedFile[]) => {
+  async function uploadBatch(pending: StagedFile[]) {
     if (pending.length === 0) return;
 
     setIsUploading(true);
@@ -287,7 +287,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
       setStaged((prev) => prev.filter((s) => s.status !== "done"));
     }
     if (ok < total) toast.error(`${total - ok} files failed`);
-  };
+  }
 
   const uploadAll = async () => {
     await uploadBatch(staged.filter((s) => s.status === "idle" || s.status === "error"));
@@ -469,7 +469,11 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
               accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.json,.xml,.zip"
               onChange={handleFileInput}
             />
-            <Button variant="outline" onClick={() => document.getElementById("knowledge-upload")?.click()}>
+            <Button
+              variant="outline"
+              disabled={isExtracting || isUploading}
+              onClick={() => document.getElementById("knowledge-upload")?.click()}
+            >
               {isExtracting ? <Loader2 className="h-4 w-4 animate-spin ml-2" /> : <Upload className="h-4 w-4 ml-2" />}
               {isExtracting ? "Extracting ZIP…" : "Choose files"}
             </Button>
