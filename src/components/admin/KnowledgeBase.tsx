@@ -83,7 +83,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
   const [staged, setStaged] = useState<StagedFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [autoUpload, setAutoUpload] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
 
 
   const loadDocuments = useCallback(async () => {
@@ -155,10 +155,13 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
 
   const addFiles = async (files: FileList | File[]) => {
     let cameFromZip = false;
+    let extractionToastId: string | number | undefined;
 
     const expanded: File[] = [];
     for (const file of Array.from(files)) {
       if (isZip(file)) {
+        setIsExtracting(true);
+        extractionToastId = toast.loading(`Opening ${file.name}…`);
         try {
           const inner = await expandZip(file);
           if (inner.length === 0) {
@@ -181,7 +184,9 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
                 ? "The browser lost access to the file. Copy the ZIP to your Desktop (not iCloud/Downloads sync or an external drive) and pick it again."
                 : msg.slice(0, 180),
           });
-
+        } finally {
+          if (extractionToastId !== undefined) toast.dismiss(extractionToastId);
+          setIsExtracting(false);
         }
 
         continue;
@@ -206,7 +211,9 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
     }
     if (incoming.length) {
       setStaged((prev) => [...prev, ...incoming]);
-      if (cameFromZip) setAutoUpload(true);
+      // Upload this exact batch. Calling uploadAll here used the previous
+      // render's `staged` value, so freshly extracted ZIP entries were missed.
+      if (cameFromZip) await uploadBatch(incoming);
     }
 
   };
@@ -228,8 +235,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
   const removeStaged = (key: string) =>
     setStaged((prev) => prev.filter((s) => s.key !== key));
 
-  const uploadAll = async () => {
-    const pending = staged.filter((s) => s.status === "idle" || s.status === "error");
+  const uploadBatch = async (pending: StagedFile[]) => {
     if (pending.length === 0) return;
 
     setIsUploading(true);
@@ -283,15 +289,9 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
     if (ok < total) toast.error(`${total - ok} files failed`);
   };
 
-  // ZIP archives are uploaded automatically — the extracted files land in the
-  // knowledge base without an extra click.
-  useEffect(() => {
-    if (!autoUpload || isUploading) return;
-    if (!staged.some((s) => s.status === "idle")) return;
-    setAutoUpload(false);
-    void uploadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoUpload, staged, isUploading]);
+  const uploadAll = async () => {
+    await uploadBatch(staged.filter((s) => s.status === "idle" || s.status === "error"));
+  };
 
 
   const handleDelete = async (doc: KnowledgeDoc) => {
@@ -470,8 +470,8 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
               onChange={handleFileInput}
             />
             <Button variant="outline" onClick={() => document.getElementById("knowledge-upload")?.click()}>
-              <Upload className="h-4 w-4 ml-2" />
-              Choose files
+              {isExtracting ? <Loader2 className="h-4 w-4 animate-spin ml-2" /> : <Upload className="h-4 w-4 ml-2" />}
+              {isExtracting ? "Extracting ZIP…" : "Choose files"}
             </Button>
             <p className="text-xs text-muted-foreground mt-3">
               PDF, Word, Excel, CSV, text, Markdown, JSON, XML, ZIP · up to 25MB per file
