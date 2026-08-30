@@ -102,83 +102,53 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
 
   const SUPPORTED_EXT = /\.(pdf|docx?|xlsx?|pptx?|csv|tsv|txt|md|log|json|xml|html?|eml|rtf)$/i;
 
-  // Robustly read a File/Blob into bytes. Safari/Chrome throw NotReadableError
-  // when a one-shot read of a big file (or a file on iCloud/external volume)
-  // fails, so we fall back to FileReader and then to chunked slice reads.
-  const readBytes = async (file: File | Blob): Promise<ArrayBuffer> => {
-    try {
-      return await file.arrayBuffer();
-    } catch (e1) {
-      console.warn("arrayBuffer() failed, trying FileReader", e1);
-    }
-    try {
-      return await new Promise<ArrayBuffer>((resolve, reject) => {
-        const fr = new FileReader();
-        fr.onload = () => resolve(fr.result as ArrayBuffer);
-        fr.onerror = () => reject(fr.error || new Error("FileReader failed"));
-        fr.readAsArrayBuffer(file);
-      });
-    } catch (e2) {
-      console.warn("FileReader failed, trying chunked read", e2);
-    }
-    // Chunked read (8MB slices) — most reliable for large/flaky handles.
-    const CHUNK = 8 * 1024 * 1024;
-    const total = file.size;
-    const out = new Uint8Array(total);
-    let offset = 0;
-    while (offset < total) {
-      const slice = file.slice(offset, Math.min(offset + CHUNK, total));
-      let buf: ArrayBuffer | null = null;
-      for (let attempt = 0; attempt < 3 && !buf; attempt++) {
-        try {
-          buf = await slice.arrayBuffer();
-        } catch {
-          await new Promise((r) => setTimeout(r, 150));
-        }
-      }
-      if (!buf) throw new Error("NotReadableError");
-      out.set(new Uint8Array(buf), offset);
-      offset += buf.byteLength;
-    }
-    return out.buffer;
+  const mimeForName = (name: string) => {
+    const ext = name.split(".").pop()?.toLowerCase();
+    const types: Record<string, string> = {
+      pdf: "application/pdf", doc: "application/msword",
+      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      xls: "application/vnd.ms-excel",
+      xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      csv: "text/csv", tsv: "text/tab-separated-values", txt: "text/plain",
+      md: "text/markdown", json: "application/json", xml: "application/xml",
+      html: "text/html", htm: "text/html", zip: "application/zip",
+    };
+    return (ext && types[ext]) || "application/octet-stream";
   };
 
-  // Expand a ZIP archive into its individual documents (recursively skips
-  // folders, macOS metadata and unsupported binaries, and opens nested zips).
-  const expandZip = async (file: File | Blob, label: string, depth = 0): Promise<File[]> => {
-    const JSZip = (await import("jszip")).default;
-    const buffer = await readBytes(file);
-    const zip = await JSZip.loadAsync(buffer, { checkCRC32: false } as any);
-
+  // zip.js reads directly from the browser Blob in ranges. Unlike JSZip, it
+  // does not first allocate an ArrayBuffer as large as the entire archive.
+  const expandZip = async (file: File | Blob, depth = 0): Promise<File[]> => {
+    const { BlobReader, BlobWriter, ZipReader } = await import("@zip.js/zip.js");
+    const reader = new ZipReader(new BlobReader(file));
     const out: File[] = [];
-    const entries = Object.values(zip.files) as any[];
-    for (const entry of entries) {
-      if (entry.dir) continue;
-      const name = entry.name.split("/").pop() || entry.name;
-      if (name.startsWith(".") || entry.name.startsWith("__MACOSX/")) continue;
+    try {
+      const entries = await reader.getEntries();
+      for (const entry of entries) {
+        if (entry.directory || !("getData" in entry)) continue;
+        const name = entry.filename.split("/").pop() || entry.filename;
+        if (name.startsWith(".") || entry.filename.startsWith("__MACOSX/")) continue;
+        if (entry.encrypted) throw new Error("The archive is password protected");
 
-      if (/\.zip$/i.test(name) && depth < 3) {
+        const isNestedZip = /\.zip$/i.test(name) && depth < 3;
+        if (!isNestedZip && !SUPPORTED_EXT.test(name)) continue;
+        // Reject oversized expanded entries before allocating their contents.
+        if (!isNestedZip && (!entry.uncompressedSize || entry.uncompressedSize > MAX_SIZE)) continue;
         try {
-          const innerBlob = await entry.async("blob");
-          out.push(...(await expandZip(innerBlob, name, depth + 1)));
+          const blob = await entry.getData(new BlobWriter(mimeForName(name)));
+          if (isNestedZip) {
+            out.push(...(await expandZip(blob, depth + 1)));
+          } else if (blob.size > 0 && blob.size <= MAX_SIZE) {
+            out.push(new File([blob], name, { type: mimeForName(name) }));
+          }
         } catch (err) {
-          console.error("nested zip error", name, err);
+          console.error("zip entry error", name, err);
         }
-        continue;
       }
-
-      if (!SUPPORTED_EXT.test(name)) continue;
-      let blob: Blob;
-      try {
-        blob = await entry.async("blob");
-      } catch (err) {
-        console.error("zip entry error", name, err);
-        continue;
-      }
-      if (blob.size === 0 || blob.size > MAX_SIZE) continue;
-      out.push(new File([blob], name, { type: blob.type || "application/octet-stream" }));
+      return out;
+    } finally {
+      await reader.close();
     }
-    return out;
   };
 
   const addFiles = async (files: FileList | File[]) => {
@@ -186,7 +156,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
     for (const file of Array.from(files)) {
       if (isZip(file)) {
         try {
-          const inner = await expandZip(file, file.name);
+          const inner = await expandZip(file);
           if (inner.length === 0) {
             toast.error(`No supported files found inside ${file.name}`);
             continue;
@@ -199,6 +169,8 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
           toast.error(`Failed to open ${file.name}`, {
             description: /encrypted|password/i.test(msg)
               ? "The archive is password protected — unzip it locally and upload the files."
+              : /array buffer allocation|out of memory|allocation failed/i.test(msg)
+                ? "This archive is too large for this browser. Extract it on your computer, then upload the resulting files in batches."
               : /notreadable|could not be read|permission/i.test(msg)
                 ? "The browser lost access to the file. Copy the ZIP to your Desktop (not iCloud/Downloads sync or an external drive) and pick it again."
                 : msg.slice(0, 180),
