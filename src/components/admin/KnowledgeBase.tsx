@@ -102,14 +102,54 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
 
   const SUPPORTED_EXT = /\.(pdf|docx?|xlsx?|pptx?|csv|tsv|txt|md|log|json|xml|html?|eml|rtf)$/i;
 
+  // Robustly read a File/Blob into bytes. Safari/Chrome throw NotReadableError
+  // when a one-shot read of a big file (or a file on iCloud/external volume)
+  // fails, so we fall back to FileReader and then to chunked slice reads.
+  const readBytes = async (file: File | Blob): Promise<ArrayBuffer> => {
+    try {
+      return await file.arrayBuffer();
+    } catch (e1) {
+      console.warn("arrayBuffer() failed, trying FileReader", e1);
+    }
+    try {
+      return await new Promise<ArrayBuffer>((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(fr.result as ArrayBuffer);
+        fr.onerror = () => reject(fr.error || new Error("FileReader failed"));
+        fr.readAsArrayBuffer(file);
+      });
+    } catch (e2) {
+      console.warn("FileReader failed, trying chunked read", e2);
+    }
+    // Chunked read (8MB slices) — most reliable for large/flaky handles.
+    const CHUNK = 8 * 1024 * 1024;
+    const total = file.size;
+    const out = new Uint8Array(total);
+    let offset = 0;
+    while (offset < total) {
+      const slice = file.slice(offset, Math.min(offset + CHUNK, total));
+      let buf: ArrayBuffer | null = null;
+      for (let attempt = 0; attempt < 3 && !buf; attempt++) {
+        try {
+          buf = await slice.arrayBuffer();
+        } catch {
+          await new Promise((r) => setTimeout(r, 150));
+        }
+      }
+      if (!buf) throw new Error("NotReadableError");
+      out.set(new Uint8Array(buf), offset);
+      offset += buf.byteLength;
+    }
+    return out.buffer;
+  };
+
   // Expand a ZIP archive into its individual documents (recursively skips
   // folders, macOS metadata and unsupported binaries, and opens nested zips).
   const expandZip = async (file: File | Blob, label: string, depth = 0): Promise<File[]> => {
     const JSZip = (await import("jszip")).default;
-    // Reading into an ArrayBuffer first is far more reliable for large archives
-    // than handing JSZip the File handle directly.
-    const buffer = await file.arrayBuffer();
+    const buffer = await readBytes(file);
     const zip = await JSZip.loadAsync(buffer, { checkCRC32: false } as any);
+
     const out: File[] = [];
     const entries = Object.values(zip.files) as any[];
     for (const entry of entries) {
@@ -159,8 +199,11 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
           toast.error(`Failed to open ${file.name}`, {
             description: /encrypted|password/i.test(msg)
               ? "The archive is password protected — unzip it locally and upload the files."
-              : msg.slice(0, 180),
+              : /notreadable|could not be read|permission/i.test(msg)
+                ? "The browser lost access to the file. Copy the ZIP to your Desktop (not iCloud/Downloads sync or an external drive) and pick it again."
+                : msg.slice(0, 180),
           });
+
         }
 
         continue;
