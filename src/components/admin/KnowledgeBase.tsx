@@ -224,7 +224,12 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
 
     setIsUploading(true);
     let ok = 0;
-    for (const item of pending) {
+    let done = 0;
+    const total = pending.length;
+    const toastId = `kb-upload-${Date.now()}`;
+    if (total > 1) toast.loading(`Uploading 0/${total} files…`, { id: toastId });
+
+    const uploadOne = async (item: StagedFile) => {
       patchStaged(item.key, { status: "uploading", error: undefined });
       const { data, error } = await uploadKnowledgeFile({
         file: item.file,
@@ -243,17 +248,41 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
         ok++;
         patchStaged(item.key, { status: "done", chunks: data?.chunksCreated ?? data?.ChunksCreated });
       }
-    }
+      done++;
+      if (total > 1) toast.loading(`Uploading ${done}/${total} files…`, { id: toastId });
+    };
+
+    // Upload a few files at a time so large archives don't take forever.
+    const queue = [...pending];
+    const workers = Array.from({ length: Math.min(4, queue.length) }, async () => {
+      while (queue.length) {
+        const next = queue.shift();
+        if (next) await uploadOne(next);
+      }
+    });
+    await Promise.all(workers);
 
     setIsUploading(false);
+    if (total > 1) toast.dismiss(toastId);
     if (ok > 0) {
       toast.success(`${ok} files uploaded to the agent knowledge base`);
       await loadDocuments();
       // Clear the successfully-uploaded items after a short beat.
       setStaged((prev) => prev.filter((s) => s.status !== "done"));
     }
-    if (ok < pending.length) toast.error(`${pending.length - ok} files failed`);
+    if (ok < total) toast.error(`${total - ok} files failed`);
   };
+
+  // ZIP archives are uploaded automatically — the extracted files land in the
+  // knowledge base without an extra click.
+  useEffect(() => {
+    if (!autoUpload || isUploading) return;
+    if (!staged.some((s) => s.status === "idle")) return;
+    setAutoUpload(false);
+    void uploadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoUpload, staged, isUploading]);
+
 
   const handleDelete = async (doc: KnowledgeDoc) => {
     const { error } = await deleteKnowledgeDocument(doc.id);
