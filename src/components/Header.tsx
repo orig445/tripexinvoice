@@ -132,6 +132,25 @@ export function Header({ onNewChat }: HeaderProps = {}) {
             <span className="hidden sm:inline">Chat with Milo</span>
           </Button>
 
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() =>
+              window.open(
+                "https://support.combtas.com/",
+                "_blank",
+                "noopener,noreferrer"
+              )
+            }
+          >
+            <ExternalLink className="h-4 w-4" />
+            <span className="hidden sm:inline">Combtas Support</span>
+          </Button>
+
+
+
+
 
         {user && (
           <DropdownMenu>
