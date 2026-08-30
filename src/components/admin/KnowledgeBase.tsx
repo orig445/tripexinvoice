@@ -83,6 +83,8 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
   const [staged, setStaged] = useState<StagedFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [autoUpload, setAutoUpload] = useState(false);
+
 
   const loadDocuments = useCallback(async () => {
     const { data, error } = await listKnowledgeDocuments(audience);
