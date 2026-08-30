@@ -100,21 +100,41 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
   const isZip = (f: File) =>
     /\.zip$/i.test(f.name) || f.type === "application/zip" || f.type === "application/x-zip-compressed";
 
-  const SUPPORTED_EXT = /\.(pdf|docx?|xlsx?|csv|txt|md|json|xml)$/i;
+  const SUPPORTED_EXT = /\.(pdf|docx?|xlsx?|pptx?|csv|tsv|txt|md|log|json|xml|html?|eml|rtf)$/i;
 
   // Expand a ZIP archive into its individual documents (recursively skips
-  // folders, macOS metadata and unsupported binaries).
-  const expandZip = async (file: File): Promise<File[]> => {
+  // folders, macOS metadata and unsupported binaries, and opens nested zips).
+  const expandZip = async (file: File | Blob, label: string, depth = 0): Promise<File[]> => {
     const JSZip = (await import("jszip")).default;
-    const zip = await JSZip.loadAsync(file);
+    // Reading into an ArrayBuffer first is far more reliable for large archives
+    // than handing JSZip the File handle directly.
+    const buffer = await file.arrayBuffer();
+    const zip = await JSZip.loadAsync(buffer, { checkCRC32: false } as any);
     const out: File[] = [];
     const entries = Object.values(zip.files) as any[];
     for (const entry of entries) {
       if (entry.dir) continue;
       const name = entry.name.split("/").pop() || entry.name;
       if (name.startsWith(".") || entry.name.startsWith("__MACOSX/")) continue;
+
+      if (/\.zip$/i.test(name) && depth < 3) {
+        try {
+          const innerBlob = await entry.async("blob");
+          out.push(...(await expandZip(innerBlob, name, depth + 1)));
+        } catch (err) {
+          console.error("nested zip error", name, err);
+        }
+        continue;
+      }
+
       if (!SUPPORTED_EXT.test(name)) continue;
-      const blob = await entry.async("blob");
+      let blob: Blob;
+      try {
+        blob = await entry.async("blob");
+      } catch (err) {
+        console.error("zip entry error", name, err);
+        continue;
+      }
       if (blob.size === 0 || blob.size > MAX_SIZE) continue;
       out.push(new File([blob], name, { type: blob.type || "application/octet-stream" }));
     }
@@ -126,7 +146,7 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
     for (const file of Array.from(files)) {
       if (isZip(file)) {
         try {
-          const inner = await expandZip(file);
+          const inner = await expandZip(file, file.name);
           if (inner.length === 0) {
             toast.error(`No supported files found inside ${file.name}`);
             continue;
@@ -135,8 +155,14 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
           expanded.push(...inner);
         } catch (err) {
           console.error("zip error", err);
-          toast.error(`Failed to open ${file.name}`);
+          const msg = err instanceof Error ? err.message : String(err);
+          toast.error(`Failed to open ${file.name}`, {
+            description: /encrypted|password/i.test(msg)
+              ? "The archive is password protected — unzip it locally and upload the files."
+              : msg.slice(0, 180),
+          });
         }
+
         continue;
       }
       expanded.push(file);
