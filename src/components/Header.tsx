@@ -1,4 +1,4 @@
-import { Receipt, LogOut, User, Shield, Bot, Brain, Lock, RotateCcw, BarChart3, Video } from "lucide-react";
+import { Receipt, LogOut, User, Shield, Bot, Brain, Lock, RotateCcw, BarChart3, Video, ExternalLink } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
