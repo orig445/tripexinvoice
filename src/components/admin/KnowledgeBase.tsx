@@ -165,8 +165,10 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
             toast.error(`No supported files found inside ${file.name}`);
             continue;
           }
-          toast.success(`${file.name}: extracted ${inner.length} files`);
+          toast.success(`${file.name}: extracted ${inner.length} files — uploading…`);
+          cameFromZip = true;
           expanded.push(...inner);
+
         } catch (err) {
           console.error("zip error", err);
           const msg = err instanceof Error ? err.message : String(err);
