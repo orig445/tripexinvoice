@@ -199,8 +199,11 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
           toast.error(`Failed to open ${file.name}`, {
             description: /encrypted|password/i.test(msg)
               ? "The archive is password protected — unzip it locally and upload the files."
-              : msg.slice(0, 180),
+              : /notreadable|could not be read|permission/i.test(msg)
+                ? "The browser lost access to the file. Copy the ZIP to your Desktop (not iCloud/Downloads sync or an external drive) and pick it again."
+                : msg.slice(0, 180),
           });
+
         }
 
         continue;
