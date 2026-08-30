@@ -204,7 +204,11 @@ export function KnowledgeBase({ audience = "external" }: { audience?: KnowledgeA
         status: "idle",
       });
     }
-    if (incoming.length) setStaged((prev) => [...prev, ...incoming]);
+    if (incoming.length) {
+      setStaged((prev) => [...prev, ...incoming]);
+      if (cameFromZip) setAutoUpload(true);
+    }
+
   };
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
