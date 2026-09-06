@@ -61,6 +61,67 @@ public class ChatService
     // false-positive match against unrelated text.
     private const int MinPageNameMatchLength = 8;
 
+    // Milo's own judgment on "is this question ambiguous enough to ask a clarifying
+    // question" isn't perfectly reliable (same class of issue as its page-selection
+    // judgment) — without a hard code-level cap, a confused model could keep asking
+    // "clarify" forever instead of ever reaching an answer or a human, defeating the
+    // whole point of adding it (fewer support tickets, not an endless interrogation).
+    private const int MaxConsecutiveClarifications = 2;
+
+    // The TAS trip/expense-report status values, exactly as they appear in the system —
+    // supplied directly by the product owner (2026-09-03), NOT derived from any live TAS
+    // connection: TripEx.Api's own database has no trip/expense tables at all (see
+    // init-db.sql) — it cannot look up a specific customer's real, current status. These lists
+    // only power the fixed multiple-choice question; the answer that follows is general
+    // guidance for whichever status the user picks, not a live per-customer fact. Split in two
+    // because a question about a standalone expense report (no trip involved) only has 3 of
+    // the 16 total statuses available to it — showing all 16 there would offer choices that
+    // can't actually apply. "Other" bundles the 4 statuses that didn't fit either named list
+    // (Matched / Closed / Pending for Cancel / Cancelled) rather than silently dropping them.
+    // Update by hand if TAS's own status set ever changes.
+    private static readonly string[] TripStatusOptionsForTrip =
+    {
+        "Draft", "TR Approval", "Coordinator Approval", "Reservations", "Proposal Approval",
+        "Approved", "Issued", "Active", "Travel Completed", "Expense Report", "Expense Approval",
+        "Expense Approved", "Other (Matched / Closed / Pending for Cancel / Cancelled)",
+    };
+
+    private static readonly string[] TripStatusOptionsForExpenseOnly =
+    {
+        "Expense Report", "Expense Approval", "Expense Approved", "Other",
+    };
+
+    // Every intent that counts as a "clarifying-type" turn for the consecutive-clarification
+    // cap — "clarify" (the fixed 3-way orientation round) plus the two fixed status-list
+    // follow-ups (kept as distinct intent values for logging: which one fired tells you
+    // whether the user was on the trip or the expense-only path).
+    private static readonly HashSet<string> ClarifyTypeIntents = new(StringComparer.Ordinal)
+    {
+        "clarify", "clarify_status_trip", "clarify_status_expense",
+    };
+
+    // Counts, from the end, an unbroken run of assistant turns whose Intent was one of
+    // ClarifyTypeIntents — pulled out as its own testable unit (public + static, same
+    // reasoning as ResolvePageOverride below) since an off-by-one or interleaving mistake
+    // here directly controls the consecutive-clarification cap enforced in ProcessAsync.
+    // Stops at the first assistant message that ISN'T one of those, so only a run
+    // immediately preceding the current turn counts — an old clarify from earlier in a
+    // long-lived session that was already followed by a real answer must not count against
+    // a brand new, unrelated question. User messages in between are skipped, not counted as
+    // breaks.
+    public static int CountTrailingConsecutiveClarifications(
+        IReadOnlyList<(string Role, string Content, string? Intent)> historyRows)
+    {
+        var count = 0;
+        for (var i = historyRows.Count - 1; i >= 0; i--)
+        {
+            if (historyRows[i].Role != "assistant") continue;
+            if (historyRows[i].Intent is not string it || !ClarifyTypeIntents.Contains(it)) break;
+            count++;
+        }
+        return count;
+    }
+
     // Mirrors the top-level shape of page-links.json: { "baseUrl": "...", "pages": [...] }.
     private class PageLinksFile
     {
@@ -106,6 +167,29 @@ public class ChatService
             else if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z')) latin++;
         }
         return hebrew > latin;
+    }
+
+    // Turns one fixed-question option into a clickable link: clicking it fills the widget's
+    // own message box with the option's exact text and clicks its own send button — same as
+    // the user typing that option and hitting send themselves. This works TODAY, with zero
+    // changes to the external chat widget's own source (which this codebase doesn't have
+    // access to — see 2026-09-03 QuickReplies discussion): the widget already renders a
+    // reply's "text" as raw HTML, so a plain <a href="javascript:..."> in there just runs.
+    // It's an interim stand-in for a native "clickable quick-reply button" UI in that widget;
+    // QuickReplies (the structured, unencoded option list on ChatResponse) is what a future
+    // native implementation there should use instead of scraping these links out of "text".
+    // Fragile by nature: if #message-box / #send-btn are ever renamed in that widget, these
+    // links silently stop working (typing still works fine either way).
+    private static string BuildClickableOption(string optionText)
+    {
+        var jsEscapedText = optionText.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\n", " ");
+        var js = "(function(){var b=document.getElementById('message-box');if(!b)return;b.focus();" +
+                 $"b.textContent='{jsEscapedText}';" +
+                 "b.dispatchEvent(new InputEvent('input',{bubbles:true,data:b.textContent}));" +
+                 "var s=document.getElementById('send-btn');if(s)s.click();})()";
+        var href = System.Net.WebUtility.HtmlEncode("javascript:" + js);
+        var label = System.Net.WebUtility.HtmlEncode(optionText);
+        return $"<a href=\"{href}\">{label}</a>";
     }
 
     // Given the AI's own stated "page" and its full "text" reply, returns the page key that
@@ -188,6 +272,9 @@ public class ChatService
     {
         ["help"]             = (new(), null),
         ["escalate"]         = (new(), null),
+        ["clarify"]          = (new(), null),
+        ["clarify_status_trip"]     = (new(), null),
+        ["clarify_status_expense"]  = (new(), null),
         ["scan"]             = (new() { "Camera" }, null),
         ["expense"]          = (new(), null),
         ["expense_complete"] = (new(), null),
@@ -271,22 +358,26 @@ public class ChatService
         }
 
         // ── Load history (best-effort; empty when DB is unavailable) ──
-        var history = new List<(string Role, string Content)>();
+        // Intent is carried alongside Role/Content (not just for the AI prompt, which only
+        // needs Role/Content) so the consecutive-"clarify" cap below can inspect what each
+        // past assistant turn actually was without a second DB round trip.
+        var historyRows = new List<(string Role, string Content, string? Intent)>();
         try
         {
-            history = (await _db.ChatMessages
+            historyRows = (await _db.ChatMessages
                 .Where(m => m.SessionId == sessionId)
                 .OrderBy(m => m.CreatedAt)
                 .Take(50)
-                .Select(m => new { m.Role, m.Content })
+                .Select(m => new { m.Role, m.Content, m.Intent })
                 .ToListAsync())
-                .Select(m => (m.Role, m.Content))
+                .Select(m => (m.Role, m.Content, m.Intent))
                 .ToList();
         }
         catch (Exception ex)
         {
             Console.WriteLine($"⚠️ [CHAT] History not loaded (DB unavailable): {ex.Message}");
         }
+        var history = historyRows.Select(h => (h.Role, h.Content)).ToList();
 
         // ── Load config (best-effort; defaults when DB is unavailable) ──
         ChatbotConfig? config = null;
@@ -347,6 +438,72 @@ public class ChatService
 
         // ── Parse response ──
         var (intent, responseText, page) = ParseAiResponse(rawContent);
+
+        // ── Shape "clarify"/"clarify_status_*" responses: fixed questions first, cap at the limit ──
+        // quickReplies mirrors whatever fixed numbered list ends up in responseText, as plain
+        // option strings (no numbering) — the frontend renders these as clickable buttons;
+        // clicking one just re-sends its exact text as the next message, like typing it.
+        // The whole clarify-flow is customer-support-ticket-reduction UX (see BuildSystemPrompt)
+        // — irrelevant for TripEx's own internal staff (source:"internal"). The prompt already
+        // never offers these intents to the model for that audience; this is the same "don't
+        // rely on the prompt alone" defense-in-depth this file uses everywhere else, in case
+        // the model emits one of them anyway.
+        var quickReplies = new List<string>();
+        var isInternalAudience = string.Equals(request.Source, "internal", StringComparison.OrdinalIgnoreCase);
+        if (!isInternalAudience && ClarifyTypeIntents.Contains(intent))
+        {
+            var consecutiveClarifications = CountTrailingConsecutiveClarifications(historyRows);
+            page = null; // none of these ever link to a page — there's nothing to link to yet
+
+            if (consecutiveClarifications >= MaxConsecutiveClarifications)
+            {
+                intent = "escalate";
+                // The model's own "text" was phrased as yet another question, not an
+                // escalation explanation — replace it with a fixed, honest line instead of
+                // showing a mismatched question right above the support-contact line.
+                responseText = IsHebrewDominant(request.Text)
+                    ? "כדי לוודא שתקבל את העזרה המדויקת ביותר, אני מעביר את זה לתמיכה."
+                    : "To make sure you get the most accurate help, let me connect you with support.";
+            }
+            else if (intent == "clarify_status_trip" || intent == "clarify_status_expense")
+            {
+                // Fixed, deterministic status list — shown whenever the user picked "travel &
+                // expense operations" in the first round, instead of whatever the model would
+                // have phrased/listed on its own (the model only decides WHICH list applies —
+                // trip-related vs. a standalone expense report — never what either one says).
+                var statusOptions = intent == "clarify_status_trip"
+                    ? TripStatusOptionsForTrip
+                    : TripStatusOptionsForExpenseOnly;
+                var numberedStatuses = string.Join("\n",
+                    statusOptions.Select((s, i) => $"{i + 1}. {BuildClickableOption(s)}"));
+                responseText = IsHebrewDominant(request.Text)
+                    ? $"באיזה סטטוס נמצאת הנסיעה או דוח ההוצאות?\n{numberedStatuses}"
+                    : $"What status is the trip or expense report currently in?\n{numberedStatuses}";
+                quickReplies = statusOptions.ToList();
+            }
+            else if (consecutiveClarifications == 0)
+            {
+                // The FIRST clarifying question on any topic is always this fixed, three-way
+                // orientation question — deterministic and identical every time, instead of
+                // whatever the model would have improvised, so the opening question is
+                // predictable and reliably useful regardless of how well the model judged its
+                // own phrasing. The model's OWN clarifying question is used for the SECOND
+                // round instead (the final `else` case below) — by then the user's answer here
+                // has already narrowed things down to one area, so it can ask something specific.
+                var isHebrew = IsHebrewDominant(request.Text);
+                quickReplies = isHebrew
+                    ? new() { "תפעול שוטף של נסיעות והוצאות", "ניתוח נתונים ודוחות במערכת", "ניהול ושינוי הגדרות במערכת" }
+                    : new() { "Travel & expense operations", "Data analysis & reports", "System management & settings" };
+                var numberedAreas = string.Join("\n",
+                    quickReplies.Select((s, i) => $"{i + 1}. {BuildClickableOption(s)}"));
+                responseText = isHebrew
+                    ? $"כדי שאוכל לכוון אותך לתשובה המדויקת ביותר — במה מדובר?\n{numberedAreas}"
+                    : $"To point you to the most accurate answer — which of these is it about?\n{numberedAreas}";
+            }
+            // else (plain "clarify" with consecutiveClarifications == 1): this is the second,
+            // model-authored clarifying question for the reports/settings paths — no fixed
+            // options to offer as buttons, quickReplies stays empty.
+        }
 
         // ── Map intent to actions ──
         var mapping = ActionMapping.GetValueOrDefault(intent, ActionMapping["general"]);
@@ -501,6 +658,7 @@ public class ChatService
         {
             Text = responseText,
             Actions = mapping.Actions,
+            QuickReplies = quickReplies,
             RedirectPage = pageUrl,
             RedirectLabel = pageLink?.Label,
             SessionId = sessionId.ToString(),
@@ -853,6 +1011,61 @@ public class ChatService
             ? "This user IS a system admin — when escalation is needed, route them to Support only (never tell an admin to contact their admin)."
             : "This user is a regular user — when escalation is needed, route them to their System Admin, or to Support.";
 
+        // The whole clarify-flow feature (2026-09-03) — the fixed orientation question, the
+        // trip/expense status lists, the 2-question cap — was designed around ONE specific
+        // goal: fewer support tickets from CUSTOMERS asking about TAS pages/reports. TripEx's
+        // own internal staff (source:"internal", see ChatInternal.tsx / route /chat-internal)
+        // aren't customers being routed away from support — showing them this flow would just
+        // be confusing, out-of-place UX for an unrelated use case. Gated here (the model never
+        // even sees the option) AND in ProcessAsync (defense in depth, matching how every
+        // other model-trust boundary in this file is handled) — either alone would be enough,
+        // but not relying on just the prompt is the same lesson as everywhere else in here.
+        var isInternalAudience = string.Equals(request.Source, "internal", StringComparison.OrdinalIgnoreCase);
+
+        var clarifyFlowRules = isInternalAudience ? "" : $@"3a. 🔴 WHEN TO ASK INSTEAD OF GUESSING (not the same thing as 3 above, which is about a specific
+   page vs. a generic hub — this is about not being able to tell WHICH specific page, or even
+   which general area, yet): use intent ""clarify"" instead of silently picking one, and instead
+   of escalating, in either of these cases —
+     (i) the question is too general/vague to tell even which broad area it's about (e.g. ""how do
+         I know something about a certain trip"" could be an operational question, a report, or a
+         settings question), or
+     (ii) you already know the area, but the question could genuinely fit either of two (or more)
+         DIFFERENT specific pages in that area — e.g. an older vs. a newer/updated version of the
+         same report, or a generic phrase that matches two unrelated features equally well.
+   You get at most 2 clarifying questions in a row for the same topic:
+     - The FIRST one is handled FOR you automatically — a fixed, three-way orientation question
+       (operations / reports & data analysis / settings & management). You do not need to write
+       your own wording for it; just set intent to ""clarify"" and omit ""page"" — whatever you put
+       in ""text"" for this first round is replaced automatically, so don't spend effort on it.
+     - The SECOND one (if you still can't pick confidently after the user's answer to the first)
+       is entirely up to you: ask ONE short, concrete, SPECIFIC question — now informed by which
+       of the three areas the user picked — whose answer alone would let you pick correctly (e.g.
+       ""the older report, or the newer/updated one?""). Omit ""page"" here too.
+     - If the user's answer is still not enough to decide after that second question, make your
+       best specific guess (or escalate if genuinely nothing fits) rather than asking a third time.
+   Do NOT use ""clarify"" when you simply have no relevant knowledge at all about the topic — that
+   is still ""escalate""; ""clarify"" is only for when you DO know (or could narrow down to) the
+   relevant page(s) but need more information to pick between them.
+3b. 🔴 AFTER THE USER ANSWERS THE FIRST ORIENTATION QUESTION (3a above), what you do next depends
+   on which of the three areas they picked:
+     - Option 1 (travel & expense operations): decide whether their ORIGINAL question was about
+       a standalone expense report with NO trip involved, or about a trip (with or without an
+       expense report attached to it) — then set intent ""clarify_status_expense"" for the
+       former or ""clarify_status_trip"" for the latter (when genuinely unclear which, prefer
+       ""clarify_status_trip"" — it's the more complete list). Do NOT write your own question
+       either way, its wording is automatic (a fixed status list matching whichever you picked).
+       Once the user then picks a status from that list, answer their ORIGINAL question in light
+       of that status — using the Knowledge Base Context below if relevant — as GENERAL guidance
+       for that status, never as if you looked up their specific, real, live record. You have no
+       access to live trip/expense data — never claim or imply that you checked their actual
+       current status. Do NOT set ""page"" anywhere in this operations path — it never ends in a
+       link.
+     - Option 2 (data analysis & reports) or option 3 (settings & management): proceed exactly
+       like any other Navigation question (rules 1-3 above) — find the single best-matching
+       specific page for what the user actually asked and set ""page"" to it, or ask one more
+       specific ""clarify"" question first if still genuinely torn between two pages in that area.
+";
+
         var navigationSection = "";
         if (allPages.Count > 0)
         {
@@ -886,9 +1099,10 @@ clear match — if none apply, omit ""page"" or set it to """". Never invent a k
 2. Only if NOTHING in that list fits — not even loosely — look at ""General sections"" (below it)
    as a fallback for browsing that whole area (e.g. ""what reports do you have?"").
 3. NEVER pick a ""General sections"" hub just because you're unsure which specific page is exactly
-   right, or because you noticed it before finishing the specific list. Uncertainty means: pick
-   your best specific guess, not the hub.
-4. When you DO set a ""page"" key, do not add your own ""if this isn't right, contact your admin/
+   right, or because you noticed it before finishing the specific list. Uncertainty between a
+   specific page and a general hub is never a reason to ask a question either — pick your best
+   specific guess, not the hub.
+{clarifyFlowRules}4. When you DO set a ""page"" key, do not add your own ""if this isn't right, contact your admin/
    support"" disclaimer in ""text"" — a link to that exact page is already added automatically
    after your text, so that caveat is unnecessary noise. Just give the direct answer.
 5. 🔴 CONSISTENCY RULE: if ""text"" names ONE specific report/page as THE answer — not just
@@ -957,7 +1171,13 @@ Escalate when: you don't know the answer, the Knowledge Base has nothing relevan
 
 ## Intent Categories
 - help: the user wants guidance, a how-to, or an explanation
-- escalate: route the user to a human (System Admin / Support) per the rule above
+{(isInternalAudience ? "" : @"- clarify: the question is too general to know the area, or ambiguous between two or more specific
+  pages — ask instead of guessing (see rule 3a above; first round is automatic, max 2 in a row)
+- clarify_status_trip / clarify_status_expense: use ONLY as the round immediately after the
+  user's answer to the automatic first ""clarify"" round was ""travel & expense operations""
+  (option 1) — see rule 3b below for which of the two to pick. Wording is also automatic (a
+  fixed status list) — you don't write it yourself, just set the right one of these two intents.
+")}- escalate: route the user to a human (System Admin / Support) per the rule above
 - general: greetings, small talk, or anything else
 
 ## Response Style

@@ -53,6 +53,10 @@ public class ChatResponse
 {
     public string Text { get; set; } = "";
     public List<string> Actions { get; set; } = new();
+    // Clickable option labels for a fixed multiple-choice question (the clarify-flow
+    // orientation/status questions) — empty for every other kind of reply. Clicking one is
+    // meant to just re-send its exact text as the next user message, same as a normal reply.
+    public List<string> QuickReplies { get; set; } = new();
     public string RedirectPage { get; set; } = "";
     // Button text to show for RedirectPage (e.g. "Go to Settings"). Empty when RedirectPage is empty.
     public string? RedirectLabel { get; set; }
