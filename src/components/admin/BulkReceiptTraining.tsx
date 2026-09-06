@@ -124,12 +124,12 @@ export function BulkReceiptTraining() {
       .map((file) => ({ file, status: "pending" as const }));
 
     if (newItems.length === 0) {
-      toast.error("לא נמצאו קבצי תמונה או PDF");
+      toast.error("No image or PDF files found");
       return;
     }
 
     setQueue((prev) => [...prev, ...newItems]);
-    toast.success(`${newItems.length} קבצים נוספו לתור`);
+    toast.success(`${newItems.length} files added to the queue`);
     e.target.value = "";
   };
 
@@ -219,7 +219,7 @@ export function BulkReceiptTraining() {
     }
 
     setIsProcessing(false);
-    toast.success("העיבוד המאסיבי הסתיים!");
+    toast.success("Bulk processing finished!");
     loadStats();
   };
 
@@ -231,7 +231,7 @@ export function BulkReceiptTraining() {
       const corrections = !isCorrect && Object.keys(editedFields).length > 0 ? editedFields : undefined;
       await verifyTrainingSample(item.sampleId, isCorrect, corrections);
       updateItem(index, { status: isCorrect ? "verified" : "rejected" });
-      toast.success(isCorrect ? "✅ דוגמה אושרה" : "❌ דוגמה נדחתה");
+      toast.success(isCorrect ? "✅ Sample approved" : "❌ Sample rejected");
       setEditMode(false);
       setEditedFields({});
       // Move to next pending review
@@ -242,7 +242,7 @@ export function BulkReceiptTraining() {
         setReviewIndex(null);
       }
     } catch (err: any) {
-      toast.error(`שגיאה: ${err.message}`);
+      toast.error(`Error: ${err.message}`);
     }
   };
 
@@ -251,9 +251,9 @@ export function BulkReceiptTraining() {
     try {
       const { data, error } = await rebuildOcrPatterns();
       if (error || !data?.success) {
-        toast.error(data?.error || "שגיאה בבניית דפוסים");
+        toast.error(data?.error || "Failed to build patterns");
       } else {
-        toast.success(`נבנו ${data.patternsCreated || data.PatternsCreated} דפוסים מ-${data.samplesAnalyzed || data.SamplesAnalyzed} דוגמאות`);
+        toast.success(`Built ${data.patternsCreated || data.PatternsCreated} patterns from ${data.samplesAnalyzed || data.SamplesAnalyzed} samples`);
         loadStats();
       }
     } catch (err: any) {
@@ -289,13 +289,13 @@ export function BulkReceiptTraining() {
 
   const getStatusText = (status: QueueItem["status"]) => {
     switch (status) {
-      case "pending": return "ממתין";
-      case "uploading": return "מעלה...";
-      case "analyzing": return "מנתח OCR...";
-      case "done": return "ממתין לבדיקה";
-      case "verified": return "אושר ✅";
-      case "rejected": return "נדחה ❌";
-      case "error": return "שגיאה";
+      case "pending": return "Pending";
+      case "uploading": return "Uploading...";
+      case "analyzing": return "Analyzing OCR...";
+      case "done": return "Awaiting review";
+      case "verified": return "Approved ✅";
+      case "rejected": return "Rejected ❌";
+      case "error": return "Error";
     }
   };
 
@@ -318,7 +318,7 @@ export function BulkReceiptTraining() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Eye className="h-5 w-5 text-primary" />
-                <CardTitle className="text-lg">בדיקת קבלה — {reviewItem.file.name}</CardTitle>
+                <CardTitle className="text-lg">Receipt review — {reviewItem.file.name}</CardTitle>
               </div>
               <div className="flex items-center gap-2">
                 {/* Navigation */}
@@ -367,7 +367,7 @@ export function BulkReceiptTraining() {
               {/* Right: Extracted Data */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-sm">נתונים שחולצו</h3>
+                  <h3 className="font-semibold text-sm">Extracted data</h3>
                   <Button
                     size="sm" variant="outline" className="gap-1 h-7 text-xs"
                     onClick={() => {
@@ -384,13 +384,13 @@ export function BulkReceiptTraining() {
                     }}
                   >
                     {editMode ? <X className="h-3 w-3" /> : <Edit3 className="h-3 w-3" />}
-                    {editMode ? "בטל עריכה" : "ערוך תיקונים"}
+                    {editMode ? "Cancel editing" : "Edit corrections"}
                   </Button>
                 </div>
 
                 <div className="space-y-1.5 max-h-[400px] overflow-y-auto">
                   {reviewFields.length === 0 && (
-                    <p className="text-sm text-muted-foreground">לא חולצו נתונים</p>
+                    <p className="text-sm text-muted-foreground">No data extracted</p>
                   )}
                   {reviewFields.map((field) => (
                     <div key={field.key} className="flex items-center gap-2 text-sm">
@@ -419,7 +419,7 @@ export function BulkReceiptTraining() {
                     onClick={() => handleVerify(reviewIndex, true)}
                   >
                     <ThumbsUp className="h-4 w-4" />
-                    {editMode ? "אשר עם תיקונים" : "אשר — הנתונים נכונים"}
+                    {editMode ? "Approve with corrections" : "Approve — data is correct"}
                   </Button>
                   <Button
                     variant="destructive"
@@ -427,12 +427,12 @@ export function BulkReceiptTraining() {
                     onClick={() => handleVerify(reviewIndex, false)}
                   >
                     <ThumbsDown className="h-4 w-4" />
-                    דחה — נתונים שגויים
+                    Reject — data is wrong
                   </Button>
                 </div>
                 {editMode && (
                   <p className="text-xs text-muted-foreground text-center">
-                    ✏️ תקן את השדות השגויים ולחץ "אשר עם תיקונים" — המערכת תלמד מהתיקונים
+                    ✏️ Fix the wrong fields and click "Approve with corrections" — the system learns from them
                   </p>
                 )}
               </div>
@@ -448,7 +448,7 @@ export function BulkReceiptTraining() {
             <div className="flex items-center gap-2">
               <Eye className="h-5 w-5 text-amber-500" />
               <span className="font-medium text-sm">
-                {pendingReviewCount} קבלות ממתינות לבדיקה ואישור
+                {pendingReviewCount} receipts awaiting review and approval
               </span>
             </div>
             <Button
@@ -461,7 +461,7 @@ export function BulkReceiptTraining() {
               }}
             >
               <Eye className="h-4 w-4" />
-              התחל בדיקה
+              Start review
             </Button>
           </CardContent>
         </Card>
@@ -473,32 +473,32 @@ export function BulkReceiptTraining() {
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
               <BarChart3 className="h-5 w-5 text-primary" />
-              <CardTitle className="text-lg">סטטיסטיקות אימון</CardTitle>
+              <CardTitle className="text-lg">Training statistics</CardTitle>
             </div>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
               <div className="text-center">
                 <div className="text-2xl font-bold">{stats.totalSamples}</div>
-                <div className="text-xs text-muted-foreground">סה"כ דוגמאות</div>
+                <div className="text-xs text-muted-foreground">Total samples</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-green-500">{stats.verifiedSamples}</div>
-                <div className="text-xs text-muted-foreground">מאומתות</div>
+                <div className="text-xs text-muted-foreground">Verified</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-red-500">{stats.rejectedSamples}</div>
-                <div className="text-xs text-muted-foreground">נדחו</div>
+                <div className="text-xs text-muted-foreground">Rejected</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-primary">{stats.patternsLearned}</div>
-                <div className="text-xs text-muted-foreground">דפוסים נלמדו</div>
+                <div className="text-xs text-muted-foreground">Patterns learned</div>
               </div>
             </div>
 
             {stats.patterns.length > 0 && (
               <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                <div className="text-sm font-medium mb-1">דפוסים שנלמדו:</div>
+                <div className="text-sm font-medium mb-1">Learned patterns:</div>
                 {stats.patterns.map((p, i) => (
                   <div key={i} className="text-xs p-2 rounded bg-muted/50 flex justify-between items-start gap-2">
                     <span className="flex-1">
@@ -518,11 +518,11 @@ export function BulkReceiptTraining() {
               disabled={isRebuilding || (stats.verifiedSamples < 3)}
             >
               {isRebuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
-              {isRebuilding ? "בונה דפוסים..." : "בנה דפוסים מחדש"}
+              {isRebuilding ? "Building patterns..." : "Rebuild patterns"}
             </Button>
             {stats.verifiedSamples < 3 && (
               <p className="text-xs text-muted-foreground text-center mt-1">
-                נדרשות לפחות 3 דוגמאות מאומתות
+                At least 3 verified samples required
               </p>
             )}
           </CardContent>
@@ -535,13 +535,13 @@ export function BulkReceiptTraining() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Zap className="h-5 w-5 text-primary" />
-              <CardTitle className="text-lg">אימון OCR מאסיבי</CardTitle>
+              <CardTitle className="text-lg">Bulk OCR training</CardTitle>
             </div>
             <div className="flex gap-2">
               {queue.length > 0 && (
                 <Button variant="outline" size="sm" onClick={clearQueue} disabled={isProcessing}>
                   <Trash2 className="h-4 w-4 ml-1" />
-                  נקה תור
+                  Clear queue
                 </Button>
               )}
               <input
@@ -558,12 +558,12 @@ export function BulkReceiptTraining() {
                 disabled={isProcessing}
               >
                 <FolderUp className="h-4 w-4 ml-1" />
-                בחר קבצים
+                Choose files
               </Button>
             </div>
           </div>
           <p className="text-sm text-muted-foreground">
-            העלה קבלות — המערכת תסרוק, תציג תוצאות לאימות, ותלמד דפוסים מהדוגמאות המאושרות
+            Upload receipts — the system scans them, shows results for verification, and learns patterns from approved samples
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -574,10 +574,10 @@ export function BulkReceiptTraining() {
             >
               <Upload className="h-12 w-12 mx-auto mb-3 text-muted-foreground/40" />
               <p className="text-muted-foreground font-medium">
-                לחץ כאן או גרור קבצים לכאן
+                Click here or drag files in
               </p>
               <p className="text-sm text-muted-foreground mt-1">
-                תמונות (JPG, PNG, WEBP) ו-PDF — ללא הגבלת כמות
+                Images (JPG, PNG, WEBP) and PDF — no quantity limit
               </p>
             </div>
           ) : (
@@ -585,9 +585,9 @@ export function BulkReceiptTraining() {
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span>
-                    {doneCount}/{queue.length} הושלמו
+                    {doneCount}/{queue.length} completed
                     {errorCount > 0 && (
-                      <span className="text-destructive mr-2">({errorCount} שגיאות)</span>
+                      <span className="text-destructive mr-2">({errorCount} errors)</span>
                     )}
                   </span>
                   <span>{Math.round(progress)}%</span>
@@ -598,14 +598,14 @@ export function BulkReceiptTraining() {
               {!isProcessing && queue.some(i => i.status === "pending" || i.status === "error") && (
                 <Button onClick={startProcessing} className="w-full gap-2">
                   <Zap className="h-4 w-4" />
-                  התחל עיבוד ({queue.filter((i) => i.status === "pending" || i.status === "error").length} קבצים)
+                  Start processing ({queue.filter((i) => i.status === "pending" || i.status === "error").length} files)
                 </Button>
               )}
 
               {isProcessing && (
                 <div className="flex items-center justify-center gap-2 py-2 text-primary">
                   <Loader2 className="h-5 w-5 animate-spin" />
-                  <span className="font-medium">מעבד... אל תסגור את הדף</span>
+                  <span className="font-medium">Processing... do not close the page</span>
                 </div>
               )}
 
@@ -640,7 +640,7 @@ export function BulkReceiptTraining() {
                           onClick={(e) => { e.stopPropagation(); openReview(i); }}
                         >
                           <Eye className="h-3 w-3" />
-                          בדוק
+                          Review
                         </Button>
                       )}
 
@@ -669,7 +669,7 @@ export function BulkReceiptTraining() {
                     onClick={() => loadStats()}
                   >
                     <RefreshCw className="h-4 w-4" />
-                    רענן סטטיסטיקות
+                    Refresh statistics
                   </Button>
                 </div>
               )}

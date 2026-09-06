@@ -1,0 +1,2 @@
+GRANT SELECT ON public.whatsapp_messages TO authenticated;
+CREATE POLICY "Admins can view whatsapp messages" ON public.whatsapp_messages FOR SELECT TO authenticated USING (public.has_role(auth.uid(), 'admin'::app_role));

@@ -36,7 +36,7 @@ interface LessonPerson {
 const USER_TYPES = [
   { value: "user", label: "Regular user" },
   { value: "coordinator", label: "Coordinator" },
-  { value: "finance", label: "Finance / כספים" },
+  { value: "finance", label: "Finance" },
   { value: "admin", label: "Admin" },
 ];
 

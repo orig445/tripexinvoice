@@ -66,17 +66,17 @@ export function ChatbotLogs() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>תאריך</TableHead>
-              <TableHead>סוג</TableHead>
-              <TableHead>כוונה</TableHead>
-              <TableHead>פרטים</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Intent</TableHead>
+              <TableHead>Details</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {logs.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                  אין לוגים עדיין
+                  No logs yet
                 </TableCell>
               </TableRow>
             ) : (

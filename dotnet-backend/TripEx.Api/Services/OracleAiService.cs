@@ -23,6 +23,16 @@ public class OracleAiService
     private readonly string? _compartmentId;
     private readonly TripExDbContext _db;
 
+    // ── Fine-tuned custom model routing (Milo/Glassix history fine-tune) ──
+    // Two independent gates before a call is ever routed to the custom model:
+    // the call site must opt in (allowCustomModel — only ChatService's Milo path
+    // does; OCR/vision call sites never do, since a text-only fine-tune has no
+    // vision capability), AND Oracle:UseCustomModel must be true. Flipping that
+    // one config value back to false is an instant, code-free rollback to Gemini.
+    private readonly bool _useCustomModel;
+    private readonly string? _customModelEndpoint;
+    private readonly string? _customModelId;
+
     // ── Concurrency throttle: max 10 simultaneous OCI calls process-wide ──
     // Higher limit prevents request queueing under bursts of bulk uploads.
     private static readonly SemaphoreSlim _ociThrottle = new(10, 10);
@@ -55,6 +65,32 @@ public class OracleAiService
         _model = config["Oracle:Model"]
             ?? "google.gemini-2.5-flash";
         _compartmentId = FirstConfigured(config["Oracle:CompartmentId"], Environment.GetEnvironmentVariable("ORACLE_COMPARTMENT_ID"));
+
+        _useCustomModel = string.Equals(
+            FirstConfigured(config["Oracle:UseCustomModel"], Environment.GetEnvironmentVariable("ORACLE_USE_CUSTOM_MODEL")),
+            "true", StringComparison.OrdinalIgnoreCase);
+        _customModelEndpoint = FirstConfigured(config["Oracle:CustomModelEndpoint"], Environment.GetEnvironmentVariable("ORACLE_CUSTOM_MODEL_ENDPOINT"));
+        _customModelId = FirstConfigured(config["Oracle:CustomModelId"], Environment.GetEnvironmentVariable("ORACLE_CUSTOM_MODEL_ID"));
+    }
+
+    /// <summary>
+    /// Decides which OCI endpoint/model a chat call should target. Pulled out as a pure
+    /// function so the routing logic is unit-testable without spinning up HttpClient/DB.
+    /// </summary>
+    public static (string Endpoint, string Model) ResolveChatTarget(
+        bool allowCustomModel,
+        bool useCustomModelFlag,
+        string? customEndpoint,
+        string? customModelId,
+        string defaultEndpoint,
+        string defaultModel)
+    {
+        var useCustom = allowCustomModel
+            && useCustomModelFlag
+            && !string.IsNullOrWhiteSpace(customEndpoint)
+            && !string.IsNullOrWhiteSpace(customModelId);
+
+        return useCustom ? (customEndpoint!, customModelId!) : (defaultEndpoint, defaultModel);
     }
 
     // Returns the first value that is non-empty AND not a config template placeholder.
@@ -234,15 +270,19 @@ CRITICAL RULES:
         int maxTokens = 1024,
         double temperature = 0.3,
         CancellationToken ct = default,
-        bool forceJsonOutput = false)
+        bool forceJsonOutput = false,
+        bool allowCustomModel = false)
     {
         // ── Validate messages ──
         if (messages == null || messages.Count == 0)
             throw new ArgumentException("Messages list cannot be empty");
 
+        var (targetEndpoint, targetModel) = ResolveChatTarget(
+            allowCustomModel, _useCustomModel, _customModelEndpoint, _customModelId, _endpoint, _model);
+
         var requestDict = new Dictionary<string, object>
         {
-            ["model"] = _model,
+            ["model"] = targetModel,
             ["messages"] = messages.Select(m => new { role = m.Role, content = m.Content }).ToArray(),
             ["max_tokens"] = maxTokens,
             ["temperature"] = temperature
@@ -263,14 +303,15 @@ CRITICAL RULES:
         try
         {
             using var testDoc = JsonDocument.Parse(serializedBody);
-            Console.WriteLine($"[OCI] Request body valid JSON, length={serializedBody.Length}, model={_model}");
+            var modelLabel = targetModel == _model ? "default" : "CUSTOM fine-tuned";
+            Console.WriteLine($"[OCI] Request body valid JSON, length={serializedBody.Length}, model={targetModel} ({modelLabel})");
         }
         catch (JsonException ex)
         {
             throw new InvalidOperationException($"Request body serialization produced invalid JSON: {ex.Message}");
         }
 
-        var request = new HttpRequestMessage(HttpMethod.Post, _endpoint);
+        var request = new HttpRequestMessage(HttpMethod.Post, targetEndpoint);
         request.Headers.Add("Authorization", $"Bearer {_apiKey}");
         request.Content = new StringContent(
             serializedBody,
@@ -288,7 +329,7 @@ CRITICAL RULES:
         string responseBody;
         try
         {
-            Console.WriteLine($"[OCI] Sending request to: {_endpoint}");
+            Console.WriteLine($"[OCI] Sending request to: {targetEndpoint}");
             try
             {
                 response = await _httpClient.SendAsync(request, ct);

@@ -12,7 +12,7 @@ import { Lock } from "lucide-react";
  */
 const KnowledgeUploadInternal = () => {
   return (
-    <div className="min-h-screen bg-background" dir="rtl">
+    <div className="min-h-screen bg-background">
       <Header />
       <main className="container py-6 md:py-10 space-y-6 max-w-4xl">
         <div className="flex items-start gap-3">
@@ -20,10 +20,10 @@ const KnowledgeUploadInternal = () => {
             <Lock className="h-6 w-6 text-amber-600" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold">מרכז הידע — סוכן פנימי</h1>
+            <h1 className="text-2xl font-bold">Knowledge center — internal agent</h1>
             <p className="text-muted-foreground">
-              בסיס הידע של הצ'אטבוט <strong>הפנימי</strong> (לעובדים בלבד). מסמכים שמועלים כאן
-              מופרדים לחלוטין מבסיס הידע של סוכן הלקוחות — הם <strong>לא</strong> ייחשפו ללקוחות.
+              Knowledge base for the <strong>internal</strong> chatbot (employees only). Documents uploaded here
+              are fully separated from the customer agent knowledge base — they will <strong>not</strong> be exposed to customers.
             </p>
           </div>
         </div>

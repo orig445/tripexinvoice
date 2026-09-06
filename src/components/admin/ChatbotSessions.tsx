@@ -50,7 +50,7 @@ export function ChatbotSessions() {
   return (
     <div className="space-y-3">
       {sessions.length === 0 ? (
-        <p className="text-center text-muted-foreground py-8">אין שיחות עדיין</p>
+        <p className="text-center text-muted-foreground py-8">No conversations yet</p>
       ) : (
         sessions.map((session) => (
           <Card key={session.id}>
@@ -71,7 +71,7 @@ export function ChatbotSessions() {
                   variant={session.status === "active" ? "default" : "secondary"}
                   className="text-xs"
                 >
-                  {session.status === "active" ? "פעיל" : "סגור"}
+                  {session.status === "active" ? "Active" : "Closed"}
                 </Badge>
               </div>
               {expandedSession === session.id ? (
@@ -93,7 +93,7 @@ export function ChatbotSessions() {
                     }`}
                   >
                     <span className="text-xs font-medium text-muted-foreground">
-                      {msg.role === "user" ? "משתמש" : "בוט"}
+                      {msg.role === "user" ? "User" : "Bot"}
                       {msg.intent && ` • ${msg.intent}`}
                     </span>
                     <p className="mt-0.5">{msg.content}</p>
@@ -101,7 +101,7 @@ export function ChatbotSessions() {
                 ))}
                 {sessionMessages.length === 0 && (
                   <p className="text-xs text-muted-foreground text-center py-4">
-                    אין הודעות בשיחה זו
+                    No messages in this conversation
                   </p>
                 )}
               </CardContent>

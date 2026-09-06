@@ -1,4 +1,4 @@
-import { Receipt, LogOut, User, Shield, Bot, Brain, Lock, RotateCcw } from "lucide-react";
+import { Receipt, LogOut, User, Shield, Bot, Brain, Lock, RotateCcw, BarChart3, Video, ExternalLink } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -62,7 +62,7 @@ export function Header({ onNewChat }: HeaderProps = {}) {
               onClick={() => navigate("/knowledge")}
             >
               <Brain className="h-4 w-4" />
-              <span className="hidden sm:inline">ידע לקוחות</span>
+              <span className="hidden sm:inline">Customer knowledge</span>
             </Button>
           )}
 
@@ -74,7 +74,7 @@ export function Header({ onNewChat }: HeaderProps = {}) {
               onClick={() => navigate("/knowledge-internal")}
             >
               <Lock className="h-4 w-4" />
-              <span className="hidden sm:inline">ידע פנימי</span>
+              <span className="hidden sm:inline">Internal knowledge</span>
             </Button>
           )}
 
@@ -86,9 +86,41 @@ export function Header({ onNewChat }: HeaderProps = {}) {
               onClick={() => navigate("/chat-internal")}
             >
               <Lock className="h-4 w-4" />
-              <span className="hidden sm:inline">צ'אט פנימי</span>
+              <span className="hidden sm:inline">Internal chat</span>
             </Button>
           )}
+
+          {user && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => navigate("/qa")}
+            >
+              <BarChart3 className="h-4 w-4" />
+              <span className="hidden sm:inline">Answer analytics</span>
+            </Button>
+          )}
+
+          {isAdmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() =>
+                window.open(
+                  "https://supabase-recordings-viewer.vercel.app/",
+                  "_blank",
+                  "noopener,noreferrer"
+                )
+              }
+            >
+              <Video className="h-4 w-4" />
+              <span className="hidden sm:inline">Recordings</span>
+            </Button>
+          )}
+
+
 
           <Button
             variant="outline"
@@ -99,6 +131,26 @@ export function Header({ onNewChat }: HeaderProps = {}) {
             <Bot className="h-4 w-4" />
             <span className="hidden sm:inline">Chat with Milo</span>
           </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() =>
+              window.open(
+                "https://support.combtas.com/",
+                "_blank",
+                "noopener,noreferrer"
+              )
+            }
+          >
+            <ExternalLink className="h-4 w-4" />
+            <span className="hidden sm:inline">Combtas Support</span>
+          </Button>
+
+
+
+
 
         {user && (
           <DropdownMenu>
