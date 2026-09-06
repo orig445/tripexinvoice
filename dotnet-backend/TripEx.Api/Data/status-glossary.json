@@ -1,0 +1,154 @@
+{
+  "statuses": [
+    {
+      "key": "Draft",
+      "explanation": "The trip request (or a standalone local expense report) has not been submitted for approval yet. This is also where a trip goes BACK TO whenever the traveler does a Change on the travel request itself (dates, project/budget, trip type) before any proposal has been ticketed — sending it again from Draft is the only way the system recalculates who the approvers are. Once a proposal has already been ticketed, the trip can no longer return all the way to Draft (it can only go back to Reservations)."
+    },
+    {
+      "key": "TR Approval",
+      "explanation": "The first of three separate approval rounds (TR Approval, then Proposal Approval, then Expense Approval). This is the approval of the travel request itself, before any flight/hotel proposals exist yet — the request is only sent to the travel agent after this passes. If a trip seems stuck here, it is simply waiting on its approver (check who that is); a person listed only as 'Info' at this stage does not block anything, they just get a notification."
+    },
+    {
+      "key": "Coordinator Approval",
+      "explanation": "Only present in some companies' configurations: right after TR Approval, a designated travel coordinator must formally accept/acknowledge the trip before it is sent onward to the travel agent. If a company hasn't configured this step, the trip skips straight from TR Approval to Reservations."
+    },
+    {
+      "key": "Reservations",
+      "explanation": "After the travel request itself is approved, the trip waits here while proposals (flight/hotel) are received from the travel agent, chosen, and sent for approval. If a trip seems stuck here, the most common causes are: (1) no services were ever requested from the agent yet, or (2) a Change was made after a prior approval, which resets the trip back to this stage and it needs to be sent for approval again."
+    },
+    {
+      "key": "Proposal Approval",
+      "explanation": "The second approval round: the specific proposals (flight/hotel) that were chosen are waiting for an approver before they can be ticketed. If there is no approver configured for this stage under the current conditions (e.g. no budget/policy exception applies), the trip can legitimately skip straight past this stage — that is expected behavior, not a bug."
+    },
+    {
+      "key": "Approved",
+      "explanation": "The trip (and its proposals) have been approved, but not every chosen proposal has been ticketed by the travel agent yet. If stuck here, check with the travel agent whether they received and processed the ticketing request; if a proposal was replaced, use Change Selected Proposals."
+    },
+    {
+      "key": "Issued",
+      "explanation": "All chosen proposals (flight/hotel) have been ticketed by the travel agent. A Change made after reaching this status will move the trip backward again (to Approved or Reservations, depending on what changed)."
+    },
+    {
+      "key": "Active",
+      "explanation": "The trip is currently taking place, between the departure and return dates. It automatically stays Active for the whole duration and then automatically moves on when the return date passes (to Expense Report for a normal employee, or straight to Travel Completed for an employee who isn't eligible to submit an expense report — see 'Travel Completed' and 'External/Guest users'). If a trip appears stuck in Active past its real return date, the most common cause is that the return date stored in the system doesn't match reality (e.g. a one-way flight with a placeholder date), or the traveler hasn't confirmed the end of the trip yet."
+    },
+    {
+      "key": "Travel Completed",
+      "explanation": "A trip-ending status used specifically for users who are NOT entitled to submit an expense report in the system at all (typically External/Guest-type users such as contractors or vendor staff — controlled by the Allow_Expense setting on their user group, or by the Trip Type's own expense-report setting). For such a user, once services are ticketed/the trip ends, it goes directly here instead of into Expense Report, because they have nothing to submit — their expenses, if any, are handled outside the system (e.g. via a separate supplier invoice). This is NOT simply 'a regular trip that is over' — regular employees go to Expense Report instead."
+    },
+    {
+      "key": "Expense Report",
+      "explanation": "The expense report itself is open for the traveler to add, edit, or remove expense lines before submitting it for approval. Per Diem is calculated automatically only for actual Travel-type trips, not for a standalone local expense report (a local report needs its own separate expense type for meals/food, since there's no travel duration to calculate from). A very common blocker here is a currency/exchange-rate validation error: when the expense currency and the reimbursement currency are the same, the displayed rate must be exactly 1.000, or the system blocks sending the report for approval."
+    },
+    {
+      "key": "Expense Approval",
+      "explanation": "The third approval round: the expense report has been submitted and is waiting for a manager/finance approver to approve it before it becomes final. Note: if the traveler marks that they have 'No Expenses' to report, by default this does NOT get routed to any approver at all (so finance may never be notified) — a company can configure their approval rotation to still require approval even when 'No Expense' is marked, if they need finance to always be aware (e.g. to still process Per Diem payment)."
+    },
+    {
+      "key": "Expense Approved",
+      "explanation": "The expense report has received its final approval. Once here, the report can no longer be deleted or cancelled directly — a Change must first be done to send it back to Expense Report status, and only from there can it be cancelled. If expense lines already went through the accounting interface (they will have a Batch number), cancelling the report does NOT undo that interface transaction on its own. The date the report actually reached this status is what downstream tax/reporting calculations (e.g. year-end accrual reports) use as 'the approval date' — not any other date on the trip."
+    },
+    {
+      "key": "Closed",
+      "explanation": "An optional extra status beyond Expense Approved that some (not all) companies use to mark that payment has actually been made and the accounting side is fully wrapped up. Moving a trip to Closed (and reopening it again if needed) both require a specific permission (Allow_Close_Travel). Note: this is unrelated to a chat/support conversation being 'closed due to no response' — that is a completely different, unrelated use of the word 'closed'."
+    },
+    {
+      "key": "Cancelled",
+      "explanation": "The trip has been fully cancelled. Getting here usually goes through 'Pending for Cancellation' first (see that entry) rather than becoming Cancelled instantly. If a trip was cancelled by mistake, it can usually be recovered: approve or decline the pending cancellation, then use 'Restore TAS' from the Actions menu, which returns the trip to whatever status it was in before the cancellation started."
+    },
+    {
+      "key": "Pending for Cancellation",
+      "explanation": "Works like any other approval round, but for a cancellation request: someone needs to approve the cancellation before the trip actually becomes Cancelled. A known trap: if every approver configured for the cancellation round is set to 'Info' only (with no real approver at all), the trip can get stuck here indefinitely, since nobody is actually able to approve it — this needs a real approver added to the cancellation rotation, not just Info recipients."
+    },
+    {
+      "key": "Matched",
+      "explanation": "This is not really a trip lifecycle status — it belongs to the 'Statement Match' invoice-reconciliation screen, where an uploaded invoice is matched against the ticketed service/proposal it belongs to. A customer asking about 'Matched' is almost always really asking about matching/approving invoices (see the Statement Match / invoice matching topic), not about what stage their trip is in."
+    }
+  ],
+  "mechanisms": [
+    {
+      "topic": "Approval rounds and roles",
+      "explanation": "Every trip has three entirely separate approval rounds, each with its own approvers and history: TR Approval (the travel request itself), Proposal Approval (the chosen flight/hotel proposals), and Expense Approval (the final expense report). Being an approver, or a delegate, in one round does NOT automatically make someone an approver or delegate in the other rounds — each is configured independently, and this is a frequent source of confusion, not a bug. Possible roles at any stage: an Approver (blocks progress until they act), 'Info' (only receives a notification, never blocks progress), a Coordinator (a role with extra administrative permissions, and sometimes a formal acceptance step right after TR Approval), and a Delegate (a stand-in who receives someone else's approval requests for one specific round). 'Skip Rotation' lets a trip bypass an entire approval round entirely (e.g. for a purely fictitious trip opened just to file an expense); it is generally not available at the TR Approval stage itself."
+    },
+    {
+      "topic": "Per Diem",
+      "explanation": "Per Diem is calculated automatically only for real Travel-type trips, not for a standalone local expense report. 'Global' Per Diem means a fixed daily allowance paid without needing to submit receipts. If a hotel proposal is ticketed and its form of payment is 'Employee' (not paid by a supplier directly), the calculated Per Diem intentionally stays lower until the traveler actually reports a hotel expense line (with a receipt) in the expense report — that is expected behavior, not an error, and it continues to work this way even once the trip reaches Active or later statuses."
+    },
+    {
+      "topic": "Currency and exchange rate",
+      "explanation": "When an expense's currency is the same as the reimbursement currency, the displayed exchange rate must be exactly 1.000 — any other value (including 0.00) is treated as an error and can block the expense report from being sent for approval."
+    },
+    {
+      "topic": "Statement Match (matching invoices to services)",
+      "explanation": "'Add Statement' manually creates an invoice entry from scratch. 'Create Statement' automatically builds it from the services already marked Issued on the Abroad screen — faster and preferred when the invoice matches a ticketed service. 'Approve All Matched Invoices' only auto-approves invoices the system matched with a full, exact match — not everything selected manually. An invoice that already received a Batch number (already went through the accounting interface) can't simply be re-linked to that same batch; options are to wait for it to run through again and delete the old record, or mark it Closed manually so it stops trying to interface again."
+    },
+    {
+      "topic": "External / Guest users (contractors, vendor staff, future employees)",
+      "explanation": "Whether a user is even allowed to submit an expense report in the system at all is controlled by the Allow_Expense setting on their User Group, or by the Trip Type's own expense-report setting — not by their trip's status. A user who isn't entitled ends their trip in 'Travel Completed' instead of going through Expense Report at all. An employee who hasn't started working yet often won't come through the HR interface automatically and needs a one-time manual 'Guest' user created for them."
+    },
+    {
+      "topic": "Cash Advance (מקדמה)",
+      "explanation": "A cash advance is requested inside the Travel Request itself, under Actions > Change > Edit > Additional Information (requires the Allow_CashAdvance parameter enabled for that Site, under Settings > Company Profile > Site Details). It only gets approved AFTER the trip's proposals have been ticketed/Issued — not earlier — since the point is to confirm the trip is really happening before money is advanced. Its own approval group ('Cash Advance' / 'Cash in Advance') is configured separately from every other approval round, under Settings > Rotation > Rotation Templates, and should only include people with real finance permissions (Allow_Finance / Allow_Edit_CashAdv) — a generic manager approving it does not actually create the advance in the system, only a finance-permitted approver's action does. At Expense Report stage, the advanced amount is deducted from what's ultimately paid to the employee. Per Diem and Cash Advance are handled separately in the accounting interface — Per Diem is passed through as an expense automatically, but the Cash Advance amount itself is not automatically sent through the interface unless specifically configured to be. Advances are best entered in USD or EUR — other currencies can cause interface/export errors."
+    },
+    {
+      "topic": "Delegate vs 'Login as other user'",
+      "explanation": "A Delegate is set up so that one person's approval requests/notifications are also copied to someone else, who can then act on their behalf — this is a targeted setting per approval round (see 'Approval rounds and roles'). Setting a delegate is NOT retroactive: it only applies to requests sent from that point forward, not to anything already pending before the delegate was configured. This is different from the separate 'Login as other user' / Allow_LoginByOtherUser permission, which lets a person switch into someone else's full session (used e.g. when someone leaves the company and their replacement needs to take over everything, not just approvals)."
+    },
+    {
+      "topic": "Reimbursement currency and the mobile app",
+      "explanation": "Each Site has a default reimbursement currency (e.g. EUR for an EMEA site) — an individual employee who needs a different currency (e.g. a UK-based employee wanting GBP) needs this changed for them specifically by a system admin, it does not follow automatically from where they are or what currency their receipt is in. The mobile app has a receipt-scanning (OCR) tool that auto-fills most expense fields from a photographed receipt except the expense type, which must still be picked manually — and, depending on the app version, changing the reimbursement currency itself may only be possible on the website, not in the app."
+    },
+    {
+      "topic": "Login / SSO problems",
+      "explanation": "When a user can log into the web system but not the mobile app (or vice versa), that split itself is useful diagnostic information — mention it to support. A common root cause for an SSO user who can't log in at all is a mismatch between how their identity is set up in the User table (username, email) versus in the company's own identity system — this needs to be checked on both sides, not assumed to be one side's fault. A 'from a different IP than usual' password-change event can also block login until the password is reset again from the expected network."
+    },
+    {
+      "topic": "Budget and project assignment",
+      "explanation": "Every Travel Request carries a Budget made up of a Division + Project combination, and this pairing is configured centrally in the system's Projects table (reached from Settings) rather than picked freely per trip. Each Project row in that table has a 'Manager' field, and whoever is listed there becomes the Budget Owner — the approver used for that project's budget-approval step across all trips linked to it; a user can also be granted approver rights directly on their own user card for higher approval tiers. The system also tracks a live budget balance per cost center, and if a trip's estimated cost would push that balance negative, the system locks the Travel Request with a budget-deviation error until the estimate is corrected. Budget-utilization reports (e.g. a 'Budget Matrix') only reflect trips that have actually been submitted for approval — because that is the stage at which per-diem/day-based cost estimation is calculated — and Cancelled trips are excluded from the utilization shown."
+    },
+    {
+      "topic": "VAT and tax on expenses",
+      "explanation": "VAT/tax handling on an expense is driven by configuration, not one global setting. Each expense type can carry its own country-specific tax rate (for example, one type taxed at a flat rate and another split between two rates), set up under the Expense Type Account table; for that rate to actually apply, the expense type must also be linked, via a separate Expense Type Assign table, to the specific record type it should appear on — Travel/Trip expense reports and local (Non-Travel) expense reports are configured independently, so a tax-enabled expense type set up for only one of the two simply will not show up (or will not calculate tax) on the other. Separately, on the supplier/vendor-invoice side, whether an incoming invoice is treated as VAT-bearing depends on a 'Vatable' flag configured on that vendor's record in the suppliers table — if the flag isn't set correctly, invoices from that vendor come through without VAT even when the source invoice included it, and this has to be corrected on the vendor record itself rather than per invoice."
+    },
+    {
+      "topic": "Reports and Excel/PDF export",
+      "explanation": "An individual expense report is exported to Excel from inside the TAS itself: open the Expenses screen, choose Actions > Preview (shown to some users as 'Grand Total'), then scroll down to where an 'Export to Excel' button (and a PDF option) appears below the expense lines. Any user with normal access to their own TAS can generate this file with no special permission needed, but giving another role — for example an Accounting team that needs to pull other employees' expense reports — the same export ability is a separate access grant, not something that comes automatically with report visibility. Earlier in the process, at the travel-request/proposal stage before it becomes an expense report, only a PDF export of the travel/approval summary is offered — there is no Excel export at that stage. For consolidated, multi-employee reporting (all trips/expenses for a period, filtered by department, cost center, etc.), the system instead offers standard pre-built reports — found by searching the Reports area by report name/number — which can be filtered and then exported to Excel."
+    },
+    {
+      "topic": "User roles and permissions (Admin / Coordinator / Finance / Accounting)",
+      "explanation": "Access is built from a per-user 'User Group' (e.g. Admin, Coordinator, Accounting, External, Users) set on the employee's profile under Settings > Company Profile > Users, combined with individual Allow_* checkboxes and 'Master File Permissions' layered on top of that group. These groups are not strictly hierarchical: Coordinator carries its own permissions (e.g. Allow_Coordinator) that Admin does not automatically include, so moving a user from Coordinator to Admin can actually remove capabilities unless the Coordinator-specific ones are re-added by hand. By default a regular user can only see their own travels/expenses; Allow_All (or Allow_All_MyCompany) is what lets a user view every travel/expense company-wide, and short of that a user only sees someone else's trips by being added as their Delegate — a report showing empty/blank usually traces back to this. A Finance/Accounting user additionally needs Allow_Finance plus the Accounting Master File Permission, which together grant access to accounting screens and the ability to approve finance-only actions such as cash advance requests; the External user group is reserved for people who are not company employees (contractors, non-employee travelers), and users in that group do not accrue Per Diem."
+    },
+    {
+      "topic": "Notifications and reminders",
+      "explanation": "Who gets emailed for a given event is controlled per approval round, under Rotation Templates / Approval Groups: a person or group can be set at a phase as an 'Info' recipient, meaning they receive the event email (new proposal, approval request, cancellation, etc.) without holding approval authority at that phase. If the same person is set at two different phases of the same rotation (e.g. once as Info, once as Approver), the system sends only one email reflecting whichever phase has the higher priority, so approval phases should be ordered ahead of info-only phases. The email that pushes a Travel Request to the travel agent goes out once services are specified and the request reaches Reservations; if the request is edited afterward, the system does not automatically resend it to the agent — it must be resent manually via 'Mail TR to Agent'. Reminders to approvers who haven't yet acted are NOT automatically sent on a fixed schedule by default — a coordinator can manually trigger one via 'Send Reminder' on the Approvals screen; a fully automated recurring reminder on a custom interval is available only as a separately-enabled add-on, and even then only for approvers, not for a traveler who hasn't yet picked a proposal. Every email the system has actually sent is logged under Settings > Tas Admin > Manage Emails, which is the first place to check whenever someone claims a notification never arrived."
+    },
+    {
+      "topic": "Expense type and GL account code configuration",
+      "explanation": "Every Expense Type must be linked to a GL Account Code before expenses of that type can post to the client's accounting system: the mapping lives in the 'Expense Type Assign' table for employee expense reports, and a related 'Expense Type Account' table handles vendor invoice/service line items. This mapping is set per department/site/company, and if no matching row exists for a given department or site, the interface fails with an error such as 'Account Code is missing'. Expense Type Assign rows also carry a validity/expiry date, used to retire an expense type or GL mapping going forward; the documented intent is that this does not affect data already submitted on existing reports, though this has not been independently confirmed as reliable in every edge case, so it's worth testing before disabling a type that may still be in use on open reports. An Expense Type is also configured separately per report type (a Trip travel report versus a Non-Travel/local report) — a mapping created for one report type does not automatically apply to the other; a separate row must be added for each report type where the expense type should be usable."
+    },
+    {
+      "topic": "Attachments and receipt requirements on expenses",
+      "explanation": "Each expense line supports only one receipt file attached directly to it; to add additional supporting files for the trip, use the general Actions > Attachments screen, which is not tied to a specific expense line. Receipts can also be added by photographing or scanning them from the mobile app. Once an expense report has already been sent through the accounting interface, its lines are locked — a receipt can no longer be added or edited at that point. To fix this, the report must first be reopened (via Actions > Change, which withdraws it from its approval rotation so the expense lines become editable again); if the report has already been interfaced to the external accounting system, the interfaced transaction must first be cancelled/reversed before the report can be edited and resubmitted. Some companies configure a 'Receipt Number' field on the expense line as mandatory (settable per expense type, per company); if it's required and left blank, the report cannot be submitted until it's filled in."
+    },
+    {
+      "topic": "Rotation Templates vs Approval Groups (admin configuration)",
+      "explanation": "Rotation Templates (Settings > Rotation > Rotation (2)) define the step-by-step approval flow for a Travel Request — each step points to an Approval Group, either as a real approver or as an info-only recipient. Approval Groups (Rotation (1)) are named lists of people or role-based approvers, and are a separate concept/screen from User Groups and permissions — giving a user the right permissions and putting them in the correct Approval Group are two separate admin actions. Which Rotation Template applies to a traveler is generally tied to a template assignment rather than chosen per trip, and a Travel Request can sometimes end up routing to an outdated approver set from whenever it was created or last sent to approval — one known fix in that situation is resetting the request back to Draft and resending it through approval, though a stale rotation assignment is only one possible cause among several for 'this still shows the old approver,' not the single confirmed root cause in every case."
+    },
+    {
+      "topic": "Self-booking vs agent-booking trips",
+      "explanation": "A trip's services can be arranged in two ways: sent to the travel agent for proposals, or entered directly by the coordinator/traveler as 'Employee Self Booking', via Actions > Build New Proposal (or the individual Flight/Hotel/Car screens), selecting that supplier instead of a real travel agency. For a self-booked proposal to work correctly, its Form of Payment must be set to Employee, not Supplier — only then does the system automatically open a matching expense line for the traveler once the trip reaches Expense Report stage, which the traveler must attach their own invoice/receipt to; leaving Payment Type as Supplier means no expense line is created automatically. Employee Self Booking proposals are excluded from the automatic invoice-reconciliation (Statement Match) process used for agency-invoiced proposals, so when supplier-invoice matching is needed on a self-booked cost, a different, general supplier must be used instead of Employee Self Booking."
+    },
+    {
+      "topic": "Form of Payment (credit card / supplier / employee)",
+      "explanation": "Every expense line (and every trip proposal) carries a Form of Payment field — typical values include Employee/Cash, an employee-held Credit Card, Company Credit Card, and Supplier — and this field controls how the cost is actually settled, not just how it is labeled. Setting a proposal's Form of Payment to Employee puts its full cost into the traveler's own expense report as a reimbursable item; setting it to Company Credit Card instead carries that cost into the report as a company-card-paid row excluded from the amount owed to the traveler; Supplier means the cost is settled directly with the vendor and is never owed to or by the employee. A vendor/supplier invoice can only be attached inside an employee's expense report by marking that specific line as Company Credit Card and attaching the invoice there — there is no separate path for supplier invoices on an employee report — and the set of Form of Payment options is fixed per company, not extendable with custom types. Whether a given Form of Payment type uses a manually-entered exchange rate or a locked, auto-derived rate depends on how that specific company configured it on the Form Of Payments admin page — this is not tied to the option's name (e.g. an employee-held card is not always manual-rate) but to per-company configuration."
+    },
+    {
+      "topic": "Travel policy exceptions and budget approval triggers",
+      "explanation": "Travel budget/policy checks are driven by a configurable 'estimate' table (set per flight leg, per hotel/destination, or per cost-center project) against which actual submitted costs are compared; the allowed deviation can be defined as a fixed amount or a percentage, and exceeding it can add a budget approver to the approval round or, in some cases, block the trip until corrected. When two configured approver rules would otherwise route to the same person, only the higher-priority rule applies — the lower-priority duplicate for that person is skipped, so they are not asked to approve the same trip twice under two different rules."
+    },
+    {
+      "topic": "Non-Travel / local expense reports",
+      "explanation": "A 'Non-Travel' expense report is a standalone report type, selected when opening a new expense report, that is not tied to any Travel Request (unlike a Travel-linked expense report, opened against an existing trip). Because Per Diem is calculated automatically from trip details (duration, hotel use, etc.), it is only available on Travel reports — a Non-Travel report has no Per Diem option. For local meals or similar costs on a Non-Travel report, employees should use a different expense type instead (e.g. an existing type like 'Food for local travel', or a custom type set up for that purpose); the exact expense type to use can vary by company, since some accounts have their own naming/setup for local-expense types."
+    }
+  ]
+}

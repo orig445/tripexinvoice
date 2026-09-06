@@ -69,6 +69,28 @@ public class ChatResponse
 }
 
 /// <summary>
+/// One entry in Data/status-glossary.json — ground-truth wording for a trip/expense-report
+/// status or a related mechanism (approval rounds, Per Diem, etc.), fed into the system
+/// prompt so Milo explains these correctly instead of guessing or relying only on the
+/// separate Knowledge Base. See ChatService.LoadStatusGlossary.
+/// </summary>
+public class StatusGlossaryEntry
+{
+    public string Key { get; set; } = "";
+    public string Explanation { get; set; } = "";
+}
+
+/// <summary>
+/// One entry in Data/status-glossary.json's "mechanisms" list — a general operational
+/// concept (not a trip status) worth Milo knowing, e.g. approval rounds or Per Diem rules.
+/// </summary>
+public class MechanismEntry
+{
+    public string Topic { get; set; } = "";
+    public string Explanation { get; set; } = "";
+}
+
+/// <summary>
 /// One entry in Data/page-links.json — a known TripEX page Milo can send the user to.
 /// "Key" is what the AI references as "page" in its JSON response.
 /// </summary>

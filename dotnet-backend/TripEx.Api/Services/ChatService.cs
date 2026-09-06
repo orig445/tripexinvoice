@@ -36,7 +36,18 @@ public class ChatService
     static ChatService()
     {
         (_pageLinks, _pageLinksBaseUrl) = LoadPageLinks();
+        (_statusGlossary, _mechanisms) = LoadStatusGlossary();
     }
+
+    // Ground-truth explanations for trip/expense-report statuses and related operational
+    // mechanisms (approval rounds, Per Diem, currency, Statement Match, External/Guest users),
+    // distilled from real support-ticket history (2026-09-06) rather than guessed — see
+    // Data/status-glossary.json. Fed into the clarify-flow's operations path (rule 3b) so
+    // Milo's "general guidance for this status" answer is accurate instead of relying only
+    // on whatever happens to be in the separate Knowledge Base. Same "edit the JSON, no code
+    // deploy" pattern as _pageLinks.
+    private static readonly Dictionary<string, string> _statusGlossary;
+    private static readonly List<MechanismEntry> _mechanisms;
 
     // Read-only view for TripEx.Api.Tests — lets the full-catalog link-resolution regression
     // test enumerate every real page-links.json entry without duplicating the load logic.
@@ -152,6 +163,39 @@ public class ChatService
         {
             Console.WriteLine($"⚠️ [CHAT] Failed to load Data/page-links.json — Milo will answer without page links: {ex.Message}");
             return (new(), "");
+        }
+    }
+
+    // Mirrors the top-level shape of status-glossary.json: { "statuses": [...], "mechanisms": [...] }.
+    private class StatusGlossaryFile
+    {
+        public List<StatusGlossaryEntry> Statuses { get; set; } = new();
+        public List<MechanismEntry> Mechanisms { get; set; } = new();
+    }
+
+    private static (Dictionary<string, string>, List<MechanismEntry>) LoadStatusGlossary()
+    {
+        try
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "Data", "status-glossary.json");
+            if (!File.Exists(path))
+            {
+                Console.WriteLine($"⚠️ [CHAT] Data/status-glossary.json not found at '{path}' — Milo will answer status questions from the Knowledge Base only.");
+                return (new(), new());
+            }
+            var file = JsonSerializer.Deserialize<StatusGlossaryFile>(
+                File.ReadAllText(path),
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
+            var dict = file.Statuses
+                .Where(s => !string.IsNullOrWhiteSpace(s.Key))
+                .ToDictionary(s => s.Key, s => s.Explanation, StringComparer.OrdinalIgnoreCase);
+            Console.WriteLine($"✅ [CHAT] Loaded {dict.Count} status-glossary entries + {file.Mechanisms.Count} mechanism notes from Data/status-glossary.json");
+            return (dict, file.Mechanisms);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ [CHAT] Failed to load Data/status-glossary.json — Milo will answer status questions from the Knowledge Base only: {ex.Message}");
+            return (new(), new());
         }
     }
 
@@ -1059,8 +1103,9 @@ public class ChatService
        ""clarify_status_trip"" — it's the more complete list). Do NOT write your own question
        either way, its wording is automatic (a fixed status list matching whichever you picked).
        Once the user then picks a status from that list, answer their ORIGINAL question in light
-       of that status — using the Knowledge Base Context below if relevant — as GENERAL guidance
-       for that status, never as if you looked up their specific, real, live record. You have no
+       of that status — using the Status Glossary below (and the Knowledge Base Context if it
+       adds anything relevant) — as GENERAL guidance for that status, never as if you looked up
+       their specific, real, live record. You have no
        access to live trip/expense data — never claim or imply that you checked their actual
        current status. Do NOT set ""page"" anywhere in this operations path — it never ends in a
        link.
@@ -1068,6 +1113,24 @@ public class ChatService
        like any other Navigation question (rules 1-3 above) — find the single best-matching
        specific page for what the user actually asked and set ""page"" to it, or ask one more
        specific ""clarify"" question first if still genuinely torn between two pages in that area.
+";
+
+        // Ground-truth wording for the operations path's "answer in light of that status" step
+        // (rule 3b above) — distilled from real support-ticket history (2026-09-06), not
+        // guessed. Prefer this over the Knowledge Base when they conflict, since this was
+        // specifically fact-checked against how TAS actually behaves. Empty for internal
+        // audience (the whole clarify flow, and therefore this, doesn't apply there) and
+        // skipped entirely if the data file failed to load, rather than sending an empty
+        // "Status Glossary" heading with nothing under it.
+        var statusGlossarySection = isInternalAudience || (_statusGlossary.Count == 0 && _mechanisms.Count == 0) ? "" : $@"
+## Status Glossary — ground truth for ""what does status X mean"" (operations path only)
+Use this when answering in light of a status the user picked (rule 3b's operations path) instead
+of guessing. Distilled from real support history — prefer this over the Knowledge Base Context
+below if they ever conflict.
+{string.Join("\n", _statusGlossary.Select(kv => $"- {kv.Key}: {kv.Value}"))}
+
+## Related mechanisms (not statuses themselves, but often relevant alongside them)
+{string.Join("\n", _mechanisms.Select(m => $"- {m.Topic}: {m.Explanation}"))}
 ";
 
         var navigationSection = "";
@@ -1106,7 +1169,7 @@ clear match — if none apply, omit ""page"" or set it to """". Never invent a k
    right, or because you noticed it before finishing the specific list. Uncertainty between a
    specific page and a general hub is never a reason to ask a question either — pick your best
    specific guess, not the hub.
-{clarifyFlowRules}4. When you DO set a ""page"" key, do not add your own ""if this isn't right, contact your admin/
+{clarifyFlowRules}{statusGlossarySection}4. When you DO set a ""page"" key, do not add your own ""if this isn't right, contact your admin/
    support"" disclaimer in ""text"" — a link to that exact page is already added automatically
    after your text, so that caveat is unnecessary noise. Just give the direct answer.
 5. 🔴 CONSISTENCY RULE: if ""text"" names ONE specific report/page as THE answer — not just
