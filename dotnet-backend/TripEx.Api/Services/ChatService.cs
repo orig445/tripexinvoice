@@ -408,14 +408,18 @@ public class ChatService
         var historyRows = new List<(string Role, string Content, string? Intent)>();
         try
         {
-            historyRows = (await _db.ChatMessages
+            // Newest 50, then flipped back to chronological order. NOT OrderBy+Take: that
+            // pins the window to the OLDEST 50 messages of the session, so once a session
+            // passes 50 messages the model keeps re-reading the opening turns and never
+            // sees the recent ones it actually has to answer in context of.
+            var recent = await _db.ChatMessages
                 .Where(m => m.SessionId == sessionId)
-                .OrderBy(m => m.CreatedAt)
+                .OrderByDescending(m => m.CreatedAt)
                 .Take(50)
                 .Select(m => new { m.Role, m.Content, m.Intent })
-                .ToListAsync())
-                .Select(m => (m.Role, m.Content, m.Intent))
-                .ToList();
+                .ToListAsync();
+            recent.Reverse();
+            historyRows = recent.Select(m => (m.Role, m.Content, m.Intent)).ToList();
         }
         catch (Exception ex)
         {
@@ -1282,6 +1286,15 @@ User's location (from IP): {geo.Location}
 User's local time: {geo.LocalTime}
 User's timezone: {geo.Timezone}
 Browser-reported time: {request.UserDate ?? "unknown"} {request.UserTime ?? ""} ({request.UserTimezone ?? "unknown"})
-Current context: source={request.Source}, scope={request.Scope ?? ""}{(request.Trid != null ? $", trid={request.Trid}" : "")}{knowledgeContext}";
+Current context: source={request.Source}, scope={request.Scope ?? ""}{(request.Trid != null ? $", trid={request.Trid}" : "")}{knowledgeContext}
+
+## Conversation memory — the messages that follow this prompt
+Everything after this system prompt is the ongoing conversation with THIS user in THIS session,
+oldest first. Always use it as memory: remember what the user already told you (names, trips,
+amounts, receipts, statuses, preferences), resolve pronouns and follow-up questions against it,
+and never ask again for something the user has already given you.
+A short reply such as ""yes"", ""the newer one"", or a bare status name is almost always the
+answer to YOUR OWN previous question — read it in that context and continue from there, instead
+of treating it as a brand-new standalone request.";
     }
 }
