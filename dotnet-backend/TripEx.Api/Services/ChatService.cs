@@ -450,7 +450,13 @@ public class ChatService
         }
 
         var temperature = (double)(config?.Temperature ?? 0.3m);
-        var maxTokens = config?.MaxTokens ?? 2048;
+        // Floor, not just a fallback: a "thinking" model (e.g. gemini-2.5-pro) spends part of
+        // this budget on invisible reasoning tokens before writing anything visible, so a
+        // config row saved back when the default model was a non-thinking one (MaxTokens
+        // default is 1024 — see ChatbotConfig) starves the actual answer, cutting it off
+        // mid-sentence (seen in prod 2026-09-07: latency=8-10s, "[OCI-PARSE] Truncated JSON").
+        // Never LOWERS an intentionally-higher configured value, only raises a too-low one.
+        var maxTokens = Math.Max(config?.MaxTokens ?? 2048, 4096);
 
         // ── Geolocation ──
         var geo = await _geoService.GetLocationAsync(ipAddress);
