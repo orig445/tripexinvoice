@@ -363,6 +363,71 @@ _ = Task.Run(async () =>
 // }
 
 app.UseCors();
+
+// Any failed /api/* request that would otherwise go back with an EMPTY body gets a small JSON
+// body instead, plus a log line. Authentication challenges (401), authorization failures (403)
+// and routing misses (404/405) are produced by middleware, not by our controllers, and they
+// return zero content — so a widget doing `await res.json()` throws a parse error and shows the
+// user nothing but a generic "error", with no way to tell a wrong URL from an expired key.
+// Registered before auth so it wraps those middlewares' responses. Only touches /api paths and
+// only when nothing has already written a body, so Swagger and real controller responses
+// (including ChatController's own 429/500 payloads) are untouched.
+app.Use(async (context, next) =>
+{
+    var isApi = context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase);
+
+    try
+    {
+        await next();
+    }
+    catch (Exception ex) when (isApi)
+    {
+        // Nothing else in this pipeline handles exceptions (there is no UseExceptionHandler), so
+        // an unhandled throw used to reach Kestrel and come back as a 500 with a ZERO-LENGTH
+        // body — the exact case this middleware exists to prevent, and the likeliest one in
+        // production: a controller whose dependency graph fails to construct (e.g. missing
+        // Oracle:ApiKey makes OracleAiService's constructor throw) fails BEFORE ChatController's
+        // own try/catch exists, so that catch never sees it.
+        // Deliberately not rethrown: the JSON body below is about to be written, and rethrowing
+        // after a write aborts the connection. The exception is logged here with its stack so
+        // nothing is lost. Non-/api paths are excluded by the filter above and still propagate.
+        app.Logger.LogError(ex, "[API-500] {Method} {Path} threw", context.Request.Method, context.Request.Path);
+        if (context.Response.HasStarted) throw;
+        context.Response.Clear(); // drop any Content-Length a downstream set before throwing
+        context.Response.StatusCode = 500;
+    }
+
+    if (context.Response.HasStarted) return;
+    if (context.Response.StatusCode < 400) return;
+    if (context.Response.ContentLength is > 0) return;
+    if (!isApi) return;
+
+    var status = context.Response.StatusCode;
+    app.Logger.LogWarning("[API-{Status}] {Method} {Path} returned {Status} with an empty body",
+        status, context.Request.Method, context.Request.Path, status);
+
+    var reason = status switch
+    {
+        401 => "Unauthorized — missing or invalid API key / bearer token.",
+        403 => "Forbidden — authenticated, but not allowed to call this endpoint.",
+        404 => "Not found — no endpoint is registered at this path.",
+        405 => "Method not allowed for this path.",
+        // Deliberately generic: an exception message can carry connection strings or keys, and
+        // this body goes to a browser. The full exception is in the log, keyed by path + method.
+        500 => "Server error — the request failed inside the API. See the server log for details.",
+        _ => "Request failed.",
+    };
+
+    context.Response.ContentType = "application/json; charset=utf-8";
+    await context.Response.WriteAsJsonAsync(new
+    {
+        error = reason,
+        status,
+        path = context.Request.Path.Value,
+        method = context.Request.Method,
+    });
+});
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseRequestTimeouts(); // must be after auth, before MapControllers

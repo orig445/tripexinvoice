@@ -213,28 +213,26 @@ public class ChatService
         return hebrew > latin;
     }
 
-    // Turns one fixed-question option into a clickable link: clicking it fills the widget's
-    // own message box with the option's exact text and clicks its own send button — same as
-    // the user typing that option and hitting send themselves. This works TODAY, with zero
-    // changes to the external chat widget's own source (which this codebase doesn't have
-    // access to — see 2026-09-03 QuickReplies discussion): the widget already renders a
-    // reply's "text" as raw HTML, so a plain <a href="javascript:..."> in there just runs.
-    // It's an interim stand-in for a native "clickable quick-reply button" UI in that widget;
-    // QuickReplies (the structured, unencoded option list on ChatResponse) is what a future
-    // native implementation there should use instead of scraping these links out of "text".
-    // Fragile by nature: if #message-box / #send-btn are ever renamed in that widget, these
-    // links silently stop working (typing still works fine either way).
-    private static string BuildClickableOption(string optionText)
-    {
-        var jsEscapedText = optionText.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\n", " ");
-        var js = "(function(){var b=document.getElementById('message-box');if(!b)return;b.focus();" +
-                 $"b.textContent='{jsEscapedText}';" +
-                 "b.dispatchEvent(new InputEvent('input',{bubbles:true,data:b.textContent}));" +
-                 "var s=document.getElementById('send-btn');if(s)s.click();})()";
-        var href = System.Net.WebUtility.HtmlEncode("javascript:" + js);
-        var label = System.Net.WebUtility.HtmlEncode(optionText);
-        return $"<a href=\"{href}\">{label}</a>";
-    }
+    // Renders one option of a fixed question as plain, readable text.
+    //
+    // This used to emit <a href="javascript:...(getElementById('message-box')...
+    // getElementById('send-btn')...)"> — an anchor that filled one specific widget's message box
+    // and clicked its own send button. That was abandoned on 2026-09-07 because it hardcoded
+    // ANOTHER application's private DOM ids into this backend, and:
+    //   * it bailed out silently (`if(!b)return;`) on any widget whose ids differ — which is
+    //     exactly what a second embedded widget did, producing links that looked clickable and
+    //     did nothing, with no error anywhere to explain why;
+    //   * the whole href was HTML-entity-encoded, so any consumer that does NOT render "text" as
+    //     raw HTML (e.g. this repo's own React widget, which renders it as escaped text) showed
+    //     the user a wall of `&#39;` garbage instead of an option;
+    //   * a javascript: URL is blocked outright by a strict Content-Security-Policy, which an
+    //     embedded iframe may acquire at any time without telling us.
+    // Plain text has none of those failure modes: the user can read the option and type it, on
+    // every consumer, with no assumptions about the frontend at all. A widget that wants real
+    // buttons should read ChatResponse.QuickReplies — the same options as clean, unnumbered,
+    // unencoded strings — and send the chosen string as the next message. That field is already
+    // populated on every one of these turns and needs no backend change to start using.
+    private static string BuildClickableOption(string optionText) => optionText;
 
     // Given the AI's own stated "page" and its full "text" reply, returns the page key that
     // should actually be linked. Public + static so TripEx.Api.Tests can run it directly
@@ -384,11 +382,38 @@ public class ChatService
         }
 
         // ── Empty text ──
+        // This is the path a widget hits when it opens a chat or presses "New chat" without a
+        // real question, so it IS the welcome message in practice — it used to answer with a
+        // hardcoded English line, ignoring both the welcome message configured in
+        // ChatbotConfig and the customer's own locale, which is why a Hebrew user opening the
+        // chat got greeted in English.
         if (string.IsNullOrWhiteSpace(request.Text))
         {
+            string? configuredWelcome = null;
+            try
+            {
+                configuredWelcome = (await _db.ChatbotConfigs
+                    .Where(c => c.IsActive)
+                    .OrderByDescending(c => c.UpdatedAt)
+                    .Select(c => c.WelcomeMessage)
+                    .FirstOrDefaultAsync());
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ [CHAT] Welcome message not loaded (DB unavailable): {ex.Message}");
+            }
+
+            var wantsHebrew = request.Widget?.Locale?.StartsWith("he", StringComparison.OrdinalIgnoreCase) == true;
+            var fallbackWelcome = wantsHebrew
+                ? "היי 👋 אני מילו, העוזר של TripEX. איך אפשר לעזור?"
+                : "Hello 👋 I'm Milo, your TripEX assistant. How can I help?";
+
+            _logger.LogInformation("[CHAT] welcome message returned (empty text) session={SessionId} source={Source} configured={HasConfigured}",
+                sessionId, request.Source ?? "-", !string.IsNullOrWhiteSpace(configuredWelcome));
+
             return new ChatResponse
             {
-                Text = "Hello 👋 I'm TripEX AI. How can I assist you today?",
+                Text = !string.IsNullOrWhiteSpace(configuredWelcome) ? configuredWelcome! : fallbackWelcome,
                 SessionId = sessionId.ToString()
             };
         }
@@ -678,12 +703,12 @@ public class ChatService
         }
         else if (ClarifyTypeIntents.Contains(intent))
         {
-            // Escape hatch. A clarify turn nulls out `page`, so it reaches neither branch above
-            // and its whole body is the question plus the numbered option links. Those links are
-            // BuildClickableOption's javascript: anchors, which silently do nothing on any widget
-            // whose DOM ids aren't #message-box/#send-btn (or that doesn't render text as HTML) —
-            // leaving the user with a question and no way forward at all. Always give a
-            // transport-independent alternative: type the option, or contact support.
+            // Escape hatch. A clarify turn nulls out `page`, so it reaches neither branch above:
+            // its whole body is the fixed question plus a numbered plain-text option list, with
+            // no page link and no support address. QuickReplies carries the same options in
+            // structured form for a frontend that renders real buttons — this line is the
+            // transport-independent instruction for every consumer that has neither, so the turn
+            // is always survivable no matter how the widget renders it.
             responseText += isHebrewReply
                 ? $"\n\nאפשר גם פשוט להקליד את הטקסט של האפשרות המתאימה, או לפנות לתמיכה במייל {_supportContact}"
                 : $"\n\nYou can also simply type the text of the option that fits, or reach support by email at {_supportContact}";
