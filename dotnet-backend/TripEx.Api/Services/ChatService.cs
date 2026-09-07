@@ -534,8 +534,14 @@ public class ChatService
         // the model emits one of them anyway.
         var quickReplies = new List<string>();
         var isInternalAudience = string.Equals(request.Source, "internal", StringComparison.OrdinalIgnoreCase);
+        // The model's own "text" on a clarify turn is about to be overwritten by a fixed
+        // question, which used to make a wrongly-chosen "clarify" completely undiagnosable:
+        // nothing recorded WHY it asked instead of answering. The prompt now requires that text
+        // to name the entries it was torn between, so keep it for the [CHAT] log line below.
+        string? clarifyRationale = null;
         if (!isInternalAudience && ClarifyTypeIntents.Contains(intent))
         {
+            clarifyRationale = responseText;
             var consecutiveClarifications = CountTrailingConsecutiveClarifications(historyRows);
             page = null; // none of these ever link to a page — there's nothing to link to yet
 
@@ -693,6 +699,12 @@ public class ChatService
         _logger.LogInformation(
             "[CHAT] session={SessionId} user={UserId} source={Source} intent={Intent} rag={RagChars}c latency={LatencyMs}ms\n  Q: {Message}\n  A: {Response}",
             sessionId, userId, request.Source ?? "-", intent, ragChars, latencyMs, request.Text, responseText);
+
+        // Why the model chose to ask instead of answer (its own words, before the fixed question
+        // replaced them). Only on clarify turns, so this stays quiet on normal traffic.
+        if (!string.IsNullOrWhiteSpace(clarifyRationale))
+            _logger.LogInformation("[CLARIFY-WHY] session={SessionId} intent={Intent} model_said={Rationale}",
+                sessionId, intent, clarifyRationale);
 
         // ── Persist assistant message + audit log + escalation (best-effort) ──
         // Skipped silently if the DB is unavailable so the answer still returns.
@@ -1118,10 +1130,14 @@ public class ChatService
         // but not relying on just the prompt is the same lesson as everywhere else in here.
         var isInternalAudience = string.Equals(request.Source, "internal", StringComparison.OrdinalIgnoreCase);
 
-        var clarifyFlowRules = isInternalAudience ? "" : $@"3a. 🔴 WHEN TO ASK INSTEAD OF GUESSING (not the same thing as 3 above, which is about a specific
-   page vs. a generic hub — this is about not being able to tell WHICH specific page, or even
-   which general area, yet): use intent ""clarify"" instead of silently picking one, and instead
-   of escalating, in either of these cases —
+        var clarifyFlowRules = isInternalAudience ? "" : $@"3a. 🔴 WHEN TO ASK INSTEAD OF GUESSING — READ THE COST FIRST: answering is ALWAYS the default and
+   ""clarify"" is the rare exception. A clarifying question costs the user a whole extra round trip,
+   and it is simply WRONG whenever one best-matching specific page exists. It is NEVER a shortcut
+   around finishing the scan of the specific list in rule 1 — if you have not scanned that whole
+   list yet, scanning it is what you do instead of asking. (This is not the same thing as 3 above,
+   which is about a specific page vs. a generic hub — this is about not being able to tell WHICH
+   specific page, or even which general area, yet.) Only then use intent ""clarify"", instead of
+   silently picking one and instead of escalating, in either of these cases —
      (i) the question is too general/vague to tell even which broad area it's about (e.g. ""how do
          I know something about a certain trip"" could be an operational question, a report, or a
          settings question), or
@@ -1131,8 +1147,11 @@ public class ChatService
    You get at most 2 clarifying questions in a row for the same topic:
      - The FIRST one is handled FOR you automatically — a fixed, three-way orientation question
        (operations / reports & data analysis / settings & management). You do not need to write
-       your own wording for it; just set intent to ""clarify"" and omit ""page"" — whatever you put
-       in ""text"" for this first round is replaced automatically, so don't spend effort on it.
+       your own wording for it: set intent to ""clarify"", omit ""page"", and put ONE short sentence
+       in ""text"" naming the two or more specific entries you are genuinely torn between. That
+       sentence is not shown to the user — it is recorded, so a wrongly-chosen ""clarify"" can be
+       reviewed afterwards. If you cannot name at least two competing entries, then you are not in
+       case (i) or (ii) at all and must answer the question instead of asking one.
      - The SECOND one (if you still can't pick confidently after the user's answer to the first)
        is entirely up to you: ask ONE short, concrete, SPECIFIC question — now informed by which
        of the three areas the user picked — whose answer alone would let you pick correctly (e.g.
