@@ -374,7 +374,12 @@ app.UseCors();
 // (including ChatController's own 429/500 payloads) are untouched.
 app.Use(async (context, next) =>
 {
-    var isApi = context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase);
+    // "/AI" is included alongside "/api" because the TAS widget calls a second, legacy route
+    // namespace (/AI/Message/...) — see WidgetSessionController. Covering it here means any
+    // OTHER legacy path that widget still calls shows up as a logged, readable 404 instead of
+    // an empty body the widget can only report as a generic failure.
+    var isApi = context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase)
+                || context.Request.Path.StartsWithSegments("/AI", StringComparison.OrdinalIgnoreCase);
 
     try
     {
