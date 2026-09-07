@@ -670,6 +670,18 @@ public class ChatService
                 ? $"\n\nניתן לפנות לתמיכה במייל {_supportContact}"
                 : $"\n\nYou can reach support by email at {_supportContact}";
         }
+        else if (ClarifyTypeIntents.Contains(intent))
+        {
+            // Escape hatch. A clarify turn nulls out `page`, so it reaches neither branch above
+            // and its whole body is the question plus the numbered option links. Those links are
+            // BuildClickableOption's javascript: anchors, which silently do nothing on any widget
+            // whose DOM ids aren't #message-box/#send-btn (or that doesn't render text as HTML) —
+            // leaving the user with a question and no way forward at all. Always give a
+            // transport-independent alternative: type the option, or contact support.
+            responseText += isHebrewReply
+                ? $"\n\nאפשר גם פשוט להקליד את הטקסט של האפשרות המתאימה, או לפנות לתמיכה במייל {_supportContact}"
+                : $"\n\nYou can also simply type the text of the option that fits, or reach support by email at {_supportContact}";
+        }
 
         // ── Save corrections (learning from OCR corrections) ──
         await TrySaveCorrections(intent, sessionId, userId);

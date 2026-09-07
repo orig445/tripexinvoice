@@ -37,6 +37,17 @@ public class OracleAiService
     // Higher limit prevents request queueing under bursts of bulk uploads.
     private static readonly SemaphoreSlim _ociThrottle = new(10, 10);
 
+    // Serializer for the OUTBOUND OCI request body only. System.Text.Json's default encoder
+    // escapes every non-ASCII character as \uXXXX, which on a Hebrew-heavy prompt (the page
+    // catalog + status glossary) turned ~121KB of a ~246KB body into pure escape padding
+    // carrying zero information. The relaxed encoder emits those characters directly — OCI
+    // decodes to a byte-identical string either way, so this changes nothing the model sees.
+    // Deliberately NOT used for responses or anything DB/HTML-facing.
+    private static readonly JsonSerializerOptions _ociJson = new()
+    {
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
     // ── Image debug saving: disabled by default to reduce disk I/O and avoid disk-full crashes ──
     // Set environment variable OCR_SAVE_DEBUG_IMAGES=true to re-enable.
     private static readonly bool _saveDebugImages =
@@ -297,19 +308,14 @@ CRITICAL RULES:
         if (!string.IsNullOrEmpty(_compartmentId))
             requestDict["compartmentId"] = _compartmentId;
 
-        var serializedBody = JsonSerializer.Serialize(requestDict);
+        var serializedBody = JsonSerializer.Serialize(requestDict, _ociJson);
 
-        // ── Validate serialized JSON before sending ──
-        try
-        {
-            using var testDoc = JsonDocument.Parse(serializedBody);
-            var modelLabel = targetModel == _model ? "default" : "CUSTOM fine-tuned";
-            Console.WriteLine($"[OCI] Request body valid JSON, length={serializedBody.Length}, model={targetModel} ({modelLabel})");
-        }
-        catch (JsonException ex)
-        {
-            throw new InvalidOperationException($"Request body serialization produced invalid JSON: {ex.Message}");
-        }
+        // No JsonDocument.Parse round-trip here on purpose: it re-parsed this whole ~250KB body
+        // on every single request just to log its length, and the "validation" it did could not
+        // fail — JsonSerializer.Serialize on a Dictionary<string, object> either throws or
+        // produces well-formed JSON, so the catch was unreachable.
+        var modelLabel = targetModel == _model ? "default" : "CUSTOM fine-tuned";
+        Console.WriteLine($"[OCI] Request body length={serializedBody.Length}, model={targetModel} ({modelLabel})");
 
         var request = new HttpRequestMessage(HttpMethod.Post, targetEndpoint);
         request.Headers.Add("Authorization", $"Bearer {_apiKey}");
