@@ -350,9 +350,11 @@ public class ChatService
         // DB writes are best-effort: if the database is unavailable we still answer
         // (via OCI) instead of failing the whole request — persistence is just skipped.
         Guid sessionId = Guid.NewGuid();
+        bool continuedSession = false;
         if (!string.IsNullOrEmpty(request.SessionToken) && Guid.TryParse(request.SessionToken, out var existingId))
         {
             sessionId = existingId;
+            continuedSession = true;
         }
         else
         {
@@ -368,6 +370,12 @@ public class ChatService
                 Console.WriteLine($"⚠️ [CHAT] Session not persisted (DB unavailable): {ex.Message}");
             }
         }
+        // Single grep-able line to watch for the caller-side session-continuity fix landing —
+        // continued=False on every request for a given source means that caller is still not
+        // sending back SessionToken at all (today: true for every non-internal source). No
+        // other change in this file can make continued=True for a caller that doesn't send it.
+        _logger.LogInformation("[CHAT-CONTINUITY] source={Source} session={SessionId} continued={Continued}",
+            request.Source, sessionId, continuedSession);
 
         // ── Image flow ──
         if (request.Type == "image")
@@ -450,6 +458,24 @@ public class ChatService
         // ── RAG: Search knowledge base ──
         var knowledgeContext = await SearchKnowledgeBase(request.Text);
 
+        // ── Widget context (e.g. the "Sports Support" embed's postMessage payload) ──
+        // TAS is already the trusted, authenticated caller for this whole request (the same
+        // static server-to-server key that authenticates everything else on this path) — these
+        // fields are just more request data from that same already-authenticated caller, exactly
+        // like Source/Scope/Trid above. No extra verification layer on top of that.
+        if (request.Widget != null)
+        {
+            // Every field logged except the token itself (only whether one was present) —
+            // a session/identity token doesn't belong in a plaintext log file. This one line
+            // is meant to be the single place to confirm, from a real test message, that
+            // everything the host page sent actually made it all the way to this backend.
+            _logger.LogInformation(
+                "[WIDGET-CONTEXT] hasToken={HasToken} customerId={CustomerId} customerName={CustomerName} company={CompanyName} role={Role} pageContext={PageContext} locale={Locale}",
+                !string.IsNullOrEmpty(request.Widget.Token), request.Widget.CustomerId, request.Widget.CustomerName,
+                request.Widget.CompanyName, request.Widget.Role, request.Widget.PageContext, request.Widget.Locale);
+        }
+        var effectiveRole = !string.IsNullOrWhiteSpace(request.Widget?.Role) ? request.Widget!.Role! : userRole;
+
         // ── Build system prompt ──
         // Every known page goes in — the AI's own semantic matching handles Hebrew
         // morphology/synonyms far better than a keyword-overlap filter would (tried and
@@ -457,7 +483,7 @@ public class ChatService
         // sentences) specifically to keep this affordable at ~366 entries.
         var allPages = _pageLinks.Values.ToList();
         var systemPrompt = BuildSystemPrompt(
-            request, geo, knowledgeContext, userRole, allPages);
+            request, geo, knowledgeContext, effectiveRole, allPages);
 
         // ── Build messages ──
         var messages = new List<OracleMessage>
@@ -1215,7 +1241,8 @@ General sections — LAST RESORT ONLY, use only if nothing above fits:
 
 CRITICAL OUTPUT RULE: Respond with ONLY a JSON object. No reasoning, no markdown, no text outside the JSON.
 CRITICAL TEXT RULE: The ""text"" field must ALWAYS contain natural, human-readable text. NEVER put JSON objects, code, or raw data structures inside the ""text"" field.
-CRITICAL LANGUAGE RULE: Detect the language of the user's latest message and reply in that SAME language (Hebrew → Hebrew, English → English, etc.). Never switch languages on your own — mirror the user.
+CRITICAL LANGUAGE RULE: Detect the language of the user's latest message and reply in that SAME language (Hebrew → Hebrew, English → English, etc.). Never switch languages on your own — mirror the user.{(!string.IsNullOrWhiteSpace(request.Widget?.Locale) ? $@"
+The host page reports the customer's locale as ""{request.Widget!.Locale}"" — prefer that over your own language detection whenever the two would disagree (e.g. a short or ambiguous message)." : "")}
 
 ## What you CAN do
 - Answer questions about the TripEX system and how to use it.
@@ -1286,7 +1313,7 @@ User's location (from IP): {geo.Location}
 User's local time: {geo.LocalTime}
 User's timezone: {geo.Timezone}
 Browser-reported time: {request.UserDate ?? "unknown"} {request.UserTime ?? ""} ({request.UserTimezone ?? "unknown"})
-Current context: source={request.Source}, scope={request.Scope ?? ""}{(request.Trid != null ? $", trid={request.Trid}" : "")}{knowledgeContext}
+Current context: source={request.Source}, scope={request.Scope ?? ""}{(request.Trid != null ? $", trid={request.Trid}" : "")}{(request.Widget != null ? $"\nWidget customer: {request.Widget.CustomerName ?? "unknown"} ({request.Widget.CompanyName ?? "unknown company"}), currently viewing: {request.Widget.PageContext ?? "unknown"}. Use this only to personalize tone/greeting — never as proof of identity or permission level." : "")}{knowledgeContext}
 
 ## Conversation memory — the messages that follow this prompt
 Everything after this system prompt is the ongoing conversation with THIS user in THIS session,

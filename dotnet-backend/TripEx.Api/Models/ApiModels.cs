@@ -47,6 +47,22 @@ public class ChatRequest
     public string? UserDate { get; set; }
     public string? UserTime { get; set; }
     public string? UserTimezone { get; set; }
+    // Identity/context a host page hands the widget via postMessage (e.g. the "Sports
+    // Support" embed: token, customerName, companyName, customerId, role, pageContext,
+    // locale) and the widget forwards verbatim on every request — same trust level as
+    // Source/Scope/Trid above, since it rides on the same already-authenticated TAS call.
+    public WidgetIdentityContext? Widget { get; set; }
+}
+
+public class WidgetIdentityContext
+{
+    public string? Token { get; set; }
+    public string? CustomerName { get; set; }
+    public string? CompanyName { get; set; }
+    public string? CustomerId { get; set; }
+    public string? Role { get; set; }
+    public string? PageContext { get; set; }
+    public string? Locale { get; set; }
 }
 
 public class ChatResponse
