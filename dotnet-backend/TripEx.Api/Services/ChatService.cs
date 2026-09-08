@@ -360,14 +360,65 @@ public class ChatService
         _supportContact = configuration["Support:Contact"] ?? "support@tripex.io";
     }
 
+    /// <summary>
+    /// Whether this caller may continue an existing conversation. Without this check any caller
+    /// holding a session GUID could resume someone else's conversation and read its history back
+    /// out of the model's context — demonstrated against live QA on 2026-09-08 using a different
+    /// API token. A foreign or stale token is ignored rather than rejected, so the worst outcome
+    /// for a legitimate user is simply starting a fresh conversation.
+    ///
+    /// Deliberately a weak boundary on the widget path, and worth being precise about why: every
+    /// X-Api-Key/Token caller authenticates as the same system principal
+    /// (ChatController.ApiKeySystemUserId), so this separates real logged-in users from each
+    /// other but NOT two widget visitors. Doing that properly needs a per-visitor id stored on
+    /// the session row — the widget does now supply customerId (see ChatRequest) — and that is a
+    /// schema change, not this fix.
+    /// </summary>
+    private async Task<bool> CanResumeSessionAsync(Guid sessionId, Guid userId)
+    {
+        try
+        {
+            var owner = await _db.ChatSessions
+                .Where(s => s.Id == sessionId)
+                .Select(s => (Guid?)s.UserId)
+                .FirstOrDefaultAsync();
+
+            // No row: a token for a session that was never persisted (the pre-2026-09-08
+            // behaviour, and still what happens whenever the DB was down when it was minted).
+            // Treat it as this caller's own empty conversation rather than throwing history away.
+            if (owner == null) return true;
+
+            if (owner == userId) return true;
+
+            _logger.LogWarning("[CHAT] Session {SessionId} belongs to another user — starting a fresh conversation instead", sessionId);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            // DB unavailable: honour the token. Dropping a user's history because we could not
+            // verify ownership would be a worse failure than the one this guards against.
+            Console.WriteLine($"⚠️ [CHAT] Session ownership not verified (DB unavailable): {ex.Message}");
+            return true;
+        }
+    }
+
     public async Task<ChatResponse> ProcessAsync(ChatRequest request, Guid userId, string? ipAddress, string userRole = "user")
     {
+        // Fold the TAS widget's flat request shape (sessionId/conversationId, and the identity
+        // fields it sends at the top level rather than nested) into the canonical properties
+        // before anything reads them. See ChatRequest.NormalizeWidgetShape — until this call
+        // existed the widget's conversation id was discarded on arrival, which is what left Milo
+        // with no memory between messages.
+        request.NormalizeWidgetShape();
+
         // ── Session handling ──
         // DB writes are best-effort: if the database is unavailable we still answer
         // (via OCI) instead of failing the whole request — persistence is just skipped.
         Guid sessionId = Guid.NewGuid();
         bool continuedSession = false;
-        if (!string.IsNullOrEmpty(request.SessionToken) && Guid.TryParse(request.SessionToken, out var existingId))
+        if (!string.IsNullOrEmpty(request.SessionToken)
+            && Guid.TryParse(request.SessionToken, out var existingId)
+            && await CanResumeSessionAsync(existingId, userId))
         {
             sessionId = existingId;
             continuedSession = true;

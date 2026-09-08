@@ -52,6 +52,75 @@ public class ChatRequest
     // locale) and the widget forwards verbatim on every request — same trust level as
     // Source/Scope/Trid above, since it rides on the same already-authenticated TAS call.
     public WidgetIdentityContext? Widget { get; set; }
+
+    // ── The TAS widget's own request shape (flat, different names) ──────────────────────────
+    // Captured from the live widget on 2026-09-08 by hooking its fetch (DEV_AI_2/app.js):
+    //   {"companyName":null,"customerName":"Guest","customerId":null,"role":null,
+    //    "sentAt":"2026-09-08T08:12:25.165Z","messageId":"...","locale":"en-US",
+    //    "timezone":"Asia/Jerusalem","platform":"web","appVersion":"1.0.0","pageContext":null,
+    //    "conversationId":"413494f3-...","sessionId":"413494f3-...","module":"web",
+    //    "scope":"webpage","trid":0,"request":"...","text":"...","tts":false}
+    //
+    // Two contract gaps this closes, both of which looked like client bugs and were not:
+    //
+    // 1. It returns the conversation id under BOTH conversationId and sessionId — its own
+    //    comment reads "Both are sent, so threading works whichever the service reads" — and
+    //    this API bound neither, so System.Text.Json silently dropped them and every message
+    //    opened a brand-new session. That one field-name gap, not the widget, is the entire
+    //    reason Milo had no conversation memory. Proven side by side against live QA: the same
+    //    id sent as sessionToken recalls the earlier turn, sent as sessionId/conversationId it
+    //    answers "this is your first message" and mints a new GUID.
+    // 2. It sends the postMessage identity fields FLAT, not nested under "widget", so
+    //    request.Widget was always null: the role/locale/pageContext handling added on
+    //    2026-09-07 never once executed, and its [WIDGET-CONTEXT] log line never fired — which
+    //    made the log itself misleading, as if the host were sending no context at all.
+    //
+    // NormalizeWidgetShape() folds all of this into the canonical properties, so nothing
+    // downstream needs to know which client it is talking to.
+    public string? SessionId { get; set; }
+    public string? ConversationId { get; set; }
+    public string? CustomerName { get; set; }
+    public string? CompanyName { get; set; }
+    public string? CustomerId { get; set; }
+    public string? Role { get; set; }
+    public string? PageContext { get; set; }
+    public string? Locale { get; set; }
+    public string? SentAt { get; set; }
+    public string? Timezone { get; set; }
+
+    /// <summary>
+    /// Folds the widget's flat shape into the canonical properties. An explicit canonical value
+    /// always wins, so a caller that already speaks the documented shape is unaffected.
+    /// </summary>
+    public void NormalizeWidgetShape()
+    {
+        if (string.IsNullOrWhiteSpace(SessionToken))
+            SessionToken = FirstNonBlank(SessionId, ConversationId);
+
+        if (Widget == null && !string.IsNullOrWhiteSpace(
+                FirstNonBlank(CustomerName, CompanyName, CustomerId, Role, PageContext, Locale)))
+        {
+            Widget = new WidgetIdentityContext
+            {
+                CustomerName = CustomerName,
+                CompanyName = CompanyName,
+                CustomerId = CustomerId,
+                Role = Role,
+                PageContext = PageContext,
+                Locale = Locale,
+            };
+        }
+
+        // The widget reports one ISO-8601 instant plus an IANA zone, where the prompt expects a
+        // date, a time and a zone. The instant is passed through verbatim rather than reformatted
+        // — it is unambiguous, and parsing it here would only add a way to get the time wrong.
+        // Without this the model was told "Browser-reported time: unknown (unknown)".
+        if (string.IsNullOrWhiteSpace(UserDate)) UserDate = SentAt;
+        if (string.IsNullOrWhiteSpace(UserTimezone)) UserTimezone = Timezone;
+    }
+
+    private static string? FirstNonBlank(params string?[] values) =>
+        values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
 }
 
 public class WidgetIdentityContext
