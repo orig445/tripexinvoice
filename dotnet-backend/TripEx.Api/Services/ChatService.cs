@@ -234,6 +234,24 @@ public class ChatService
     // populated on every one of these turns and needs no backend change to start using.
     private static string BuildClickableOption(string optionText) => optionText;
 
+    // The same options, flattened for the TAS widget's `paramerter` field (see
+    // ChatResponse.Paramerter for why it is spelled that way). The widget does
+    // paramerter.split(","), which imposes two constraints — and in both failure cases this
+    // returns null so the numbered plain-text list already in "text" carries the options alone:
+    //   * A comma inside an option would split it into two bogus buttons. Rewriting the label is
+    //     not an option either: the widget sends the button's text back verbatim as the next user
+    //     message, so an altered label would arrive as an answer that matches no known option.
+    //   * "TID" anywhere in the string switches the widget to a different trip-link rendering.
+    //     Matched case-sensitively, exactly as the widget matches it.
+    private static string? BuildWidgetParamerter(List<string> options)
+    {
+        if (options.Count == 0) return null;
+        if (options.Any(o => o.Contains(','))) return null;
+
+        var flattened = string.Join(", ", options.Select(o => o.Trim()));
+        return flattened.Contains("TID", StringComparison.Ordinal) ? null : flattened;
+    }
+
     // Given the AI's own stated "page" and its full "text" reply, returns the page key that
     // should actually be linked. Public + static so TripEx.Api.Tests can run it directly
     // against the real production logic — the same 366-entry catalog this loads — as a
@@ -792,6 +810,7 @@ public class ChatService
             Text = responseText,
             Actions = mapping.Actions,
             QuickReplies = quickReplies,
+            Paramerter = BuildWidgetParamerter(quickReplies),
             RedirectPage = pageUrl,
             RedirectLabel = pageLink?.Label,
             SessionId = sessionId.ToString(),

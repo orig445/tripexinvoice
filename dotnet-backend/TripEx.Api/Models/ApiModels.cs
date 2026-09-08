@@ -73,6 +73,28 @@ public class ChatResponse
     // orientation/status questions) — empty for every other kind of reply. Clicking one is
     // meant to just re-send its exact text as the next user message, same as a normal reply.
     public List<string> QuickReplies { get; set; } = new();
+
+    // The SAME options as one comma-separated string, because that is the field the TAS widget
+    // actually reads. Verified against its live source on 2026-09-08
+    // (qaeu.combtas.com/DEV_AI_2/assets/script/app.js):
+    //
+    //     const params = response.paramerter ? response.paramerter.split(",")... : [];
+    //     if (params.length > 0 && !response.paramerter.includes("TID")) {
+    //         linksHtml = params.map(p => `<button class="ai-link-btn" data-message="${p}">`)
+    //     botBubble.querySelectorAll(".ai-link-btn").forEach(btn =>
+    //         btn.addEventListener("click", () => sendMessage(btn.dataset.message)));
+    //
+    // Populating this makes that widget render real clickable buttons through its own mechanism,
+    // with no widget change — and those survive its hardenLinks() sanitizer, which strips
+    // javascript: hrefs and so silently killed the previous approach. It reads neither
+    // QuickReplies nor Actions.
+    //
+    // The misspelling is the widget's, not a typo here — renaming it breaks the contract.
+    // Its split(",") imposes two hard constraints, enforced where this is built in ChatService:
+    // no option may contain a comma, and the string may never contain "TID" (that substring
+    // switches the widget to a different trip-link rendering).
+    public string? Paramerter { get; set; }
+
     public string RedirectPage { get; set; } = "";
     // Button text to show for RedirectPage (e.g. "Go to Settings"). Empty when RedirectPage is empty.
     public string? RedirectLabel { get; set; }
