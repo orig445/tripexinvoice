@@ -406,6 +406,32 @@ CRITICAL RULES:
                 throw new InvalidOperationException($"OCI message missing 'content'. Keys: {string.Join(", ", message.EnumerateObject().Select(p => p.Name))}");
 
             var content = contentProp.GetString();
+            // Token accounting and the stop reason, straight from OCI. Neither was read before,
+            // which left two questions permanently unanswerable from the logs:
+            //   * how big the system prompt actually is in TOKENS (it was only ever estimated
+            //     from character counts, and Hebrew tokenizes very differently from English), and
+            //   * whether a reply was cut short by the token ceiling rather than finished —
+            //     finish_reason distinguishes "stop" from "length" definitively, where before we
+            //     could only infer truncation after the fact from broken JSON.
+            // cachedTokens is the one number that says whether prefix caching is doing anything
+            // for the ~95K-character static prompt; 0 on every call means it is not.
+            var stopReason = firstChoice.TryGetProperty("finish_reason", out var frInfo) ? frInfo.GetString() : "-";
+            if (doc.RootElement.TryGetProperty("usage", out var usage))
+            {
+                int Num(string name) => usage.TryGetProperty(name, out var v) && v.TryGetInt32(out var n) ? n : -1;
+                var cached = -1;
+                if (usage.TryGetProperty("prompt_tokens_details", out var details)
+                    && details.TryGetProperty("cached_tokens", out var ct2) && ct2.TryGetInt32(out var cn))
+                    cached = cn;
+
+                Console.WriteLine($"[OCI] usage prompt={Num("prompt_tokens")} completion={Num("completion_tokens")} " +
+                                  $"total={Num("total_tokens")} cached={cached} finish={stopReason}");
+            }
+            else
+            {
+                Console.WriteLine($"[OCI] usage not reported by endpoint; finish={stopReason}");
+            }
+
 
             if (string.IsNullOrWhiteSpace(content))
             {
