@@ -89,11 +89,38 @@ public class ChatRequest
     public string? Timezone { get; set; }
 
     /// <summary>
+    /// True when this request arrived in the TAS widget's own flat shape above — set by
+    /// NormalizeWidgetShape(), never deserialized from the body.
+    ///
+    /// It exists for exactly one decision: the TAS widget is the only client that renders
+    /// ChatResponse.Paramerter as real option buttons, so it is the only one for which
+    /// repeating those options as a numbered list inside "text" is a duplicate. Every other
+    /// caller in this repo ignores both Paramerter and QuickReplies (verified 2026-09-09 —
+    /// nothing under src/ references either), and for them the numbered list in "text" is the
+    /// ONLY way the options reach the user. Source can't be used to tell them apart: it
+    /// defaults to "web" and the widget doesn't send it, so the widget and this repo's own
+    /// /chat page look identical on that field.
+    ///
+    /// Deliberately NOT a security or trust signal — it only picks between two renderings of
+    /// the same options, so a caller that spoofs the shape gets buttons instead of a list.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsTasWidgetClient { get; private set; }
+
+    /// <summary>
     /// Folds the widget's flat shape into the canonical properties. An explicit canonical value
     /// always wins, so a caller that already speaks the documented shape is unaffected.
     /// </summary>
     public void NormalizeWidgetShape()
     {
+        // Any of the flat fields means the caller speaks the widget's shape. customerName alone
+        // would do in practice (the widget always sends it, falling back to "Guest" — see the
+        // captured payload above), but keying off the whole set means a future widget build that
+        // drops one field doesn't silently reclassify it as some other client.
+        IsTasWidgetClient = !string.IsNullOrWhiteSpace(FirstNonBlank(
+            CustomerName, CompanyName, CustomerId, Role, PageContext, Locale,
+            SentAt, Timezone, SessionId, ConversationId));
+
         if (string.IsNullOrWhiteSpace(SessionToken))
             SessionToken = FirstNonBlank(SessionId, ConversationId);
 

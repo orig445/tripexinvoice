@@ -252,6 +252,34 @@ public class ChatService
         return flattened.Contains("TID", StringComparison.Ordinal) ? null : flattened;
     }
 
+    // Will these options actually reach the user as clickable buttons? That is the one and only
+    // case in which ALSO listing them inside "text" shows them twice — which is what the TAS
+    // widget did: it renders `<div>${response.text}</div>` immediately followed by a button per
+    // paramerter entry (verified in its live source, DEV_AI_2/assets/script/app.js), so a fixed
+    // question carrying its own numbered list came out as the list and then the same options
+    // again as buttons.
+    //
+    // Both halves of the condition matter:
+    //   * clientRendersParamerter — only the TAS widget reads that field (see
+    //     ChatRequest.IsTasWidgetClient). For every other caller the numbered list is the only
+    //     way the options reach the user, so it has to stay.
+    //   * BuildWidgetParamerter != null — it refuses the options whenever the widget's
+    //     split(",") / "TID" rules would mangle them, and then the widget shows NO buttons. The
+    //     list has to stay for those too, or the question becomes unanswerable.
+    // Public + static, like ResolvePageOverride, so the tests exercise the shipping logic.
+    public static bool OptionsRenderAsButtons(List<string> options, bool clientRendersParamerter)
+        => clientRendersParamerter && BuildWidgetParamerter(options) != null;
+
+    // One fixed clarifying question plus its options, rendered ONCE: as buttons alone where the
+    // client draws them, otherwise as the numbered plain-text list the question can't do without.
+    public static string ComposeClarifyText(string question, List<string> options, bool optionsRenderAsButtons)
+    {
+        if (options.Count == 0 || optionsRenderAsButtons) return question;
+
+        var numbered = string.Join("\n", options.Select((s, i) => $"{i + 1}. {BuildClickableOption(s)}"));
+        return $"{question}\n{numbered}";
+    }
+
     // Given the AI's own stated "page" and its full "text" reply, returns the page key that
     // should actually be linked. Public + static so TripEx.Api.Tests can run it directly
     // against the real production logic — the same 366-entry catalog this loads — as a
@@ -633,6 +661,15 @@ public class ChatService
         // nothing recorded WHY it asked instead of answering. The prompt now requires that text
         // to name the entries it was torn between, so keep it for the [CHAT] log line below.
         string? clarifyRationale = null;
+        // The fixed clarifying question on its own, WITHOUT its option list — the branches below
+        // set this and `quickReplies`, and the single composition step at the end of the block
+        // decides whether the options also belong in the text. Stays null on the two branches
+        // that write their own final text (the escalate cap, and the model-authored round 2).
+        string? clarifyQuestion = null;
+        // Whether the options will reach the user as real buttons. Read again further down, by
+        // the "you can also just type the option" escape hatch, which only makes sense when they
+        // won't. See OptionsRenderAsButtons.
+        var optionsRenderAsButtons = false;
         if (!isInternalAudience && ClarifyTypeIntents.Contains(intent))
         {
             clarifyRationale = responseText;
@@ -658,12 +695,10 @@ public class ChatService
                 var statusOptions = intent == "clarify_status_trip"
                     ? TripStatusOptionsForTrip
                     : TripStatusOptionsForExpenseOnly;
-                var numberedStatuses = string.Join("\n",
-                    statusOptions.Select((s, i) => $"{i + 1}. {BuildClickableOption(s)}"));
-                responseText = IsHebrewDominant(request.Text)
-                    ? $"באיזה סטטוס נמצאת הנסיעה או דוח ההוצאות?\n{numberedStatuses}"
-                    : $"What status is the trip or expense report currently in?\n{numberedStatuses}";
                 quickReplies = statusOptions.ToList();
+                clarifyQuestion = IsHebrewDominant(request.Text)
+                    ? "באיזה סטטוס נמצאת הנסיעה או דוח ההוצאות?"
+                    : "What status is the trip or expense report currently in?";
             }
             else if (consecutiveClarifications == 0)
             {
@@ -678,15 +713,22 @@ public class ChatService
                 quickReplies = isHebrew
                     ? new() { "תפעול שוטף של נסיעות והוצאות", "ניתוח נתונים ודוחות במערכת", "ניהול ושינוי הגדרות במערכת" }
                     : new() { "Travel & expense operations", "Data analysis & reports", "System management & settings" };
-                var numberedAreas = string.Join("\n",
-                    quickReplies.Select((s, i) => $"{i + 1}. {BuildClickableOption(s)}"));
-                responseText = isHebrew
-                    ? $"כדי שאוכל לכוון אותך לתשובה המדויקת ביותר — במה מדובר?\n{numberedAreas}"
-                    : $"To point you to the most accurate answer — which of these is it about?\n{numberedAreas}";
+                clarifyQuestion = isHebrew
+                    ? "כדי שאוכל לכוון אותך לתשובה המדויקת ביותר — במה מדובר?"
+                    : "To point you to the most accurate answer — which of these is it about?";
             }
             // else (plain "clarify" with consecutiveClarifications == 1): this is the second,
             // model-authored clarifying question for the reports/settings paths — no fixed
             // options to offer as buttons, quickReplies stays empty.
+
+            // The two fixed-question branches above deliberately set only the question and the
+            // options, never the final text: whether those options belong IN the text is one
+            // decision, made once, here — never in each branch, where the two could drift apart.
+            if (clarifyQuestion != null)
+            {
+                optionsRenderAsButtons = OptionsRenderAsButtons(quickReplies, request.IsTasWidgetClient);
+                responseText = ComposeClarifyText(clarifyQuestion, quickReplies, optionsRenderAsButtons);
+            }
         }
 
         // ── Map intent to actions ──
@@ -768,18 +810,19 @@ public class ChatService
                 ? $"\n\nניתן לפנות לתמיכה במייל {_supportContact}"
                 : $"\n\nYou can reach support by email at {_supportContact}";
         }
-        else if (ClarifyTypeIntents.Contains(intent))
+        else if (ClarifyTypeIntents.Contains(intent) && !optionsRenderAsButtons)
         {
-            // Escape hatch. A clarify turn nulls out `page`, so it reaches neither branch above:
-            // its whole body is the fixed question plus a numbered plain-text option list, with
-            // no page link and no support address. QuickReplies carries the same options in
-            // structured form for a frontend that renders real buttons — this line is the
-            // transport-independent instruction for every consumer that has neither, so the turn
-            // is always survivable no matter how the widget renders it.
+            // Escape hatch, for the clients that get the options as a numbered plain-text list
+            // because they render no buttons (see OptionsRenderAsButtons): it tells the user the
+            // list is answerable by typing, so the turn is survivable no matter how the reply is
+            // rendered. Suppressed when the buttons DO render — there is no list on screen to
+            // "type the text of" then, just the buttons themselves, so the line would only
+            // describe something the user cannot see.
+            //
             // The support address is deliberately NOT named here (it was, until 2026-09-09): a
             // clarify turn is us asking the user a question, not us running out of answers, so
             // offering support in the same breath invites them to leave mid-flow. Only the
-            // "type the option instead of clicking it" half is load-bearing.
+            // "you can type it instead" half is load-bearing.
             responseText += isHebrewReply
                 ? "\n\nאפשר גם פשוט להקליד את הטקסט של האפשרות המתאימה"
                 : "\n\nYou can also simply type the text of the option that fits";
