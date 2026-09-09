@@ -72,6 +72,13 @@ public class ChatService
     // false-positive match against unrelated text.
     private const int MinPageNameMatchLength = 8;
 
+    // Longest an option may be and still work as a button label (see OptionsCanBeButtons). A
+    // choice is a label the user clicks and, when clicked, becomes their next message verbatim —
+    // so a whole clause is not a choice, it's the model having written prose into the wrong
+    // field. Comfortably above the longest fixed option that ships ("Other (Matched / Closed /
+    // Pending for Cancel / Cancelled)", 55).
+    private const int MaxOptionLabelLength = 60;
+
     // Milo's own judgment on "is this question ambiguous enough to ask a clarifying
     // question" isn't perfectly reliable (same class of issue as its page-selection
     // judgment) — without a hard code-level cap, a confused model could keep asking
@@ -267,21 +274,163 @@ public class ChatService
     //   * clientRendersParamerter — only the TAS widget reads that field (see
     //     ChatRequest.IsTasWidgetClient). For every other caller the numbered list is the only
     //     way the options reach the user, so it has to stay.
-    //   * BuildWidgetParamerter != null — it refuses the options whenever the widget's
-    //     split(",") / "TID" rules would mangle them, and then the widget shows NO buttons. The
-    //     list has to stay for those too, or the question becomes unanswerable.
+    //   * OptionsCanBeButtons — the options themselves have to be fit for a button. When they
+    //     are not, the widget shows NO buttons, and the list has to stay for those too or the
+    //     question becomes unanswerable.
     // Public + static, like ResolvePageOverride, so the tests exercise the shipping logic.
     public static bool OptionsRenderAsButtons(List<string> options, bool clientRendersParamerter)
-        => clientRendersParamerter && BuildWidgetParamerter(options) != null;
+        => clientRendersParamerter && OptionsCanBeButtons(options);
 
-    // One fixed clarifying question plus its options, rendered ONCE: as buttons alone where the
-    // client draws them, otherwise as the numbered plain-text list the question can't do without.
+    // Is this set of options fit to be rendered as buttons at all, for any client? The single
+    // place that answers it, so ChatResponse.QuickReplies (and the Paramerter derived from it)
+    // can never disagree with what the reply text shows.
+    //   * At least two — one button is not a choice, it is a dead end with no way to say
+    //     "neither", and the question it belongs to was a choice between alternatives.
+    //   * Short enough to read on a button. A whole clause is the model having written prose
+    //     into the wrong field; it is still shown, as the numbered list, just not clickable.
+    //   * Whatever the widget's own split(",") / "TID" rules accept (BuildWidgetParamerter).
+    // No cap on how MANY: the prompt asks for 2-4 and a longer set means the model improvised,
+    // but silently dropping choices the user was asked to pick between is worse than showing
+    // more buttons than intended.
+    public static bool OptionsCanBeButtons(List<string> options)
+        => options.Count >= 2
+           && options.All(o => o.Length <= MaxOptionLabelLength)
+           && BuildWidgetParamerter(options) != null;
+
+    // One clarifying question plus its options, rendered ONCE: as buttons alone where the client
+    // draws them, otherwise as the numbered plain-text list the question can't do without.
     public static string ComposeClarifyText(string question, List<string> options, bool optionsRenderAsButtons)
     {
-        if (options.Count == 0 || optionsRenderAsButtons) return question;
+        if (options.Count == 0) return question;
+
+        // Only the two FIXED questions are guaranteed to be the question alone — the second,
+        // model-authored round is whatever the model wrote, and the prompt asking it to keep the
+        // choices out of "text" is a request, not a guarantee. So drop any line of the question
+        // that is just one of the options restated, before deciding what to append. Without this
+        // a disobedient reply shows every choice twice all over again, which is the exact bug
+        // this whole path exists to prevent.
+        question = StripOptionLines(question, options);
+
+        if (optionsRenderAsButtons) return question;
 
         var numbered = string.Join("\n", options.Select((s, i) => $"{i + 1}. {BuildClickableOption(s)}"));
         return $"{question}\n{numbered}";
+    }
+
+    // Removes whole lines that merely restate one of the options (with or without the numbering
+    // or bullet the model may have added). Only whole-line matches: "the older report, or the
+    // newer one?" IS the question and must survive even though both options appear inside it.
+    public static string StripOptionLines(string question, List<string> options)
+    {
+        var kept = question
+            .Split('\n')
+            .Where(line => !options.Any(o => string.Equals(
+                NormalizeForOptionMatch(line), NormalizeForOptionMatch(o), StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        // Trailing blanks are left behind by the removed lines; a fully-stripped question would
+        // mean the model wrote nothing but the list, in which case keep the original rather than
+        // send an empty bubble.
+        while (kept.Count > 0 && string.IsNullOrWhiteSpace(kept[^1])) kept.RemoveAt(kept.Count - 1);
+        var stripped = string.Join("\n", kept).TrimEnd();
+        return string.IsNullOrWhiteSpace(stripped) ? question : stripped;
+    }
+
+    // The answer choices from the second, model-authored clarifying round, tidied into labels.
+    // Only PER-ITEM cleaning happens here — nothing is rejected for being too long or for there
+    // being too many, because whether the set can be BUTTONS is a separate question
+    // (OptionsCanBeButtons) with a separate answer: show them as a numbered list instead. The
+    // prompt tells the model to keep the choices out of "text", so discarding them here would
+    // leave the user a question with no answers anywhere.
+    public static List<string> CleanModelOptions(IEnumerable<string>? raw)
+    {
+        var cleaned = new List<string>();
+        if (raw == null) return cleaned;
+
+        foreach (var option in raw)
+        {
+            if (string.IsNullOrWhiteSpace(option)) continue;
+            var text = StripListMarker(option);
+            if (text.Length == 0) continue;
+            // A label is words, never markup. The widget interpolates it into the button's
+            // innerHTML (`<span>${p}</span>`, unescaped — only its data-message attribute is
+            // escaped), and "text" is innerHTML there too, so anything angle-bracketed would be
+            // parsed as HTML in the host page. This field is new, so it is not inheriting that
+            // exposure: an option containing markup is not a label the model should have
+            // written, and is dropped.
+            if (text.Contains('<') || text.Contains('>')) continue;
+            // Two labels that differ only in case, punctuation or emphasis are one choice to the
+            // user but two identical-looking buttons on screen.
+            if (cleaned.Any(c => string.Equals(
+                    NormalizeForOptionMatch(c), NormalizeForOptionMatch(text), StringComparison.OrdinalIgnoreCase)))
+                continue;
+            cleaned.Add(text);
+        }
+
+        return cleaned;
+    }
+
+    // "1. Draft" / "2) Draft" / "- Draft" / "• Draft" → "Draft". Numbering is presentation the
+    // code owns, never part of the label that gets echoed back as the next user message.
+    //
+    // The (?!\d) matters: without it the marker alternative also ate the start of any label that
+    // legitimately opens with one or two digits and a dot — "1.4.2026" became "4.2026" and
+    // "10.2025" became "2025". dd.mm.yyyy is the Israeli date format in a Hebrew-facing bot, so
+    // "which period do you mean?" is a realistic question for this very round, and a corrupted
+    // label is worse than an unstripped one: the widget sends it back verbatim as the next
+    // message. A digit right after the separator is never a list marker.
+    //
+    // Bidi marks come off first. They are Unicode category Cf, not whitespace, so Trim() leaves
+    // them — and a model writing a numbered list in Hebrew puts a RLM before the digit precisely
+    // so it displays correctly. Left in, they block this ^-anchored strip entirely.
+    private static string StripListMarker(string line) =>
+        System.Text.RegularExpressions.Regex.Replace(
+            StripBidiMarks(line).Trim(), @"^(?:\d{1,2}[.)](?!\d)|[-*•–—])\s*", "").Trim();
+
+    // Bidi control marks (RLM/LRM and the embedding/isolate controls) are invisible and carry no
+    // meaning for matching, but they make two otherwise identical strings compare unequal.
+    private static string StripBidiMarks(string s) => new string(s.Where(ch =>
+        (ch < (char)0x200B || ch > (char)0x200F) &&
+        (ch < (char)0x202A || ch > (char)0x202E) &&
+        (ch < (char)0x2066 || ch > (char)0x2069)).ToArray());
+
+    // Comparison form ONLY — never a label and never shown. Used to decide "is this line of the
+    // question just one of the options restated?" and "are these two options the same choice?".
+    //
+    // It has to be more forgiving than the label cleaning, because a model that lists its own
+    // choices decorates them: "1. Budget by Division." with a full stop, "- **Budget by
+    // Division**" in bold, or the label in quotes. Exact equality missed every one of those, and
+    // the line then survived into the text while the same option also rendered as a button —
+    // the "written twice" bug back again, just harder to spot.
+    private static string NormalizeForOptionMatch(string s)
+    {
+        var text = StripListMarker(s);
+        // Markdown emphasis and quoting, anywhere in the string. Safe because this value is
+        // thrown away after the comparison.
+        text = text.Replace("*", "").Replace("_", "").Replace("`", "")
+                   .Replace("\"", "").Replace("'", "").Replace("״", "").Replace("׳", "")
+                   .Replace("“", "").Replace("”", "").Replace("‘", "").Replace("’", "");
+        // Sentence punctuation the model adds when it writes a choice as a line of prose.
+        return text.Trim().TrimEnd('.', ',', ';', ':', '!', '?', '־', '-', '–', '—').Trim();
+    }
+
+    /// <summary>
+    /// Swaps any literal page key the model leaked into visible text for that page's own
+    /// human-readable name. Applied to everything the user can read — the reply body and the
+    /// option labels alike — so the "never show an internal identifier" rule holds no matter
+    /// which field the key landed in. Not static: it reads the loaded page catalog.
+    /// </summary>
+    private string ScrubRawPageKeys(string text, bool hebrew)
+    {
+        foreach (var kv in _pageLinks)
+        {
+            if (kv.Key.Length < MinPageNameMatchLength) continue;
+            if (!text.Contains(kv.Key, StringComparison.OrdinalIgnoreCase)) continue;
+            var replacement = hebrew ? kv.Value.Label : kv.Value.LabelEn;
+            if (!string.IsNullOrWhiteSpace(replacement))
+                text = text.Replace(kv.Key, replacement, StringComparison.OrdinalIgnoreCase);
+        }
+        return text;
     }
 
     // Given the AI's own stated "page" and its full "text" reply, returns the page key that
@@ -647,12 +796,13 @@ public class ChatService
         sw.Stop();
 
         // ── Parse response ──
-        var (intent, responseText, page) = ParseAiResponse(rawContent);
+        var (intent, responseText, page, modelOptions) = ParseAiResponse(rawContent);
 
         // ── Shape "clarify"/"clarify_status_*" responses: fixed questions first, cap at the limit ──
-        // quickReplies mirrors whatever fixed numbered list ends up in responseText, as plain
-        // option strings (no numbering) — the frontend renders these as clickable buttons;
-        // clicking one just re-sends its exact text as the next message, like typing it.
+        // quickReplies carries the round's choices as plain option strings (no numbering), for a
+        // frontend that renders them as clickable buttons; clicking one just re-sends its exact
+        // text as the next message, like typing it. It is populated only when the choices are
+        // fit to be buttons — see the composition step below and OptionsCanBeButtons.
         // The whole clarify-flow is customer-support-ticket-reduction UX (see BuildSystemPrompt)
         // — irrelevant for TripEx's own internal staff (source:"internal"). The prompt already
         // never offers these intents to the model for that audience; this is the same "don't
@@ -665,20 +815,30 @@ public class ChatService
         // nothing recorded WHY it asked instead of answering. The prompt now requires that text
         // to name the entries it was torn between, so keep it for the [CHAT] log line below.
         string? clarifyRationale = null;
-        // The fixed clarifying question on its own, WITHOUT its option list — the branches below
-        // set this and `quickReplies`, and the single composition step at the end of the block
-        // decides whether the options also belong in the text. Stays null on the two branches
-        // that write their own final text (the escalate cap, and the model-authored round 2).
+        // The clarifying question on its own, WITHOUT its option list — the branches below set
+        // this and `clarifyOptions`, and the single composition step at the end of the block
+        // decides whether the options also belong in the text. Stays null on the branches with
+        // nothing to choose between (the escalate cap, and a round 2 that offered no options).
         string? clarifyQuestion = null;
+        // Every choice to put in front of the user. Distinct from `quickReplies`, which is the
+        // structured set of choices fit to be BUTTONS: an over-long or comma-bearing label is
+        // still a choice the user must be able to pick, it just has to arrive as text.
+        var clarifyOptions = new List<string>();
         // Whether the options will reach the user as real buttons. Read again further down, by
         // the "you can also just type the option" escape hatch, which only makes sense when they
         // won't. See OptionsRenderAsButtons.
         var optionsRenderAsButtons = false;
+        // Set when the block below clears `page` on purpose, so ResolvePageOverride can be
+        // skipped further down. A flag rather than re-testing the intent afterwards, because the
+        // 2-in-a-row cap REASSIGNS intent to "escalate" — that turn also has its page cleared
+        // deliberately, and an intent test after the fact would no longer be able to tell.
+        var pageDeliberatelyCleared = false;
         if (!isInternalAudience && ClarifyTypeIntents.Contains(intent))
         {
             clarifyRationale = responseText;
             var consecutiveClarifications = CountTrailingConsecutiveClarifications(historyRows);
             page = null; // none of these ever link to a page — there's nothing to link to yet
+            pageDeliberatelyCleared = true;
 
             if (consecutiveClarifications >= MaxConsecutiveClarifications)
             {
@@ -699,7 +859,7 @@ public class ChatService
                 var statusOptions = intent == "clarify_status_trip"
                     ? TripStatusOptionsForTrip
                     : TripStatusOptionsForExpenseOnly;
-                quickReplies = statusOptions.ToList();
+                clarifyOptions = statusOptions.ToList();
                 clarifyQuestion = IsHebrewDominant(request.Text)
                     ? "באיזה סטטוס נמצאת הנסיעה או דוח ההוצאות?"
                     : "What status is the trip or expense report currently in?";
@@ -714,31 +874,74 @@ public class ChatService
                 // round instead (the final `else` case below) — by then the user's answer here
                 // has already narrowed things down to one area, so it can ask something specific.
                 var isHebrew = IsHebrewDominant(request.Text);
-                quickReplies = isHebrew
+                clarifyOptions = isHebrew
                     ? new() { "תפעול שוטף של נסיעות והוצאות", "ניתוח נתונים ודוחות במערכת", "ניהול ושינוי הגדרות במערכת" }
                     : new() { "Travel & expense operations", "Data analysis & reports", "System management & settings" };
                 clarifyQuestion = isHebrew
                     ? "כדי שאוכל לכוון אותך לתשובה המדויקת ביותר — במה מדובר?"
                     : "To point you to the most accurate answer — which of these is it about?";
             }
-            // else (plain "clarify" with consecutiveClarifications == 1): this is the second,
-            // model-authored clarifying question for the reports/settings paths — no fixed
-            // options to offer as buttons, quickReplies stays empty.
+            else
+            {
+                // Plain "clarify" with consecutiveClarifications == 1: the second,
+                // model-authored clarifying question for the reports/settings paths. Its wording
+                // has to be the model's — only it knows which two entries it is torn between —
+                // but the ANSWERING should work exactly like the two fixed questions above, so
+                // the prompt asks it for the choices in a separate "options" array and they
+                // become the same clickable buttons. Before this, this one round was the odd one
+                // out: its choices were prose inside the question, so the user had to read them
+                // and type one back while every other guiding question offered buttons.
+                //
+                // Whatever the model wrote stays the question; the choices are added to it below.
+                // Scrubbed BEFORE anything measures them, because a swapped-in page name is what
+                // the user actually sees — so the length and comma rules have to apply to that,
+                // not to the raw key it replaced. Real labels in page-links.json do contain
+                // commas and some run long, and either one correctly falls back to the numbered
+                // list instead of producing mangled buttons.
+                var hebrewQuestion = IsHebrewDominant(responseText);
+                clarifyOptions = CleanModelOptions(
+                    modelOptions.Select(o => ScrubRawPageKeys(o, hebrewQuestion)));
 
-            // The two fixed-question branches above deliberately set only the question and the
-            // options, never the final text: whether those options belong IN the text is one
-            // decision, made once, here — never in each branch, where the two could drift apart.
+                // Fewer than two is not a choice, so there is nothing to render and the model's
+                // own prose stands, as it did before this existed. Logged because the prompt
+                // told it to keep the choices out of "text": if this fires often, the reply the
+                // user saw may have been a question with no visible answers.
+                if (clarifyOptions.Count >= 2)
+                    clarifyQuestion = responseText;
+                else if (modelOptions.Count > 0)
+                    _logger.LogWarning(
+                        "[CLARIFY-OPTIONS] session={SessionId} discarded {Raw} unusable option(s): {Options}",
+                        sessionId, modelOptions.Count, string.Join(" | ", modelOptions));
+            }
+
+            // The branches above deliberately set only the question and the options, never the
+            // final text: whether those options belong IN the text is one decision, made once,
+            // here — never in each branch, where the two could drift apart.
             if (clarifyQuestion != null)
             {
+                // QuickReplies is the structured button set, so it carries the options only when
+                // they are fit to BE buttons — and Paramerter is derived from it. An unfit set
+                // (an over-long label, a comma) is shown as the numbered list and nothing else,
+                // which is what stops a client from rendering it both ways.
+                quickReplies = OptionsCanBeButtons(clarifyOptions) ? clarifyOptions : new List<string>();
                 optionsRenderAsButtons = OptionsRenderAsButtons(quickReplies, request.IsTasWidgetClient);
-                responseText = ComposeClarifyText(clarifyQuestion, quickReplies, optionsRenderAsButtons);
+                responseText = ComposeClarifyText(clarifyQuestion, clarifyOptions, optionsRenderAsButtons);
             }
         }
 
         // ── Map intent to actions ──
         var mapping = ActionMapping.GetValueOrDefault(intent, ActionMapping["general"]);
 
-        page = ResolvePageOverride(page, responseText);
+        // A turn that cleared its page above ("there's nothing to link to yet") has to KEEP it
+        // cleared. ResolvePageOverride derives a link from any page name it finds in the reply
+        // text, which is right for an answer and wrong for a question: the second, self-worded
+        // clarifying round names the very entries it is asking the user to choose between, so
+        // letting it run attaches a link to whichever is mentioned first — the bot asks "did you
+        // mean Budget by Division Report or Budget by Company Report?" and then links Budget by
+        // Division, answering its own question with a coin flip. Verified against the real
+        // 367-entry catalog: that exact sentence resolves to TASR_08002_BudgetByDivision.
+        // (The fixed questions happen to resolve to nothing, but that is luck, not design.)
+        page = pageDeliberatelyCleared ? null : ResolvePageOverride(page, responseText);
 
         // ── Map page → a real TAS URL + button label (Data/page-links.json) ──
         // The AI only ever sees the page KEY (and its Description); the actual URL
@@ -761,17 +964,9 @@ public class ChatService
         // report names). Rather than rely on the model to comply every time, scrub any
         // literal page key that slipped into the visible text and swap in its name — this
         // guarantees the user never sees an internal identifier regardless of what the
-        // model wrote.
-        foreach (var kv in _pageLinks)
-        {
-            if (kv.Key.Length < MinPageNameMatchLength) continue;
-            if (responseText.Contains(kv.Key, StringComparison.OrdinalIgnoreCase))
-            {
-                var replacement = isHebrewReply ? kv.Value.Label : kv.Value.LabelEn;
-                if (!string.IsNullOrWhiteSpace(replacement))
-                    responseText = responseText.Replace(kv.Key, replacement, StringComparison.OrdinalIgnoreCase);
-            }
-        }
+        // model wrote. Option labels get the same treatment where they are built (they are
+        // model text too, and a button is just as visible as the reply body).
+        responseText = ScrubRawPageKeys(responseText, isHebrewReply);
 
         if (pageLink != null)
         {
@@ -1127,11 +1322,14 @@ public class ChatService
         return $"{header}: {c.Content}";
     }
 
-    private static (string Intent, string Text, string Page) ParseAiResponse(string rawContent)
+    // Public + static for the same reason ResolvePageOverride is: the tests exercise the real
+    // parser, including its regex fallback, rather than a reimplementation that could drift.
+    public static (string Intent, string Text, string Page, List<string> Options) ParseAiResponse(string rawContent)
     {
         var intent = "general";
         var responseText = rawContent;
         var page = "";
+        var options = new List<string>();
 
         try
         {
@@ -1147,6 +1345,18 @@ public class ChatService
                     : t.GetString() ?? rawContent;
             }
 
+            // The answer choices for the model's own clarifying question, so they can be shown
+            // as real buttons instead of being buried in the question's prose. Only ever
+            // present on a "clarify" turn; anything non-string in the array is skipped rather
+            // than failing the whole parse, since "text" is what actually reaches the user.
+            if (parsed.TryGetProperty("options", out var o) && o.ValueKind == JsonValueKind.Array)
+            {
+                options = o.EnumerateArray()
+                    .Where(e => e.ValueKind == JsonValueKind.String)
+                    .Select(e => OracleAiService.DecodeUnicodeEscapes(e.GetString() ?? ""))
+                    .ToList();
+            }
+
             responseText = OracleAiService.DecodeUnicodeEscapes(responseText);
         }
         catch
@@ -1155,6 +1365,7 @@ public class ChatService
             var textMatch = Regex.Match(rawContent, @"""text""\s*:\s*""((?:[^""\\]|\\.)*)""", RegexOptions.Singleline);
             var intentMatch = Regex.Match(rawContent, @"""intent""\s*:\s*""([^""]*)""");
             var pageMatch = Regex.Match(rawContent, @"""page""\s*:\s*""([^""]*)""");
+            var optionsMatch = Regex.Match(rawContent, @"""options""\s*:\s*\[([^\]]*)\]", RegexOptions.Singleline);
 
             if (textMatch.Success)
             {
@@ -1164,10 +1375,17 @@ public class ChatService
                 responseText = OracleAiService.DecodeUnicodeEscapes(responseText);
                 intent = intentMatch.Success ? intentMatch.Groups[1].Value : "general";
                 page = pageMatch.Success ? pageMatch.Groups[1].Value : "";
+                if (optionsMatch.Success)
+                {
+                    options = Regex.Matches(optionsMatch.Groups[1].Value, @"""((?:[^""\\]|\\.)*)""")
+                        .Select(m => OracleAiService.DecodeUnicodeEscapes(
+                            m.Groups[1].Value.Replace("\\\"", "\"")))
+                        .ToList();
+                }
             }
         }
 
-        return (intent, responseText, page);
+        return (intent, responseText, page, options);
     }
 
     private async Task TrySaveCorrections(string intent, Guid sessionId, Guid userId)
@@ -1297,9 +1515,24 @@ public class ChatService
        reviewed afterwards. If you cannot name at least two competing entries, then you are not in
        case (i) or (ii) at all and must answer the question instead of asking one.
      - The SECOND one (if you still can't pick confidently after the user's answer to the first)
-       is entirely up to you: ask ONE short, concrete, SPECIFIC question — now informed by which
-       of the three areas the user picked — whose answer alone would let you pick correctly (e.g.
-       ""the older report, or the newer/updated one?""). Omit ""page"" here too.
+       is the only question you word yourself: ask ONE short, concrete, SPECIFIC question — now
+       informed by which of the three areas the user picked — whose answer alone would let you
+       pick correctly. Omit ""page"" here too, and give the answers to choose from in a separate
+       ""options"" array so the user can click one instead of typing it:
+         {{""intent"": ""clarify"", ""text"": ""Which of the two budget reports do you mean?"",
+          ""options"": [""Budget by Division"", ""Budget by Cost Center""]}}
+       🔴 Rules for ""options"", all of them enforced in code:
+         * 2 to 4 entries — the specific alternatives you are torn between. One is not a choice,
+           and a long list means you are no longer asking the question you set out to ask.
+         * A SHORT label each, a few words, under 60 characters. No commas inside a label, and no
+           numbering or bullets — the label is sent back verbatim as the user's next message, so
+           it must read as something a person would actually say.
+         * Keep ""text"" to the QUESTION ALONE. Do not also list the choices inside it: they are
+           already shown to the user as buttons, so listing them there shows every choice twice.
+         * If you genuinely cannot reduce it to short alternatives, omit ""options"" entirely and
+           make sure the question in ""text"" can be answered in words on its own — never invent
+           filler choices to fill the array, and never send a question whose choices exist
+           nowhere.
      - If the user's answer is still not enough to decide after that second question, make your
        best specific guess (or escalate if genuinely nothing fits) rather than asking a third time.
    Do NOT use ""clarify"" when you simply have no relevant knowledge at all about the topic — that
@@ -1454,7 +1687,9 @@ Escalate when: you don't know the answer, the Knowledge Base has nothing relevan
 ## Intent Categories
 - help: the user wants guidance, a how-to, or an explanation
 {(isInternalAudience ? "" : @"- clarify: the question is too general to know the area, or ambiguous between two or more specific
-  pages — ask instead of guessing (see rule 3a above; first round is automatic, max 2 in a row)
+  pages — ask instead of guessing (see rule 3a above; first round is automatic, max 2 in a row).
+  On the second round, the one you word yourself, also send ""options"" — the choices become
+  clickable buttons, and rule 3a lists what they have to look like.
 - clarify_status_trip / clarify_status_expense: use ONLY as the round immediately after the
   user's answer to the automatic first ""clarify"" round was ""travel & expense operations""
   (option 1) — see rule 3b below for which of the two to pick. Wording is also automatic (a
@@ -1486,7 +1721,10 @@ Escalate when: you don't know the answer, the Knowledge Base has nothing relevan
 {navigationSection}
 
 ## Output format (ONLY this JSON, nothing else — omit ""page"" when it doesn't apply)
-{{""intent"": ""<intent>"", ""text"": ""<your detailed, friendly answer in English>"", ""page"": ""<page key or omit>""}}
+{{""intent"": ""<intent>"", ""text"": ""<your friendly answer, in the user's own language>"", ""page"": ""<page key or omit>""}}
+{(isInternalAudience ? "" : @"For the second, self-worded clarifying question only (rule 3a), add the choices and omit ""page"":
+{""intent"": ""clarify"", ""text"": ""<your one short question>"", ""options"": [""<choice>"", ""<choice>""]}
+")}
 
 User role: {userRole}
 User's location (from IP): {geo.Location}

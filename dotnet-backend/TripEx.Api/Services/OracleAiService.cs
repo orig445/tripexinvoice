@@ -773,10 +773,20 @@ PAYMENT FORM RULES:
             cleaned = CloseOpenStructures(cleaned);
         }
 
-        // ── Step 3: multi-pass repair until fixpoint ──
+        // ── Step 3: if it already parses, hand it back untouched ──
+        // The repair passes below are regex rules with no notion of JSON structure, so running
+        // them over already-valid JSON can only ever damage it. It did: the "dangling key" rule
+        // (,"key"} → }) also matched the LAST ELEMENT of every string array, because ,"b"] looks
+        // identical to it — so ["a","b"] came back as ["a"] on perfectly well-formed input. That
+        // went unnoticed for as long as nothing read an array field; it surfaced the moment the
+        // chat contract grew an "options" array (2026-09-09) and silently dropped a choice.
+        // Repair is for broken output. Valid output needs none.
+        if (TryParseJson(cleaned, out var asIs))
+            return asIs;
+
+        // ── Step 4: multi-pass repair until fixpoint, then parse ──
         cleaned = ApplyRepairPassesUntilFixpoint(cleaned);
 
-        // ── Step 4: try parse ──
         if (TryParseJson(cleaned, out var element))
             return element;
 
@@ -871,8 +881,12 @@ PAYMENT FORM RULES:
             // Remove dangling key (no colon, no value):
             //   ,"key"}  →  }        (key with comma before it)
             //   {"key"}  →  {}       (key is first/only entry)
-            json = Regex.Replace(json, @",\s*""(?:[^""\\]|\\.)*""\s*(?=[}\]])", "");
-            json = Regex.Replace(json, @"(?<=\{)\s*""(?:[^""\\]|\\.)*""\s*(?=[}\]])", "");
+            // Only before a closing BRACE. A quoted string followed by a comma and then "]" is
+            // the last element of an array — ["a","b"] — not a dangling key, and deleting it
+            // quietly truncated every array that reached here. A dangling key can only ever
+            // appear inside an object, so requiring "}" costs nothing and can't eat array data.
+            json = Regex.Replace(json, @",\s*""(?:[^""\\]|\\.)*""\s*(?=\})", "");
+            json = Regex.Replace(json, @"(?<=\{)\s*""(?:[^""\\]|\\.)*""\s*(?=\})", "");
 
             pass++;
         } while (json != prev && pass < maxPasses);

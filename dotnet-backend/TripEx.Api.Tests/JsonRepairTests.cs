@@ -266,6 +266,53 @@ public class JsonRepairTests
         Assert.All(results, r => Assert.Equal("ILS", r));
     }
 
+    // ── Arrays survive the repair passes ──────────────────────────────────────
+    //
+    // The "dangling key" repair rule (,"key"} → }) also matched the last element of a string
+    // array, because ,"b"] is the same shape — so every array lost its final entry, on input
+    // that was perfectly valid to begin with. Found 2026-09-09 when the chat contract grew an
+    // "options" array and a two-choice question arrived with one choice. Two independent fixes:
+    // valid JSON now bypasses the repair passes entirely, and the rule requires a closing brace.
+
+    [Fact]
+    public void ValidStringArray_KeepsEveryElement()
+    {
+        var raw = @"{""intent"":""clarify"",""options"":[""Budget by Division"",""Budget by Cost Center""]}";
+        var result = OracleAiService.ParseJsonFromAiResponse(raw);
+        var options = result.GetProperty("options").EnumerateArray().Select(e => e.GetString()).ToList();
+        Assert.Equal(new[] { "Budget by Division", "Budget by Cost Center" }, options);
+    }
+
+    [Fact]
+    public void LongerValidStringArray_KeepsEveryElement()
+    {
+        var raw = @"{""a"":[""one"",""two"",""three"",""four"",""five""]}";
+        var result = OracleAiService.ParseJsonFromAiResponse(raw);
+        Assert.Equal(5, result.GetProperty("a").GetArrayLength());
+        Assert.Equal("five", result.GetProperty("a")[4].GetString());
+    }
+
+    [Fact]
+    public void BrokenJson_WithAnArray_StillKeepsEveryElement()
+    {
+        // Truncated mid-object, so the repair passes DO run — they must still leave the array
+        // intact while closing the structure.
+        var raw = @"{""intent"":""clarify"",""options"":[""Draft"",""Issued""],""text"":";
+        var result = OracleAiService.ParseJsonFromAiResponse(raw);
+        var options = result.GetProperty("options").EnumerateArray().Select(e => e.GetString()).ToList();
+        Assert.Equal(new[] { "Draft", "Issued" }, options);
+    }
+
+    [Fact]
+    public void DanglingKey_IsStillRepaired()
+    {
+        // The rule the fix narrowed — it must go on doing the job it was written for.
+        var raw = @"{""currency"":""ILS"",""invoice_number""}";
+        var result = OracleAiService.ParseJsonFromAiResponse(raw);
+        Assert.Equal("ILS", result.GetProperty("currency").GetString());
+        Assert.False(result.TryGetProperty("invoice_number", out _));
+    }
+
     [Fact]
     public void AmountPaid_ExtractedByRegexFallback()
     {
