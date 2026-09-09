@@ -753,18 +753,16 @@ public class ChatService
         }
 
         var escalated = intent == "escalate";
-        // The support/admin contact line is added here (deterministically, in code) rather
-        // than left to the AI's own wording — guarantees it always names the real address
-        // and always comes AFTER the page link above, never before it. Whenever a page link
-        // was shown, this is a "in case that wasn't quite right" fallback; when there's no
-        // link (a true escalation), it's the main point of the message.
-        if (pageLink != null)
-        {
-            responseText += isHebrewReply
-                ? $"\n\nאם זה לא בדיוק הדף שחיפשת, ניתן לפנות למנהל המערכת שלך או לתמיכה במייל {_supportContact}"
-                : $"\n\nIf this isn't exactly the page you were looking for, you can contact your System Admin or reach support by email at {_supportContact}";
-        }
-        else if (escalated)
+        // The support contact line is added here (deterministically, in code) rather than left to
+        // the AI's own wording — guarantees it always names the real address. It now appears ONLY
+        // on a true escalation, where routing the user to a human IS the point of the message.
+        //
+        // It used to be appended after every page link too ("if this isn't exactly the page you
+        // were looking for, contact your System Admin or support…"). Removed 2026-09-09 at Roi's
+        // request: a page link is attached to most answers, so that caveat was on nearly every
+        // reply — it reads as the bot hedging on an answer that is in fact correct, and works
+        // against the "answer confidently, be concise" direction the rest of the prompt gives.
+        if (escalated)
         {
             responseText += isHebrewReply
                 ? $"\n\nניתן לפנות לתמיכה במייל {_supportContact}"
@@ -778,9 +776,13 @@ public class ChatService
             // structured form for a frontend that renders real buttons — this line is the
             // transport-independent instruction for every consumer that has neither, so the turn
             // is always survivable no matter how the widget renders it.
+            // The support address is deliberately NOT named here (it was, until 2026-09-09): a
+            // clarify turn is us asking the user a question, not us running out of answers, so
+            // offering support in the same breath invites them to leave mid-flow. Only the
+            // "type the option instead of clicking it" half is load-bearing.
             responseText += isHebrewReply
-                ? $"\n\nאפשר גם פשוט להקליד את הטקסט של האפשרות המתאימה, או לפנות לתמיכה במייל {_supportContact}"
-                : $"\n\nYou can also simply type the text of the option that fits, or reach support by email at {_supportContact}";
+                ? "\n\nאפשר גם פשוט להקליד את הטקסט של האפשרות המתאימה"
+                : "\n\nYou can also simply type the text of the option that fits";
         }
 
         // ── Save corrections (learning from OCR corrections) ──
@@ -1331,9 +1333,12 @@ clear match — if none apply, omit ""page"" or set it to """". Never invent a k
    right, or because you noticed it before finishing the specific list. Uncertainty between a
    specific page and a general hub is never a reason to ask a question either — pick your best
    specific guess, not the hub.
-{clarifyFlowRules}{statusGlossarySection}4. When you DO set a ""page"" key, do not add your own ""if this isn't right, contact your admin/
-   support"" disclaimer in ""text"" — a link to that exact page is already added automatically
-   after your text, so that caveat is unnecessary noise. Just give the direct answer.
+{clarifyFlowRules}{statusGlossarySection}4. 🔴 NEVER add an ""if this isn't the page you wanted / if this isn't right, contact your
+   System Admin or support"" caveat to ""text"". Not when you set a ""page"" key, not when you
+   don't, not in any wording, not in any language. It is noise on every single answer and it
+   makes a correct answer look like a guess. Give the answer and stop. If you genuinely cannot
+   answer, that is intent ""escalate"" instead (see below) — and there the contact details are
+   appended for you automatically, so you still never write them yourself.
 5. 🔴 CONSISTENCY RULE: if ""text"" names ONE specific report/page as THE answer — not just
    mentioned in passing — ""page"" MUST be that exact same key. Do not write a specific report in
    ""text"" and then set ""page"" to a different, more general key (e.g. a hub) — that mismatch is
