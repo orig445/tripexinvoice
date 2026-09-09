@@ -107,6 +107,44 @@ public class ClarifyOptionRenderingTests
         Assert.Equal(Question, ChatService.ComposeClarifyText(Question, new List<string>(), false));
     }
 
+    // ── The real shipping option sets ────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void The_real_status_lists_do_render_as_buttons(bool tripPath)
+    {
+        // The whole point of the fix. If a status is ever added that holds a comma, or one whose
+        // text contains "TID", BuildWidgetParamerter refuses the set, the widget draws no buttons,
+        // and the status question quietly goes back to being a wall of numbered text. That would
+        // be invisible in production, so it fails here instead.
+        var options = (tripPath
+            ? ChatService.TripStatusOptionsForTrip
+            : ChatService.TripStatusOptionsForExpenseOnly).ToList();
+
+        Assert.True(ChatService.OptionsRenderAsButtons(options, clientRendersParamerter: true),
+            "A status option now breaks the widget's paramerter rules (comma, or \"TID\").");
+        Assert.Equal(Question, ChatService.ComposeClarifyText(Question, options, true));
+    }
+
+    [Fact]
+    public void The_real_orientation_options_do_render_as_buttons()
+    {
+        // Same guard for the fixed three-way opening question, in both languages. Kept as
+        // literals because ChatService builds these inline per reply language.
+        var hebrew = new List<string>
+        {
+            "תפעול שוטף של נסיעות והוצאות", "ניתוח נתונים ודוחות במערכת", "ניהול ושינוי הגדרות במערכת",
+        };
+        var english = new List<string>
+        {
+            "Travel & expense operations", "Data analysis & reports", "System management & settings",
+        };
+
+        Assert.True(ChatService.OptionsRenderAsButtons(hebrew, clientRendersParamerter: true));
+        Assert.True(ChatService.OptionsRenderAsButtons(english, clientRendersParamerter: true));
+    }
+
     // ── Telling the clients apart ────────────────────────────────────────────────────────────
 
     [Fact]

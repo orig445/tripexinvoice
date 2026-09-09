@@ -89,15 +89,19 @@ public class ChatService
     // the 16 total statuses available to it — showing all 16 there would offer choices that
     // can't actually apply. "Other" bundles the 4 statuses that didn't fit either named list
     // (Matched / Closed / Pending for Cancel / Cancelled) rather than silently dropping them.
-    // Update by hand if TAS's own status set ever changes.
-    private static readonly string[] TripStatusOptionsForTrip =
+    // Update by hand if TAS's own status set ever changes — and note that the exact wording is
+    // load-bearing twice over: the chosen option is sent back verbatim as the next user message,
+    // and it has to survive the widget's button rules (no commas, no "TID" — see
+    // BuildWidgetParamerter), or the options silently revert to a plain text list. Public so the
+    // tests pin both properties against the real shipping data rather than a copy of it.
+    public static readonly IReadOnlyList<string> TripStatusOptionsForTrip = new[]
     {
         "Draft", "TR Approval", "Coordinator Approval", "Reservations", "Proposal Approval",
         "Approved", "Issued", "Active", "Travel Completed", "Expense Report", "Expense Approval",
         "Expense Approved", "Other (Matched / Closed / Pending for Cancel / Cancelled)",
     };
 
-    private static readonly string[] TripStatusOptionsForExpenseOnly =
+    public static readonly IReadOnlyList<string> TripStatusOptionsForExpenseOnly = new[]
     {
         "Expense Report", "Expense Approval", "Expense Approved", "Other",
     };
