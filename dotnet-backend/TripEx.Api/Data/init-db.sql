@@ -31,6 +31,23 @@ IF COL_LENGTH('dbo.chat_sessions', 'escalation_reason') IS NULL
     ALTER TABLE [dbo].[chat_sessions] ADD [escalation_reason] NVARCHAR(1000) NULL;
 GO
 
+-- ── chat_session_tickets ───────────────────────────────────────────
+-- One row per conversation that has been mirrored into Zoho Desk: our session id → their
+-- ticket id. Zoho has no idempotency key, so this row is what stops a retry from opening a
+-- second ticket for the same conversation. Deliberately its own table and not columns on
+-- chat_sessions — a new column there would be selected by every chat query and would break the
+-- whole bot until this script's background pass had run. Also created lazily by SchemaGuard.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'chat_session_tickets')
+CREATE TABLE [dbo].[chat_session_tickets] (
+    [session_id]        UNIQUEIDENTIFIER PRIMARY KEY,
+    [zoho_ticket_id]    NVARCHAR(50)   NOT NULL,
+    [synced_through]    DATETIME2      NULL,
+    [escalation_synced] BIT            NOT NULL DEFAULT 0,
+    [created_at]        DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
+    [updated_at]        DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
+);
+GO
+
 -- ── chat_messages ──────────────────────────────────────────────────
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'chat_messages')
 CREATE TABLE [dbo].[chat_messages] (

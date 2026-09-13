@@ -20,6 +20,8 @@ public class ChatService
     private readonly GeolocationService _geoService;
     private readonly ILogger<ChatService> _logger;
     private readonly string _supportContact;
+    private readonly ZohoDeskService _zoho;
+    private readonly ZohoTicketSyncQueue _zohoQueue;
 
     // Data/page-links.json is a large, static, deployment-wide dataset (hundreds of TAS
     // pages) — load it once per process (like log4net's LogDir) rather than per request.
@@ -531,7 +533,9 @@ public class ChatService
         InvoiceService invoiceService,
         GeolocationService geoService,
         ILogger<ChatService> logger,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        ZohoDeskService zoho,
+        ZohoTicketSyncQueue zohoQueue)
     {
         _db = db;
         _oracle = oracle;
@@ -539,6 +543,8 @@ public class ChatService
         _geoService = geoService;
         _logger = logger;
         _supportContact = configuration["Support:Contact"] ?? "support@tripex.io";
+        _zoho = zoho;
+        _zohoQueue = zohoQueue;
     }
 
     /// <summary>
@@ -1098,6 +1104,23 @@ public class ChatService
         catch (Exception ex)
         {
             Console.WriteLine($"⚠️ [CHAT] Assistant message/log not persisted (DB unavailable): {ex.Message}");
+        }
+
+        // ── Mirror the conversation into Zoho Desk (one ticket per conversation) ──
+        // A hand-off, not a call: this only drops the session id into an in-memory queue, so it
+        // adds no measurable time to a reply that already costs 11-39s, and a Zoho outage cannot
+        // reach the customer. The worker reads what to send from chat_messages, so a turn that
+        // does not make it (queue full, Zoho down, process restart) is picked up by the next one.
+        //
+        // Skipped for source:"internal" — that is TripEx's own staff chat, and its conversations
+        // are not customer support tickets.
+        if (_zoho.Options.IsConfigured && !isInternalAudience)
+        {
+            _zohoQueue.Enqueue(new ZohoSyncRequest(
+                sessionId,
+                request.Widget?.CustomerName,
+                request.Widget?.CompanyName,
+                request.Widget?.Email));
         }
 
         return new ChatResponse

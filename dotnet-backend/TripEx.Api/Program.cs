@@ -184,6 +184,13 @@ builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<FileStorageService>();
 builder.Services.AddHostedService<DbCleanupService>();
 
+// Zoho Desk mirroring. Singletons because the access token (1h) and the queue are process-wide;
+// the worker resolves its own scope per item. All three are inert unless Zoho:Enabled is true
+// AND the credentials are filled in — see ZohoDeskOptions.IsConfigured.
+builder.Services.AddSingleton<ZohoDeskService>();
+builder.Services.AddSingleton<ZohoTicketSyncQueue>();
+builder.Services.AddHostedService<ZohoTicketSyncWorker>();
+
 var app = builder.Build();
 
 Console.WriteLine($"🚀 [STARTUP] App built at {DateTime.Now:HH:mm:ss.fff}");

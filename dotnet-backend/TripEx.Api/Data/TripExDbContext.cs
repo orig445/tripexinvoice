@@ -22,6 +22,7 @@ public class TripExDbContext : DbContext
     public DbSet<InvoiceScanLog> InvoiceScanLogs => Set<InvoiceScanLog>();
     public DbSet<OcrTrainingSample> OcrTrainingSamples => Set<OcrTrainingSample>();
     public DbSet<OcrTrainingPattern> OcrTrainingPatterns => Set<OcrTrainingPattern>();
+    public DbSet<ChatSessionTicket> ChatSessionTickets => Set<ChatSessionTicket>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -60,6 +61,30 @@ public class ChatSession
     [Column("escalated")] public bool Escalated { get; set; }
     [Column("escalated_at")] public DateTime? EscalatedAt { get; set; }
     [Column("escalation_reason")] public string? EscalationReason { get; set; }
+    [Column("created_at")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    [Column("updated_at")] public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Maps one chat session to the single Zoho Desk ticket that mirrors it, so every turn of a
+/// conversation is appended to the same ticket instead of opening a new one.
+///
+/// This row IS the duplicate-ticket guard. Zoho Desk has no idempotency key and no unique
+/// constraint we could lean on, and its ticket search is not usable as a
+/// check-before-create either (newly created tickets take minutes to appear in the index, so
+/// two quick retries would both miss and both create). Persisting the id we got back, keyed by
+/// session, is the only reliable mechanism.
+/// </summary>
+[Table("chat_session_tickets")]
+public class ChatSessionTicket
+{
+    [Key, Column("session_id")] public Guid SessionId { get; set; }
+    [Column("zoho_ticket_id")] public string ZohoTicketId { get; set; } = "";
+    /// <summary>CreatedAt of the last chat_message already mirrored. Everything later than this
+    /// is what the next sync sends — which is what makes a failed sync self-healing.</summary>
+    [Column("synced_through")] public DateTime? SyncedThrough { get; set; }
+    /// <summary>Whether the ticket has already been reopened for a human after an escalation.</summary>
+    [Column("escalation_synced")] public bool EscalationSynced { get; set; }
     [Column("created_at")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     [Column("updated_at")] public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

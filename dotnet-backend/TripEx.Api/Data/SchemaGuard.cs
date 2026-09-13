@@ -98,6 +98,27 @@ IF COL_LENGTH('dbo.InvoiceScanLogs', 'ImageDebugPath') IS NULL
     ALTER TABLE [dbo].[InvoiceScanLogs] ADD [ImageDebugPath] NVARCHAR(1024) NULL;");
     }
 
+    /// <summary>
+    /// The chat-session → Zoho Desk ticket mapping. Guarded here rather than added as a column
+    /// on chat_sessions on purpose: a new column on that entity would be selected by EVERY
+    /// chat_sessions query, so until init-db.sql's background pass landed, the whole chat would
+    /// fail with "Invalid column name". A separate table keeps a missing migration's blast
+    /// radius inside the Zoho feature — and this path only ever runs when Zoho is configured.
+    /// </summary>
+    public static async Task EnsureChatSessionTicketsAsync(TripExDbContext db)
+    {
+        await EnsureAsync(db, "chat_session_tickets", @"
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'chat_session_tickets')
+CREATE TABLE [dbo].[chat_session_tickets] (
+    [session_id]        UNIQUEIDENTIFIER PRIMARY KEY,
+    [zoho_ticket_id]    NVARCHAR(50)   NOT NULL,
+    [synced_through]    DATETIME2      NULL,
+    [escalation_synced] BIT            NOT NULL DEFAULT 0,
+    [created_at]        DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
+    [updated_at]        DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
+);");
+    }
+
     private static async Task EnsureAsync(TripExDbContext db, string tableName, string ddl)
     {
         // Fast path — already verified in this process

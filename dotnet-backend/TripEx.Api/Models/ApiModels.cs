@@ -87,6 +87,9 @@ public class ChatRequest
     public string? Locale { get; set; }
     public string? SentAt { get; set; }
     public string? Timezone { get; set; }
+    /// <summary>The flat-shape twin of WidgetIdentityContext.Email — see there for why it is
+    /// bound before the widget sends it.</summary>
+    public string? CustomerEmail { get; set; }
 
     /// <summary>
     /// True when this request arrived in the TAS widget's own flat shape above — set by
@@ -119,13 +122,13 @@ public class ChatRequest
         // drops one field doesn't silently reclassify it as some other client.
         IsTasWidgetClient = !string.IsNullOrWhiteSpace(FirstNonBlank(
             CustomerName, CompanyName, CustomerId, Role, PageContext, Locale,
-            SentAt, Timezone, SessionId, ConversationId));
+            SentAt, Timezone, SessionId, ConversationId, CustomerEmail));
 
         if (string.IsNullOrWhiteSpace(SessionToken))
             SessionToken = FirstNonBlank(SessionId, ConversationId);
 
         if (Widget == null && !string.IsNullOrWhiteSpace(
-                FirstNonBlank(CustomerName, CompanyName, CustomerId, Role, PageContext, Locale)))
+                FirstNonBlank(CustomerName, CompanyName, CustomerId, Role, PageContext, Locale, CustomerEmail)))
         {
             Widget = new WidgetIdentityContext
             {
@@ -135,6 +138,7 @@ public class ChatRequest
                 Role = Role,
                 PageContext = PageContext,
                 Locale = Locale,
+                Email = CustomerEmail,
             };
         }
 
@@ -159,6 +163,14 @@ public class WidgetIdentityContext
     public string? Role { get; set; }
     public string? PageContext { get; set; }
     public string? Locale { get; set; }
+    /// <summary>
+    /// Not sent by the widget today. Bound in advance because Zoho Desk cannot create a ticket
+    /// without a contact email: until TAS forwards the real one, every mirrored conversation
+    /// lands on the single fallback contact (Zoho:FallbackContactEmail). The moment the widget
+    /// starts sending it — the same one-line addition that added customerName and the rest —
+    /// tickets attach to the real customer with no change on this side.
+    /// </summary>
+    public string? Email { get; set; }
 }
 
 public class ChatResponse
