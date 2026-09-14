@@ -49,6 +49,16 @@ public class ZohoDeskOptions
     /// capped at 255 chars by Desk; a GUID is 36. Leave empty to skip.</summary>
     public string SessionIdField { get; set; } = "";
 
+    /// <summary>
+    /// Optional Desk AGENT id (not a ZUID, not an email) to put every mirrored ticket into one
+    /// person's queue — the shape of a trial run, where one owner reviews everything Milo
+    /// handled before it reaches the real support queue. Empty means the ticket is left for the
+    /// department's own assignment rules, which is the normal end state: clearing this value
+    /// and restarting is the whole "trial is over" switch, with no code change.
+    /// Look it up with ListAgentsAsync, or GET /api/v1/agents/email/{email}.
+    /// </summary>
+    public string AssigneeId { get; set; } = "";
+
     // ── Contact ──
     // Desk refuses to create a ticket without a contact, and an inline contact needs BOTH a
     // last name and an email. The widget does not send the customer's email today (see
@@ -255,6 +265,9 @@ public class ZohoDeskService
         if (!string.IsNullOrWhiteSpace(Options.SessionIdField))
             payload["cf"] = new Dictionary<string, string> { [Options.SessionIdField] = draft.SessionId.ToString() };
 
+        if (!string.IsNullOrWhiteSpace(Options.AssigneeId))
+            payload["assigneeId"] = Options.AssigneeId;
+
         var (json, outcome) = await SendAsync(HttpMethod.Post, "api/v1/tickets", payload, ct);
 
         if (outcome == ZohoCallOutcome.Unknown)
@@ -273,19 +286,101 @@ public class ZohoDeskService
 
         if (json == null) return null;
 
+        string? id;
+        string? assignedTo;
         try
         {
             using var doc = JsonDocument.Parse(json);
-            var id = doc.RootElement.TryGetProperty("id", out var idProp) ? idProp.GetString() : null;
+            id = doc.RootElement.TryGetProperty("id", out var idProp) ? idProp.GetString() : null;
+            assignedTo = doc.RootElement.TryGetProperty("assigneeId", out var aProp) && aProp.ValueKind == JsonValueKind.String
+                ? aProp.GetString()
+                : null;
+
             if (id == null)
                 _logger.LogWarning("[ZOHO] Ticket created but the response carried no id: {Body}", Truncate(json, 300));
-            return id;
         }
         catch (Exception ex)
         {
             _logger.LogWarning("[ZOHO] Could not read the created ticket's id: {Message}", ex.Message);
             return null;
         }
+
+        // Zoho accepts assigneeId on create and then, when the portal has its own assignment
+        // rules, can quietly hand the ticket to somebody else and report success either way —
+        // there is no error to catch, only a different value in the response. So the value is
+        // read back and corrected, rather than assumed to have stuck. One extra call, and only
+        // when it actually went somewhere else.
+        if (id != null
+            && !string.IsNullOrWhiteSpace(Options.AssigneeId)
+            && !string.Equals(assignedTo, Options.AssigneeId, StringComparison.Ordinal))
+        {
+            _logger.LogWarning(
+                "[ZOHO] Ticket {TicketId} came back assigned to {Actual} instead of {Wanted} " +
+                "(an assignment rule in the portal overrode it) — correcting.",
+                id, assignedTo ?? "nobody", Options.AssigneeId);
+
+            if (!await UpdateAssigneeAsync(id, Options.AssigneeId, ct))
+                _logger.LogWarning("[ZOHO] Ticket {TicketId} could not be reassigned to {Wanted}.",
+                    id, Options.AssigneeId);
+        }
+
+        return id;
+    }
+
+    /// <summary>Moves a ticket to a specific agent. Separate from UpdateStatusAsync so the two
+    /// can fail independently — a ticket in the wrong queue is still a ticket with its transcript.</summary>
+    public async Task<bool> UpdateAssigneeAsync(string ticketId, string agentId, CancellationToken ct = default)
+    {
+        if (!Options.IsConfigured) return false;
+
+        var payload = new Dictionary<string, object?> { ["assigneeId"] = agentId };
+        return (await SendAsync(HttpMethod.Patch, $"api/v1/tickets/{ticketId}", payload, ct)).Body != null;
+    }
+
+    /// <summary>
+    /// Every agent in the portal, as (id, name, email). Used to pick the AssigneeId without
+    /// anyone having to dig an internal id out of the Desk UI. Needs Desk.agents.READ.
+    /// </summary>
+    public async Task<List<(string Id, string Name, string Email)>> ListAgentsAsync(CancellationToken ct = default)
+    {
+        var agents = new List<(string, string, string)>();
+        if (!Options.IsConfigured) return agents;
+
+        try
+        {
+            using var http = await CreateAuthorizedClientAsync(ct);
+            if (http == null) return agents;
+
+            using var response = await http.GetAsync("api/v1/agents?limit=200", ct);
+            var body = await response.Content.ReadAsStringAsync(ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("[ZOHO] Agent list → {Status} {Body}",
+                    (int)response.StatusCode, Truncate(body, 300));
+                return agents;
+            }
+
+            using var doc = JsonDocument.Parse(body);
+            if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+                return agents;
+
+            foreach (var a in data.EnumerateArray())
+            {
+                var id = a.TryGetProperty("id", out var i) ? i.GetString() : null;
+                if (id == null) continue;
+                // The Agents module calls it emailId; a ticket's embedded assignee calls the same
+                // thing "email". This endpoint is the former.
+                agents.Add((id,
+                    a.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "",
+                    a.TryGetProperty("emailId", out var e) ? e.GetString() ?? "" : ""));
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("[ZOHO] Agent list failed: {Message}", ex.Message);
+        }
+
+        return agents;
     }
 
     /// <summary>

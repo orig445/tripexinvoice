@@ -71,6 +71,26 @@ public class ZohoDeskTests
         Assert.False(options.IsConfigured);
     }
 
+    // ── Assignment (the trial-run setting) ───────────────────────────────────────────────────
+
+    [Fact]
+    public void Assignment_is_optional()
+    {
+        // Empty is the end state, not a broken state: tickets then follow the department's own
+        // rules. Clearing this value is how the trial run ends, so it must never be required.
+        var options = FullyConfigured();
+        Assert.Equal("", options.AssigneeId);
+        Assert.True(options.IsConfigured);
+    }
+
+    [Fact]
+    public void Setting_an_assignee_does_not_change_whether_the_feature_is_usable()
+    {
+        var options = FullyConfigured();
+        options.AssigneeId = "1892000000056007";
+        Assert.True(options.IsConfigured);
+    }
+
     // ── Truncation ───────────────────────────────────────────────────────────────────────────
 
     [Fact]
