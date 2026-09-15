@@ -20,6 +20,7 @@ public class ChatService
     private readonly GeolocationService _geoService;
     private readonly ILogger<ChatService> _logger;
     private readonly string _supportContact;
+    private readonly bool _statusListShortcut;
     private readonly ZohoDeskService _zoho;
     private readonly ZohoTicketSyncQueue _zohoQueue;
 
@@ -685,6 +686,15 @@ public class ChatService
         _geoService = geoService;
         _logger = logger;
         _supportContact = configuration["Support:Contact"] ?? "support@tripex.io";
+
+        // Off switch for the status-list shortcut, so undoing it is a config edit on the server
+        // and an app restart — not a code change, a rebuild and a publish. It changes two things
+        // at once (the turn stops costing ~39 s, and the status list stops depending on the
+        // model choosing to show it), and only real traffic will say whether the second one is
+        // wanted. Anything other than a literal "false" leaves it on, so a typo cannot silently
+        // disable it.
+        _statusListShortcut = !string.Equals(
+            configuration["Milo:StatusListShortcut"], "false", StringComparison.OrdinalIgnoreCase);
         _zoho = zoho;
         _zohoQueue = zohoQueue;
     }
@@ -955,7 +965,9 @@ public class ChatService
         // tokens) for output the clarify block below discards anyway. Ask the small question
         // instead. Gated on the same audience check as the clarify flow itself: internal staff
         // never see this flow, so the shortcut must never fire for them.
-        if (!isInternalAudience && IsStatusListTurn(historyRows, request.Text))
+        var isStatusListTurn = !isInternalAudience && IsStatusListTurn(historyRows, request.Text);
+
+        if (_statusListShortcut && isStatusListTurn)
         {
             intent = await ResolveStatusListIntentAsync(
                 FindQuestionBeforeOrientation(historyRows), CancellationToken.None);
@@ -972,6 +984,14 @@ public class ChatService
         }
         else
         {
+            // Logged only on the exact turn the shortcut would have taken, so switching it off
+            // in config produces visible proof that it is off — rather than the absence of a
+            // line, which is also what a broken setting name looks like.
+            if (isStatusListTurn)
+                _logger.LogInformation(
+                    "[CLARIFY-FAST] session={SessionId} shortcut disabled by Milo:StatusListShortcut — using the full prompt",
+                    sessionId);
+
             // ── Call Oracle AI ──
             var rawContent = await _oracle.ChatAsync(messages, maxTokens, temperature, allowCustomModel: true);
             (intent, responseText, page, modelOptions) = ParseAiResponse(rawContent);
