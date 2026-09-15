@@ -81,12 +81,16 @@ public class ChatService
     // Pending for Cancel / Cancelled)", 55).
     private const int MaxOptionLabelLength = 60;
 
-    // Milo's own judgment on "is this question ambiguous enough to ask a clarifying
-    // question" isn't perfectly reliable (same class of issue as its page-selection
-    // judgment) — without a hard code-level cap, a confused model could keep asking
-    // "clarify" forever instead of ever reaching an answer or a human, defeating the
-    // whole point of adding it (fewer support tickets, not an endless interrogation).
-    private const int MaxConsecutiveClarifications = 2;
+    // How many clarifying questions in a row before the reply also names a human to talk to.
+    //
+    // This used to be a HARD CAP of 2: the third clarify in a row had its intent rewritten to
+    // "escalate" and its own text thrown away, whether or not the conversation was actually
+    // going badly. Removed 2026-09-15 at Roi's request — a user who is still answering the
+    // questions is making progress, and ending the flow on a turn count threw that progress
+    // away. The offer replaces the cap: Milo asks as many questions as it needs to, and every
+    // Nth one carries the support address beside it, so leaving is always one line away and
+    // never forced. N counts the question being asked right now, so it lands on 3, 6, 9, …
+    private const int SupportOfferEveryNClarifications = 3;
 
     // The TAS trip/expense-report status values, exactly as they appear in the system —
     // supplied directly by the product owner (2026-09-03), NOT derived from any live TAS
@@ -835,28 +839,26 @@ public class ChatService
         // won't. See OptionsRenderAsButtons.
         var optionsRenderAsButtons = false;
         // Set when the block below clears `page` on purpose, so ResolvePageOverride can be
-        // skipped further down. A flag rather than re-testing the intent afterwards, because the
-        // 2-in-a-row cap REASSIGNS intent to "escalate" — that turn also has its page cleared
-        // deliberately, and an intent test after the fact would no longer be able to tell.
+        // skipped further down. A flag rather than re-testing the intent afterwards, so it stays
+        // honest even if a branch REASSIGNS `intent` after clearing the page — the 2-in-a-row cap
+        // did exactly that (to "escalate") until the support offer replaced it, and an intent
+        // test after the fact would no longer have been able to tell.
         var pageDeliberatelyCleared = false;
+
+        // Which clarifying question this turn is, counting the one about to be asked: 1 on the
+        // first, 2 on the next, and so on. Stays 0 on every turn that isn't a clarify. Read far
+        // below, by the periodic support offer — which is why it lives out here rather than
+        // inside the block, where `consecutiveClarifications` itself is scoped.
+        var clarifyRoundNumber = 0;
         if (!isInternalAudience && ClarifyTypeIntents.Contains(intent))
         {
             clarifyRationale = responseText;
             var consecutiveClarifications = CountTrailingConsecutiveClarifications(historyRows);
+            clarifyRoundNumber = consecutiveClarifications + 1;
             page = null; // none of these ever link to a page — there's nothing to link to yet
             pageDeliberatelyCleared = true;
 
-            if (consecutiveClarifications >= MaxConsecutiveClarifications)
-            {
-                intent = "escalate";
-                // The model's own "text" was phrased as yet another question, not an
-                // escalation explanation — replace it with a fixed, honest line instead of
-                // showing a mismatched question right above the support-contact line.
-                responseText = IsHebrewDominant(request.Text)
-                    ? "כדי לוודא שתקבל את העזרה המדויקת ביותר, אני מעביר את זה לתמיכה."
-                    : "To make sure you get the most accurate help, let me connect you with support.";
-            }
-            else if (intent == "clarify_status_trip" || intent == "clarify_status_expense")
+            if (intent == "clarify_status_trip" || intent == "clarify_status_expense")
             {
                 // Fixed, deterministic status list — shown whenever the user picked "travel &
                 // expense operations" in the first round, instead of whatever the model would
@@ -1031,6 +1033,25 @@ public class ChatService
             responseText += isHebrewReply
                 ? "\n\nאפשר גם פשוט להקליד את הטקסט של האפשרות המתאימה"
                 : "\n\nYou can also simply type the text of the option that fits";
+        }
+
+        // Every Nth clarifying question in a row also offers a human, with the real address.
+        // This is what replaced the hard 2-question cap (see SupportOfferEveryNClarifications):
+        // instead of DECIDING for the user that the conversation has gone on long enough, the
+        // third, sixth, ninth question simply says support exists and lets them choose. Phrased
+        // as an aside, not a hand-off — the question above it is still the main point of the
+        // message, and the options/buttons are still there to answer.
+        //
+        // Deliberately outside the if/else above: that pair is about how the OPTIONS are
+        // rendered, which has nothing to do with how long the conversation has run. Both
+        // branches, and the branch-free case (a clarify with no options at all), get the offer.
+        if (clarifyRoundNumber > 0
+            && clarifyRoundNumber % SupportOfferEveryNClarifications == 0
+            && !escalated)
+        {
+            responseText += isHebrewReply
+                ? $"\n\nאם בא לך לדלג על השאלות ולדבר עם בן אדם — התמיכה שלנו במייל {_supportContact}"
+                : $"\n\nIf you'd rather skip the questions and talk to a person — our support is at {_supportContact}";
         }
 
         // ── Save corrections (learning from OCR corrections) ──
