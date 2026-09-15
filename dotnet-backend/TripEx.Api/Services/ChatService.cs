@@ -119,6 +119,22 @@ public class ChatService
         "Expense Report", "Expense Approval", "Expense Approved", "Other",
     };
 
+    // The three areas offered by the fixed first orientation question, in both languages.
+    // Constants rather than literals at the point of use because they are matched BACK on the
+    // following turn: the option the user picks is re-sent verbatim as their next message, and
+    // recognising it is what lets that turn skip the model entirely (see IsStatusListTurn).
+    // Reworded in one place only, the recognition would silently stop matching and quietly
+    // restore a 39-second turn — so the writer and the reader share one definition.
+    public static readonly IReadOnlyList<string> OrientationOptionsHe = new[]
+    {
+        "תפעול שוטף של נסיעות והוצאות", "ניתוח נתונים ודוחות במערכת", "ניהול ושינוי הגדרות במערכת",
+    };
+
+    public static readonly IReadOnlyList<string> OrientationOptionsEn = new[]
+    {
+        "Travel & expense operations", "Data analysis & reports", "System management & settings",
+    };
+
     // Every intent that counts as a "clarifying-type" turn for the consecutive-clarification
     // cap — "clarify" (the fixed 3-way orientation round) plus the two fixed status-list
     // follow-ups (kept as distinct intent values for logging: which one fired tells you
@@ -148,6 +164,128 @@ public class ChatService
             count++;
         }
         return count;
+    }
+
+    /// <summary>
+    /// Did the user just answer the fixed orientation question with its FIRST option — the
+    /// travel &amp; expense operations branch? Compared against the shipped option strings in both
+    /// languages, through the same normalisation every other option match uses, because the
+    /// widget re-sends a button's label verbatim and a stray quote or trailing period must not
+    /// read as a different answer.
+    /// </summary>
+    public static bool IsOperationsOrientationAnswer(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+
+        var normalized = NormalizeForOptionMatch(StripBidiMarks(text));
+        return normalized.Equals(NormalizeForOptionMatch(OrientationOptionsHe[0]), StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals(NormalizeForOptionMatch(OrientationOptionsEn[0]), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// True when this turn's reply is ALREADY DECIDED before the model is asked anything: the
+    /// last assistant turn was the fixed orientation question and the user picked its operations
+    /// option, so the reply is the fixed status list and the only open question is which of the
+    /// two lists to show.
+    ///
+    /// Worth detecting because of what it costs otherwise. Measured against real production
+    /// usage on 2026-09-08, this exact turn spent 3,561 thinking tokens and 39.3 seconds — the
+    /// slowest turn of the whole conversation — to write text that the clarify block below then
+    /// throws away and replaces with a hard-coded list. Every other turn in that sample sat
+    /// between 11 and 23 seconds.
+    /// </summary>
+    public static bool IsStatusListTurn(
+        IReadOnlyList<(string Role, string Content, string? Intent)> historyRows, string? userText)
+    {
+        if (historyRows == null || !IsOperationsOrientationAnswer(userText)) return false;
+
+        // The most recent assistant turn has to be the FIXED orientation round. "clarify" is
+        // also the intent of the model-authored SECOND round, but that one never offers these
+        // three options — so a user message equal to one of them cannot have come from it.
+        for (var i = historyRows.Count - 1; i >= 0; i--)
+        {
+            if (historyRows[i].Role != "assistant") continue;
+            return historyRows[i].Intent == "clarify";
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// The question that triggered the orientation round, so the trip-vs-expense choice is made
+    /// against what the user actually asked rather than against the button they just clicked —
+    /// which names an area and says nothing about either.
+    /// </summary>
+    public static string? FindQuestionBeforeOrientation(
+        IReadOnlyList<(string Role, string Content, string? Intent)> historyRows)
+    {
+        if (historyRows == null) return null;
+
+        var orientation = -1;
+        for (var i = historyRows.Count - 1; i >= 0; i--)
+        {
+            if (historyRows[i].Role == "assistant") { orientation = i; break; }
+        }
+        if (orientation < 0) return null;
+
+        for (var i = orientation - 1; i >= 0; i--)
+            if (historyRows[i].Role == "user") return historyRows[i].Content;
+
+        return null;
+    }
+
+    /// <summary>
+    /// Settles the only open question on a status-list turn: was the user's original question
+    /// about a standalone expense report with NO trip, or about a trip? Asked with a four-line
+    /// prompt instead of the full one, because nothing else about that turn is undecided.
+    ///
+    /// Every failure path lands on the trip list, which is not a compromise: it is the longer,
+    /// more complete of the two, and the main prompt's own rule 3b already names it as the
+    /// answer "when genuinely unclear which". So the worst case here is exactly today's
+    /// documented behaviour, reached in a fraction of the time.
+    /// </summary>
+    private async Task<string> ResolveStatusListIntentAsync(string? originalQuestion, CancellationToken ct)
+    {
+        const string trip = "clarify_status_trip";
+        const string expense = "clarify_status_expense";
+
+        if (string.IsNullOrWhiteSpace(originalQuestion)) return trip;
+
+        var messages = new List<OracleMessage>
+        {
+            new()
+            {
+                Role = "system",
+                Content =
+                    "Reply with ONE word and nothing else: TRIP or EXPENSE.\n" +
+                    "The user asked the question below about a travel & expense management system.\n" +
+                    "Reply EXPENSE only if it is clearly about a standalone expense report with NO " +
+                    "trip involved. In every other case, including any doubt, reply TRIP.",
+            },
+            new() { Role = "user", Content = originalQuestion! },
+        };
+
+        try
+        {
+            // 512, not the 4096 floor the conversational path needs: the answer is one word, and
+            // this budget still has to cover the thinking tokens Gemini spends out of the same
+            // allowance. If a trivial question somehow exhausts it, the reply comes back empty
+            // and falls through to the same safe default as every other failure.
+            var raw = await _oracle.ChatAsync(messages, maxTokens: 512, temperature: 0, ct);
+
+            // Matched as a whole word anywhere in the reply rather than by a prefix test, so a
+            // model that wraps its answer in quotes, JSON, or a stray sentence still parses.
+            var match = System.Text.RegularExpressions.Regex.Match(
+                raw ?? "", @"\b(TRIP|EXPENSE)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            return match.Success && match.Groups[1].Value.Equals("EXPENSE", StringComparison.OrdinalIgnoreCase)
+                ? expense
+                : trip;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[CLARIFY-FAST] trip-vs-expense call failed — defaulting to the full status list.");
+            return trip;
+        }
     }
 
     // Mirrors the top-level shape of page-links.json: { "baseUrl": "...", "pages": [...] }.
@@ -802,11 +940,44 @@ public class ChatService
         // OracleAiService.ResolveChatTarget). OCR/invoice-scan call sites never pass
         // this, so they always stay on the vision-capable default model regardless.
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        var rawContent = await _oracle.ChatAsync(messages, maxTokens, temperature, allowCustomModel: true);
-        sw.Stop();
 
-        // ── Parse response ──
-        var (intent, responseText, page, modelOptions) = ParseAiResponse(rawContent);
+        var isInternalAudience = string.Equals(request.Source, "internal", StringComparison.OrdinalIgnoreCase);
+
+        string intent, responseText, page;
+        List<string> modelOptions;
+
+        // ── The one turn whose answer is already known ──
+        // The user has just picked "travel & expense operations" from the fixed orientation
+        // question, so the reply is the fixed status list either way and the ONLY undecided
+        // thing is which of the two lists applies. Asking the full prompt — 60,000 characters
+        // of page catalog, the whole navigation rulebook, the glossary — to settle a binary
+        // choice is what made this the slowest turn in production (39.3 s, 3,561 thinking
+        // tokens) for output the clarify block below discards anyway. Ask the small question
+        // instead. Gated on the same audience check as the clarify flow itself: internal staff
+        // never see this flow, so the shortcut must never fire for them.
+        if (!isInternalAudience && IsStatusListTurn(historyRows, request.Text))
+        {
+            intent = await ResolveStatusListIntentAsync(
+                FindQuestionBeforeOrientation(historyRows), CancellationToken.None);
+            // Everything else on this path is fixed. "text" is replaced by the status list, the
+            // page is cleared deliberately, and there are no model-authored options — so the
+            // values here only have to be the harmless ones the clarify block expects.
+            responseText = "";
+            page = "";
+            modelOptions = new List<string>();
+
+            _logger.LogInformation(
+                "[CLARIFY-FAST] session={SessionId} answered the orientation question without the full prompt → {Intent}",
+                sessionId, intent);
+        }
+        else
+        {
+            // ── Call Oracle AI ──
+            var rawContent = await _oracle.ChatAsync(messages, maxTokens, temperature, allowCustomModel: true);
+            (intent, responseText, page, modelOptions) = ParseAiResponse(rawContent);
+        }
+
+        sw.Stop();
 
         // ── Shape "clarify"/"clarify_status_*" responses: fixed questions first, cap at the limit ──
         // quickReplies carries the round's choices as plain option strings (no numbering), for a
@@ -818,8 +989,9 @@ public class ChatService
         // never offers these intents to the model for that audience; this is the same "don't
         // rely on the prompt alone" defense-in-depth this file uses everywhere else, in case
         // the model emits one of them anyway.
+        // (isInternalAudience itself is computed further up, where the status-list shortcut
+        // needs it — the reasoning above is why it exists at all, so it stays here.)
         var quickReplies = new List<string>();
-        var isInternalAudience = string.Equals(request.Source, "internal", StringComparison.OrdinalIgnoreCase);
         // The model's own "text" on a clarify turn is about to be overwritten by a fixed
         // question, which used to make a wrongly-chosen "clarify" completely undiagnosable:
         // nothing recorded WHY it asked instead of answering. The prompt now requires that text
@@ -882,9 +1054,7 @@ public class ChatService
                 // round instead (the final `else` case below) — by then the user's answer here
                 // has already narrowed things down to one area, so it can ask something specific.
                 var isHebrew = IsHebrewDominant(request.Text);
-                clarifyOptions = isHebrew
-                    ? new() { "תפעול שוטף של נסיעות והוצאות", "ניתוח נתונים ודוחות במערכת", "ניהול ושינוי הגדרות במערכת" }
-                    : new() { "Travel & expense operations", "Data analysis & reports", "System management & settings" };
+                clarifyOptions = (isHebrew ? OrientationOptionsHe : OrientationOptionsEn).ToList();
                 clarifyQuestion = isHebrew
                     ? "כדי שאוכל לכוון אותך לתשובה המדויקת ביותר — במה מדובר?"
                     : "To point you to the most accurate answer — which of these is it about?";
