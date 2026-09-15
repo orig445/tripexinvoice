@@ -44,6 +44,22 @@ public class ZohoDeskOptions
     public string AiHandledStatus { get; set; } = "Closed";
     /// <summary>Status once the conversation escalates: this one IS work for a human.</summary>
     public string EscalatedStatus { get; set; } = "Open";
+
+    /// <summary>
+    /// Priority for a conversation Milo handled alone. The point is sorting, not severity: a
+    /// ticket nobody has to read should never sit above one that someone is waiting on, so an
+    /// agent can order the queue by priority and see the real work first without filtering
+    /// anything out. Set to "" to leave the field off the payload entirely — which is also the
+    /// escape hatch if this Desk portal has been given a custom priority list that has no "Low".
+    /// </summary>
+    public string AiHandledPriority { get; set; } = "Low";
+    /// <summary>
+    /// Priority the ticket is raised to the moment the conversation escalates — the other half
+    /// of the pair above, and the only thing that separates "Milo answered this" from "a person
+    /// is waiting". Raised once and never lowered again: a conversation that needed a human
+    /// still needed one even if the turns after it went fine. "" leaves the field untouched.
+    /// </summary>
+    public string EscalatedPriority { get; set; } = "High";
     /// <summary>Optional Desk custom-field API name to receive our chat session GUID (e.g.
     /// "cf_milo_session_id"), so a ticket can be traced back to our own records. Values are
     /// capped at 255 chars by Desk; a GUID is 36. Leave empty to skip.</summary>
@@ -262,6 +278,16 @@ public class ZohoDeskService
             },
         };
 
+        // Low unless a human is already needed. Added here rather than in the initializer above
+        // because a blank setting has to leave the key OFF the payload: Desk rejects an empty
+        // string for a picklist field, so an operator who wants no priority at all — or whose
+        // portal uses a custom priority list — clears the setting instead of inventing a value.
+        // Trimmed, not just whitespace-tested: Desk matches a picklist value exactly, so a
+        // trailing space someone left in the JSON config would be a value it does not know.
+        var priority = (draft.Escalated ? Options.EscalatedPriority : Options.AiHandledPriority)?.Trim();
+        if (!string.IsNullOrEmpty(priority))
+            payload["priority"] = priority;
+
         if (!string.IsNullOrWhiteSpace(Options.SessionIdField))
             payload["cf"] = new Dictionary<string, string> { [Options.SessionIdField] = draft.SessionId.ToString() };
 
@@ -269,6 +295,29 @@ public class ZohoDeskService
             payload["assigneeId"] = Options.AssigneeId;
 
         var (json, outcome) = await SendAsync(HttpMethod.Post, "api/v1/tickets", payload, ct);
+
+        // Priority is a picklist, and Desk matches picklist values EXACTLY. A portal whose
+        // priority list has been customised may simply not have "Low" — and because this field
+        // rides on the create payload, that would turn a live, working mirror into zero tickets
+        // rather than into tickets with no priority. That trade is unacceptable: the ticket and
+        // its transcript are the point, the sort order is a convenience. So a clean refusal
+        // (4xx) gets exactly one more attempt with the field dropped.
+        //
+        // Deliberately not conditioned on the error text: a 4xx body is logged by SendAsync but
+        // not returned here, and guessing at Zoho's error codes to save one retry on an
+        // unrelated failure (a bad orgId, a revoked token — which this also gives a second,
+        // freshly-minted-token attempt) is not worth the chance of missing the case this exists
+        // for. One extra call on a failing create, never on a succeeding one.
+        if (outcome == ZohoCallOutcome.Rejected && payload.Remove("priority"))
+        {
+            _logger.LogWarning(
+                "[ZOHO] Ticket create for session={SessionId} was refused while sending priority=\"{Priority}\" — " +
+                "retrying WITHOUT it. If this line repeats, that value is not in this portal's priority " +
+                "picklist: correct or clear Zoho:AiHandledPriority / Zoho:EscalatedPriority.",
+                draft.SessionId, priority);
+
+            (json, outcome) = await SendAsync(HttpMethod.Post, "api/v1/tickets", payload, ct);
+        }
 
         if (outcome == ZohoCallOutcome.Unknown)
         {
@@ -327,7 +376,7 @@ public class ZohoDeskService
         return id;
     }
 
-    /// <summary>Moves a ticket to a specific agent. Separate from UpdateStatusAsync so the two
+    /// <summary>Moves a ticket to a specific agent. Separate from UpdateStatusAndPriorityAsync so the two
     /// can fail independently — a ticket in the wrong queue is still a ticket with its transcript.</summary>
     public async Task<bool> UpdateAssigneeAsync(string ticketId, string agentId, CancellationToken ct = default)
     {
@@ -409,13 +458,38 @@ public class ZohoDeskService
         return (await SendAsync(HttpMethod.Post, $"api/v1/tickets/{ticketId}/comments", payload, ct)).Body != null;
     }
 
-    /// <summary>Moves a ticket's status — used to reopen an AI-handled ticket once it escalates.</summary>
-    public async Task<bool> UpdateStatusAsync(string ticketId, string status, CancellationToken ct = default)
+    /// <summary>
+    /// Raises an existing ticket to its escalated state. Status and priority go in ONE PATCH on
+    /// purpose: they are the same fact ("a person is needed now") written to two fields, and two
+    /// calls could leave the ticket reopened but still sitting at Low, which is exactly the row
+    /// an agent scanning by priority would skip. A blank priority sends status alone.
+    /// </summary>
+    public async Task<bool> UpdateStatusAndPriorityAsync(
+        string ticketId, string status, string? priority, CancellationToken ct = default)
     {
         if (!Options.IsConfigured) return false;
 
         var payload = new Dictionary<string, object?> { ["status"] = status };
-        return (await SendAsync(HttpMethod.Patch, $"api/v1/tickets/{ticketId}", payload, ct)).Body != null;
+        priority = priority?.Trim();
+        if (!string.IsNullOrEmpty(priority))
+            payload["priority"] = priority;
+
+        var result = await SendAsync(HttpMethod.Patch, $"api/v1/tickets/{ticketId}", payload, ct);
+
+        // Same trade as on create, and the reason this merge is safe: bundling priority into the
+        // reopen is only an improvement while it cannot PREVENT the reopen. A refused PATCH gets
+        // one more attempt with the status alone, so a priority value this portal doesn't know
+        // leaves the ticket correctly reopened and merely sorted as before — never stuck closed.
+        if (result.Outcome == ZohoCallOutcome.Rejected && payload.Remove("priority"))
+        {
+            _logger.LogWarning(
+                "[ZOHO] Ticket {TicketId} refused the reopen while sending priority=\"{Priority}\" — " +
+                "retrying with the status alone.", ticketId, priority);
+
+            result = await SendAsync(HttpMethod.Patch, $"api/v1/tickets/{ticketId}", payload, ct);
+        }
+
+        return result.Body != null;
     }
 
     // ── Plumbing ─────────────────────────────────────────────────────────────────────────────

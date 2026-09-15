@@ -319,4 +319,34 @@ public class ZohoDeskTests
         Assert.Equal(id, item!.SessionId);
         Assert.Equal("roi@tripex.io", item.Email);
     }
+
+    // ── Priority: the one field that separates "read this" from "filed for the record" ───────
+
+    [Fact]
+    public void Ai_handled_and_escalated_priorities_default_to_a_real_pair()
+    {
+        // The whole point is that one queue can hold both kinds of work and still sort usefully,
+        // so these two must ship with values that actually differ — and with the AI one LOWER,
+        // not merely different, or a queue sorted by priority puts the tickets nobody has to
+        // read on top. Both are stock Zoho Desk picklist values; inventing a name Desk doesn't
+        // know would make every single ticket create fail.
+        var options = new ZohoDeskOptions();
+
+        Assert.Equal("Low", options.AiHandledPriority);
+        Assert.Equal("High", options.EscalatedPriority);
+        Assert.NotEqual(options.AiHandledPriority, options.EscalatedPriority);
+    }
+
+    [Fact]
+    public void Blank_priorities_are_a_supported_configuration()
+    {
+        // The escape hatch for a portal whose priority list has been customised: clearing the
+        // value leaves the field off the payload entirely rather than sending "", which Desk
+        // rejects. It must never read as "not configured" and disable the whole mirror.
+        var options = FullyConfigured();
+        options.AiHandledPriority = "";
+        options.EscalatedPriority = "";
+
+        Assert.True(options.IsConfigured);
+    }
 }

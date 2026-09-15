@@ -202,17 +202,23 @@ public class ZohoTicketSyncWorker : BackgroundService
                 request.SessionId, map.ZohoTicketId, pending.Count);
 
         // The conversation started as something Milo handled and has now been handed to a human:
-        // reopen the ticket so it lands in the queue as real work. Done last, so a failure here
-        // leaves the transcript already saved and only the status to retry.
+        // reopen the ticket AND raise its priority, so it lands in the queue as real work and
+        // sorts above every ticket nobody has to read. Done last, so a failure here leaves the
+        // transcript already saved and only this one PATCH to retry — and it IS one PATCH, so a
+        // ticket can never end up reopened while still sitting at the AI-handled priority.
         if (escalated && !map.EscalationSynced)
         {
-            if (await _zoho.UpdateStatusAsync(map.ZohoTicketId, _zoho.Options.EscalatedStatus, CancellationToken.None))
+            if (await _zoho.UpdateStatusAndPriorityAsync(
+                    map.ZohoTicketId, _zoho.Options.EscalatedStatus, _zoho.Options.EscalatedPriority,
+                    CancellationToken.None))
             {
                 map.EscalationSynced = true;
                 map.UpdatedAt = DateTime.UtcNow;
                 await db.SaveChangesAsync(CancellationToken.None);
-                _logger.LogInformation("[ZOHO-SYNC] session={SessionId} ticket={TicketId} reopened — escalated to a human",
-                    request.SessionId, map.ZohoTicketId);
+                _logger.LogInformation(
+                    "[ZOHO-SYNC] session={SessionId} ticket={TicketId} reopened at priority={Priority} — escalated to a human",
+                    request.SessionId, map.ZohoTicketId,
+                    string.IsNullOrWhiteSpace(_zoho.Options.EscalatedPriority) ? "(unchanged)" : _zoho.Options.EscalatedPriority);
             }
             else
             {
