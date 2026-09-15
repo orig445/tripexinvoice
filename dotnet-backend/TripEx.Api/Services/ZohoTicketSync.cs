@@ -254,7 +254,7 @@ public class ZohoTicketSyncWorker : BackgroundService
 
         foreach (var message in messages)
         {
-            var rendered = ZohoDeskService.Truncate(Render(message), maxChars);
+            var rendered = TruncateHtml(Render(message), maxChars);
 
             if (current.Length > 0 && current.Length + rendered.Length > maxChars)
             {
@@ -272,11 +272,40 @@ public class ZohoTicketSyncWorker : BackgroundService
         return batches;
     }
 
+    /// <summary>
+    /// One message as HTML, because both fields this lands in are HTML fields.
+    ///
+    /// The ticket's "description" is HTML in Zoho and silently swallows newlines — the very first
+    /// transcript went in as plain text with \n and came out as one unreadable run-on line
+    /// (observed in production, ticket #104). A comment can be told contentType:"plainText", but
+    /// the description cannot, so the transcript is HTML everywhere rather than one format per
+    /// field: one rendering, one size budget, and nothing that depends on which field it lands in.
+    ///
+    /// The content is escaped first — it is customer text and model output, and must never be
+    /// able to inject markup into the helpdesk.
+    /// </summary>
     private static string Render(TranscriptMessage message)
     {
         var who = string.Equals(message.Role, "user", StringComparison.OrdinalIgnoreCase) ? "Customer" : "Milo";
         var intent = string.IsNullOrWhiteSpace(message.Intent) ? "" : $" [{message.Intent}]";
-        return $"── {who} · {message.CreatedAt:yyyy-MM-dd HH:mm} UTC{intent}\n{message.Content}\n\n";
+        var header = System.Net.WebUtility.HtmlEncode($"── {who} · {message.CreatedAt:yyyy-MM-dd HH:mm} UTC{intent}");
+        var body = System.Net.WebUtility.HtmlEncode(message.Content ?? "").Replace("\n", "<br>");
+        return $"<b>{header}</b><br>{body}<br><br>";
+    }
+
+    /// <summary>
+    /// Truncates HTML without leaving a half-written character entity behind. A plain cut can land
+    /// inside "&amp;quot;", and the remainder then shows up as literal "&amp;qu" in the ticket.
+    /// </summary>
+    public static string TruncateHtml(string html, int maxChars)
+    {
+        var cut = ZohoDeskService.Truncate(html, maxChars);
+        if (cut.Length == html.Length) return cut;
+
+        // An "&" later than the last ";" is an entity that lost its tail.
+        var lastAmp = cut.LastIndexOf('&');
+        if (lastAmp >= 0 && lastAmp > cut.LastIndexOf(';')) cut = cut[..lastAmp];
+        return cut;
     }
 
     /// <summary>First line only, whitespace collapsed — a ticket subject is one line, not a paragraph.</summary>

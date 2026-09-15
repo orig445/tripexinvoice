@@ -243,6 +243,49 @@ public class ZohoDeskTests
         Assert.Contains("Milo", batches[0].Content);
     }
 
+    [Fact]
+    public void Line_breaks_survive_as_markup()
+    {
+        // Zoho's ticket description is an HTML field with no plainText option, so a transcript
+        // sent with bare newlines arrives as one run-on line — which is exactly what the first
+        // real ticket looked like. Every break has to be markup.
+        var batches = ZohoTicketSyncWorker.BuildTranscriptBatches(
+            new[] { Msg("user", "line one\nline two", 1) },
+            ZohoDeskService.MaxCommentLength);
+
+        Assert.Contains("line one<br>line two", batches[0].Content);
+        Assert.DoesNotContain("\n", batches[0].Content);
+    }
+
+    [Fact]
+    public void Customer_text_cannot_inject_markup_into_the_helpdesk()
+    {
+        // The transcript carries the customer's own words and the model's output. Now that it is
+        // rendered as HTML, neither may be able to put live markup in front of a support agent.
+        var batches = ZohoTicketSyncWorker.BuildTranscriptBatches(
+            new[] { Msg("user", "<img src=x onerror=alert(1)> & <b>bold</b>", 1) },
+            ZohoDeskService.MaxCommentLength);
+
+        Assert.DoesNotContain("<img", batches[0].Content);
+        Assert.DoesNotContain("<b>bold", batches[0].Content);
+        Assert.Contains("&lt;img", batches[0].Content);
+        Assert.Contains("&amp;", batches[0].Content);
+    }
+
+    [Fact]
+    public void Truncation_never_leaves_half_an_html_entity()
+    {
+        // A plain cut can land inside "&quot;", and the tail then shows as literal "&qu".
+        var html = "abcdefgh&quot;ijkl";
+        for (var cut = 1; cut <= html.Length; cut++)
+        {
+            var result = ZohoTicketSyncWorker.TruncateHtml(html, cut);
+            var lastAmp = result.LastIndexOf('&');
+            Assert.True(lastAmp < 0 || lastAmp < result.LastIndexOf(';'),
+                $"dangling entity at cut={cut}: {result}");
+        }
+    }
+
     // ── The hand-off queue ───────────────────────────────────────────────────────────────────
 
     [Fact]

@@ -1682,7 +1682,12 @@ General sections — LAST RESORT ONLY, use only if nothing above fits:
 CRITICAL OUTPUT RULE: Respond with ONLY a JSON object. No reasoning, no markdown, no text outside the JSON.
 CRITICAL TEXT RULE: The ""text"" field must ALWAYS contain natural, human-readable text. NEVER put JSON objects, code, or raw data structures inside the ""text"" field.
 CRITICAL LANGUAGE RULE: Detect the language of the user's latest message and reply in that SAME language (Hebrew → Hebrew, English → English, etc.). Never switch languages on your own — mirror the user.{(!string.IsNullOrWhiteSpace(request.Widget?.Locale) ? $@"
-The host page reports the customer's locale as ""{request.Widget!.Locale}"" — prefer that over your own language detection whenever the two would disagree (e.g. a short or ambiguous message)." : "")}
+The host page reports the customer's locale as ""{request.Widget!.Locale}"". Use it ONLY as a tie-breaker
+when the message itself carries no language at all — an emoji, digits, punctuation, or keyboard noise.
+Whenever the message contains real words, THE MESSAGE WINS, however short it is and however much the
+locale disagrees: Hebrew characters mean a Hebrew answer, full stop. The locale is the browser's
+setting, not a statement of what the person speaks — a Hebrew speaker on an English browser must
+still be answered in Hebrew." : "")}
 
 ## What you CAN do
 - Answer questions about the TripEX system and how to use it.

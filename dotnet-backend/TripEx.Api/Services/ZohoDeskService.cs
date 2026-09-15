@@ -399,9 +399,11 @@ public class ZohoDeskService
         {
             ["content"] = Truncate(content, MaxCommentLength),
             ["isPublic"] = false,
-            // Without this Desk treats the body as HTML and collapses every newline, which turns
-            // a transcript into one unreadable paragraph.
-            ["contentType"] = "plainText",
+            // HTML, matching the ticket description — which is an HTML field with no plainText
+            // option, and which collapsed every newline when it was fed plain text. The
+            // transcript is built as HTML once (see ZohoTicketSyncWorker.Render) so both fields
+            // take the same string and line breaks survive in both.
+            ["contentType"] = "html",
         };
 
         return (await SendAsync(HttpMethod.Post, $"api/v1/tickets/{ticketId}/comments", payload, ct)).Body != null;
