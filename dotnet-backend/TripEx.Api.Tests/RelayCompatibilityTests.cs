@@ -202,4 +202,18 @@ public class RelayCompatibilityTests
         Assert.Equal(id, ChatService.ResolveSessionToken(id.ToString(), null));
         Assert.Equal(id, ChatService.ResolveSessionToken(id.ToString(), ""));
     }
+    [Fact]
+    public void The_shipped_placeholder_secrets_do_not_count_as_a_salt()
+    {
+        // appsettings.json ships Jwt:Secret with a placeholder, so the key is never null and a
+        // plain null check would happily key sessions on a string published in this repository.
+        // These are the exact literals in appsettings.json and the production template - if
+        // either is ever reworded, this test fails and the guard gets updated with it.
+        Assert.Contains("YOUR_JWT_SECRET_KEY_MIN_32_CHARS_LONG", ChatService.PlaceholderSecrets);
+        Assert.Contains("REPLACE_WITH_A_RANDOM_STRING_AT_LEAST_32_CHARS", ChatService.PlaceholderSecrets);
+        Assert.Contains("", ChatService.PlaceholderSecrets);
+
+        // A real secret must NOT be swallowed by the guard.
+        Assert.DoesNotContain(Salt, ChatService.PlaceholderSecrets);
+    }
 }

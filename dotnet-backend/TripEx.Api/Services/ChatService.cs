@@ -108,6 +108,21 @@ public class ChatService
     public static bool IsRelaySource(string? source)
         => string.Equals(source?.Trim(), "salesiq", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Values of Jwt:Secret that are published in this repository and therefore secret to nobody:
+    /// the one appsettings.json ships and the one the production template tells you to replace.
+    /// A config layer always supplies SOME value for that key, so "did anyone actually set it"
+    /// cannot be answered by a null check alone. Used only to decide whether a foreign
+    /// conversation id may be hashed into a session — never to reject a login, which is not this
+    /// class's call to make.
+    /// </summary>
+    public static readonly HashSet<string> PlaceholderSecrets = new(StringComparer.Ordinal)
+    {
+        "",
+        "YOUR_JWT_SECRET_KEY_MIN_32_CHARS_LONG",
+        "REPLACE_WITH_A_RANDOM_STRING_AT_LEAST_32_CHARS",
+    };
+
     // How many clarifying questions in a row before the reply also names a human to talk to.
     //
     // This used to be a HARD CAP of 2: the third clarify in a row had its intent rewritten to
@@ -809,11 +824,20 @@ public class ChatService
         // Jwt:Secret rather than a new setting: it is already required in production, already at
         // least 32 characters, and already the one value nobody is tempted to put in a document.
         // Rotating it restarts every relayed conversation and nothing else — the TAS widget sends
-        // real Guids, which never touch this. Absent (dev, or a half-filled config) the feature
-        // turns itself off rather than falling back to a guessable mapping.
-        _sessionTokenSalt = configuration["Jwt:Secret"];
+        // real Guids, which never touch this. Absent, the feature turns itself off rather than
+        // falling back to a guessable mapping.
+        //
+        // "Absent" has to include the shipped placeholders, and that is the whole reason this is
+        // not a plain null check. appsettings.json carries Jwt:Secret with a placeholder value, so
+        // configuration["Jwt:Secret"] is NEVER null — a deployment that forgot to override it in
+        // appsettings.Production.json would key this on a string published in the repository,
+        // which is no better than no salt at all and would look configured while being wide open.
+        _sessionTokenSalt = PlaceholderSecrets.Contains(configuration["Jwt:Secret"]?.Trim() ?? "")
+            ? null
+            : configuration["Jwt:Secret"];
+
         if (string.IsNullOrEmpty(_sessionTokenSalt))
-            _logger.LogWarning("[CHAT] Jwt:Secret is not set — a non-Guid conversation id will start a fresh session instead of resuming one");
+            _logger.LogWarning("[CHAT] Jwt:Secret is unset or still the example placeholder — a non-Guid conversation id will start a fresh session instead of resuming one");
 
         _zoho = zoho;
         _zohoQueue = zohoQueue;
