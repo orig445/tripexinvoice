@@ -21,6 +21,7 @@ public class ChatService
     private readonly ILogger<ChatService> _logger;
     private readonly string _supportContact;
     private readonly bool _statusListShortcut;
+    private readonly bool _modelAuthoredFirstClarify;
     private readonly ZohoDeskService _zoho;
     private readonly ZohoTicketSyncQueue _zohoQueue;
 
@@ -722,6 +723,13 @@ public class ChatService
         // disable it.
         _statusListShortcut = !string.Equals(
             configuration["Milo:StatusListShortcut"], "false", StringComparison.OrdinalIgnoreCase);
+
+        // Off switch for the model-authored FIRST clarifying question. This one changes the most
+        // visible thing in the whole flow — the opening question every customer sees — so it can
+        // go back to the fixed three-way orientation question with a config edit and a restart,
+        // no deploy. Same rule as above: only a literal "false" turns it off.
+        _modelAuthoredFirstClarify = !string.Equals(
+            configuration["Milo:ModelAuthoredFirstClarify"], "false", StringComparison.OrdinalIgnoreCase);
         _zoho = zoho;
         _zohoQueue = zohoQueue;
     }
@@ -1106,18 +1114,46 @@ public class ChatService
             }
             else if (consecutiveClarifications == 0)
             {
-                // The FIRST clarifying question on any topic is always this fixed, three-way
-                // orientation question — deterministic and identical every time, instead of
-                // whatever the model would have improvised, so the opening question is
-                // predictable and reliably useful regardless of how well the model judged its
-                // own phrasing. The model's OWN clarifying question is used for the SECOND
-                // round instead (the final `else` case below) — by then the user's answer here
-                // has already narrowed things down to one area, so it can ask something specific.
+                // ── The FIRST clarifying question ──
+                // It used to be the fixed three-way orientation question, always, on the
+                // reasoning that a deterministic opener beats whatever the model improvises.
+                // What that traded away was visible in production on 2026-09-15: asked "how do
+                // I export a flight's expense report", the model had ALREADY worked out the two
+                // candidates and wrote them down — "[CLARIFY-WHY] the expense report for a
+                // single specific trip ... or an analytical report showing expenses from
+                // multiple trips" — and that sentence went to the log while the user was shown
+                // "operations / reports & data analysis / settings & management" instead. The
+                // user then answered the generic question honestly and the conversation went
+                // somewhere neither of the two real candidates lived.
+                //
+                // So: when the model can name the specific alternatives, ASK THOSE. The fixed
+                // three-way question stays as the fallback for a question so vague that not even
+                // the model can name two candidates — which is the case it was written for.
+                //
+                // Scrubbed and validated exactly like the second round below (same helpers, same
+                // 2-4 / length / comma rules), so an unusable set falls back rather than
+                // rendering mangled buttons.
                 var isHebrew = IsHebrewDominant(request.Text);
-                clarifyOptions = (isHebrew ? OrientationOptionsHe : OrientationOptionsEn).ToList();
-                clarifyQuestion = isHebrew
-                    ? "כדי שאוכל לכוון אותך לתשובה המדויקת ביותר — במה מדובר?"
-                    : "To point you to the most accurate answer — which of these is it about?";
+
+                var ownOptions = _modelAuthoredFirstClarify
+                    ? CleanModelOptions(modelOptions.Select(o => ScrubRawPageKeys(o, IsHebrewDominant(responseText))))
+                    : new List<string>();
+
+                if (ownOptions.Count >= 2 && !string.IsNullOrWhiteSpace(responseText))
+                {
+                    clarifyOptions = ownOptions;
+                    clarifyQuestion = responseText;
+                    _logger.LogInformation(
+                        "[CLARIFY-SPECIFIC] session={SessionId} asked its own question instead of the orientation one: {Options}",
+                        sessionId, string.Join(" | ", ownOptions));
+                }
+                else
+                {
+                    clarifyOptions = (isHebrew ? OrientationOptionsHe : OrientationOptionsEn).ToList();
+                    clarifyQuestion = isHebrew
+                        ? "כדי שאוכל לכוון אותך לתשובה המדויקת ביותר — במה מדובר?"
+                        : "To point you to the most accurate answer — which of these is it about?";
+                }
             }
             else
             {
@@ -1783,13 +1819,25 @@ public class ChatService
    There is no hard limit on how many clarifying questions you may ask in a row, but every one
    costs the user another round trip, so the bar RISES with each: by the third, answering with
    your best specific guess is usually better than asking again. The first two have fixed roles:
-     - The FIRST one is handled FOR you automatically — a fixed, three-way orientation question
-       (operations / reports & data analysis / settings & management). You do not need to write
-       your own wording for it: set intent to ""clarify"", omit ""page"", and put ONE short sentence
-       in ""text"" naming the two or more specific entries you are genuinely torn between. That
-       sentence is not shown to the user — it is recorded, so a wrongly-chosen ""clarify"" can be
-       reviewed afterwards. If you cannot name at least two competing entries, then you are not in
-       case (i) or (ii) at all and must answer the question instead of asking one.
+     - The FIRST one: set intent to ""clarify"" and omit ""page"". What you put in ""text"" and
+       ""options"" decides which of two questions the user actually sees, so read this carefully.
+       🔴 ASK ABOUT THE REAL ALTERNATIVES WHENEVER YOU CAN NAME THEM. If you know WHAT the two (or
+       three or four) candidates are — this report vs. that report, one trip's own document vs. a
+       report across many, this screen vs. that screen — then write the question to the user
+       yourself in ""text"" and put those candidates in ""options"", exactly as described for the
+       second round below (same rules: 2-4 short labels, no commas, phrased as something a person
+       would actually say). The user then picks between the real alternatives in ONE step.
+       Example — ""how do I export a flight's expense report"" is genuinely two different things:
+         {{""intent"": ""clarify"", ""text"": ""לאיזה דוח התכוונת?"",
+           ""options"": [""דוח ההוצאות של נסיעה מסוימת"", ""דוח הוצאות על כל הטיסות""]}}
+       Only when the question is SO broad that you cannot name even two candidates — you cannot
+       tell whether it is about day-to-day operations, about reports, or about settings — omit
+       ""options"" entirely and put ONE short sentence in ""text"" naming whatever you were weighing.
+       That sentence is then not shown: a fixed three-way orientation question (operations /
+       reports & data analysis / settings & management) is asked instead, and your sentence is
+       recorded so a wrongly-chosen ""clarify"" can be reviewed afterwards.
+       If you cannot name at least two competing entries AND the question is not broad in that
+       way, then you are not in case (i) or (ii) at all and must answer it instead of asking.
      - The SECOND one (if you still can't pick confidently after the user's answer to the first)
        is the only question you word yourself: ask ONE short, concrete, SPECIFIC question — now
        informed by which of the three areas the user picked — whose answer alone would let you
