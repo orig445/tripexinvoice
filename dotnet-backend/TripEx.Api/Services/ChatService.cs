@@ -235,21 +235,35 @@ public class ChatService
     }
 
     /// <summary>
-    /// Settles the only open question on a status-list turn: was the user's original question
-    /// about a standalone expense report with NO trip, or about a trip? Asked with a four-line
-    /// prompt instead of the full one, because nothing else about that turn is undecided.
+    /// Decides what a "travel &amp; expense operations" answer should actually lead to, with a
+    /// four-line prompt instead of the full one. Three outcomes:
+    ///   "clarify_status_trip"    — show the 13-status trip list
+    ///   "clarify_status_expense" — show the 3-status standalone-expense list
+    ///   null                     — NOT a status question at all; fall through to the full prompt
     ///
-    /// Every failure path lands on the trip list, which is not a compromise: it is the longer,
-    /// more complete of the two, and the main prompt's own rule 3b already names it as the
-    /// answer "when genuinely unclear which". So the worst case here is exactly today's
-    /// documented behaviour, reached in a fraction of the time.
+    /// The null case is the important one, and it is why this is three-way and not two-way.
+    /// Picking "operations" was being treated as "I want to know about statuses", which it is
+    /// not: it is the honest answer for a HOW-TO question about a trip too. Seen in production
+    /// 2026-09-15 — "איך אני מוציא דוח הוצאות של טיסה" (how do I export a flight's expense
+    /// report) was, by Milo's own recorded reasoning, a choice between two specific REPORTS; the
+    /// user answered "operations" because a trip's expense report plainly is an operational
+    /// thing, and the status list then took the conversation somewhere it could not answer from.
+    ///
+    /// A status list is right for "where has my trip got to"; it is a dead end for "how do I".
+    /// Returning null costs that turn a second, full round trip, which is the right trade: a
+    /// slower correct answer beats a fast wrong one.
+    ///
+    /// Both status outcomes still default to the TRIP list on any failure — the longer and more
+    /// complete of the two, and the one rule 3b already names "when genuinely unclear which".
     /// </summary>
-    private async Task<string> ResolveStatusListIntentAsync(string? originalQuestion, CancellationToken ct)
+    private async Task<string?> ResolveStatusListIntentAsync(string? originalQuestion, CancellationToken ct)
     {
         const string trip = "clarify_status_trip";
         const string expense = "clarify_status_expense";
 
-        if (string.IsNullOrWhiteSpace(originalQuestion)) return trip;
+        // With nothing to judge, the shortcut declines rather than guessing. The full prompt
+        // then handles the turn exactly as it did before any of this existed.
+        if (string.IsNullOrWhiteSpace(originalQuestion)) return null;
 
         var messages = new List<OracleMessage>
         {
@@ -257,10 +271,15 @@ public class ChatService
             {
                 Role = "system",
                 Content =
-                    "Reply with ONE word and nothing else: TRIP or EXPENSE.\n" +
-                    "The user asked the question below about a travel & expense management system.\n" +
-                    "Reply EXPENSE only if it is clearly about a standalone expense report with NO " +
-                    "trip involved. In every other case, including any doubt, reply TRIP.",
+                    "Reply with ONE word and nothing else: TRIP, EXPENSE or NEITHER.\n" +
+                    "Below is a user's question about a travel & expense management system. They have " +
+                    "just said it concerns day-to-day travel and expense operations.\n" +
+                    "Reply NEITHER if the question asks HOW to do something — how to create, export, " +
+                    "submit, approve, attach, find or produce something, or which screen or report to " +
+                    "use. Those need an answer, not a question about status.\n" +
+                    "Otherwise the question is about the current state or progress of something. Reply " +
+                    "EXPENSE if that is a standalone expense report with NO trip involved, and TRIP in " +
+                    "every other case, including any doubt between TRIP and EXPENSE.",
             },
             new() { Role = "user", Content = originalQuestion! },
         };
@@ -270,22 +289,30 @@ public class ChatService
             // 512, not the 4096 floor the conversational path needs: the answer is one word, and
             // this budget still has to cover the thinking tokens Gemini spends out of the same
             // allowance. If a trivial question somehow exhausts it, the reply comes back empty
-            // and falls through to the same safe default as every other failure.
+            // and the shortcut declines, which is the safe direction.
             var raw = await _oracle.ChatAsync(messages, maxTokens: 512, temperature: 0, ct);
 
-            // Matched as a whole word anywhere in the reply rather than by a prefix test, so a
+            // Matched as whole words anywhere in the reply rather than by a prefix test, so a
             // model that wraps its answer in quotes, JSON, or a stray sentence still parses.
             var match = System.Text.RegularExpressions.Regex.Match(
-                raw ?? "", @"\b(TRIP|EXPENSE)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                raw ?? "", @"\b(TRIP|EXPENSE|NEITHER)\b",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-            return match.Success && match.Groups[1].Value.Equals("EXPENSE", StringComparison.OrdinalIgnoreCase)
-                ? expense
-                : trip;
+            // No recognisable word is not a vote for the status list. Decline and let the full
+            // prompt decide, the same as an outright NEITHER.
+            if (!match.Success) return null;
+
+            var answer = match.Groups[1].Value;
+            if (answer.Equals("NEITHER", StringComparison.OrdinalIgnoreCase)) return null;
+            return answer.Equals("EXPENSE", StringComparison.OrdinalIgnoreCase) ? expense : trip;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[CLARIFY-FAST] trip-vs-expense call failed — defaulting to the full status list.");
-            return trip;
+            // Declining, not defaulting to a list: a failure here tells us nothing about whether
+            // a status list is even the right shape of answer, and the full prompt can still do
+            // the whole job.
+            _logger.LogWarning(ex, "[CLARIFY-FAST] the status-shape call failed — falling through to the full prompt.");
+            return null;
         }
     }
 
@@ -967,10 +994,22 @@ public class ChatService
         // never see this flow, so the shortcut must never fire for them.
         var isStatusListTurn = !isInternalAudience && IsStatusListTurn(historyRows, request.Text);
 
+        // Null unless the small question below decided this really is a status-list turn.
+        string? fastIntent = null;
         if (_statusListShortcut && isStatusListTurn)
-        {
-            intent = await ResolveStatusListIntentAsync(
+            fastIntent = await ResolveStatusListIntentAsync(
                 FindQuestionBeforeOrientation(historyRows), CancellationToken.None);
+        else if (isStatusListTurn)
+            // Logged only on the exact turn the shortcut would have taken, so switching it off
+            // in config produces visible proof that it is off — rather than the absence of a
+            // line, which is also what a broken setting name looks like.
+            _logger.LogInformation(
+                "[CLARIFY-FAST] session={SessionId} shortcut disabled by Milo:StatusListShortcut — using the full prompt",
+                sessionId);
+
+        if (fastIntent != null)
+        {
+            intent = fastIntent;
             // Everything else on this path is fixed. "text" is replaced by the status list, the
             // page is cleared deliberately, and there are no model-authored options — so the
             // values here only have to be the harmless ones the clarify block expects.
@@ -984,14 +1023,6 @@ public class ChatService
         }
         else
         {
-            // Logged only on the exact turn the shortcut would have taken, so switching it off
-            // in config produces visible proof that it is off — rather than the absence of a
-            // line, which is also what a broken setting name looks like.
-            if (isStatusListTurn)
-                _logger.LogInformation(
-                    "[CLARIFY-FAST] session={SessionId} shortcut disabled by Milo:StatusListShortcut — using the full prompt",
-                    sessionId);
-
             // ── Call Oracle AI ──
             var rawContent = await _oracle.ChatAsync(messages, maxTokens, temperature, allowCustomModel: true);
             (intent, responseText, page, modelOptions) = ParseAiResponse(rawContent);
@@ -1778,9 +1809,21 @@ public class ChatService
    relevant page(s) but need more information to pick between them.
 3b. 🔴 AFTER THE USER ANSWERS THE FIRST ORIENTATION QUESTION (3a above), what you do next depends
    on which of the three areas they picked:
-     - Option 1 (travel & expense operations): decide whether their ORIGINAL question was about
-       a standalone expense report with NO trip involved, or about a trip (with or without an
-       expense report attached to it) — then set intent ""clarify_status_expense"" for the
+     - Option 1 (travel & expense operations): 🔴 FIRST decide whether a STATUS is even what
+       their ORIGINAL question turns on. Picking option 1 means ""my question is about
+       day-to-day travel and expenses"" — it does NOT mean ""I want to know about statuses"".
+       If the original question asks HOW to do something (how to create, export, submit,
+       approve, attach, find or produce something, or which screen or report to use), then a
+       status list cannot answer it: treat the turn like option 2/3 below — answer it, or ask
+       one more specific question, and set ""page"" if one specific page is where it happens.
+       Only when the question really is about the STATE or PROGRESS of something (""where has my
+       trip got to"", ""why is it stuck"", ""what does this status mean"", ""what happens next"")
+       does the status list apply. (Seen in production: ""how do I export a flight's expense
+       report"" was sent down the status path, and the conversation could not get back to the
+       report the user had asked about.)
+       THEN, when a status genuinely is the question, decide whether their ORIGINAL question was
+       about a standalone expense report with NO trip involved, or about a trip (with or without
+       an expense report attached to it) — and set intent ""clarify_status_expense"" for the
        former or ""clarify_status_trip"" for the latter (when genuinely unclear which, prefer
        ""clarify_status_trip"" — it's the more complete list). Do NOT write your own question
        either way, its wording is automatic (a fixed status list matching whichever you picked).
@@ -1789,8 +1832,8 @@ public class ChatService
        adds anything relevant) — as GENERAL guidance for that status, never as if you looked up
        their specific, real, live record. You have no
        access to live trip/expense data — never claim or imply that you checked their actual
-       current status. Do NOT set ""page"" anywhere in this operations path — it never ends in a
-       link.
+       current status. Do NOT set ""page"" on the status-list turn itself or on the answer that
+       follows a status pick — that path never ends in a link.
      - Option 2 (data analysis & reports) or option 3 (settings & management): proceed exactly
        like any other Navigation question (rules 1-3 above) — find the single best-matching
        specific page for what the user actually asked and set ""page"" to it, or ask one more
