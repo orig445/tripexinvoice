@@ -22,6 +22,7 @@ public class ChatService
     private readonly string _supportContact;
     private readonly bool _statusListShortcut;
     private readonly bool _modelAuthoredFirstClarify;
+    private readonly string? _sessionTokenSalt;
     private readonly ZohoDeskService _zoho;
     private readonly ZohoTicketSyncQueue _zohoQueue;
 
@@ -82,6 +83,30 @@ public class ChatService
     // field. Comfortably above the longest fixed option that ships ("Other (Matched / Closed /
     // Pending for Cancel / Cancelled)", 55).
     private const int MaxOptionLabelLength = 60;
+
+    /// <summary>
+    /// The same budget for a client that relays through Zoho SalesIQ, which caps a suggestion at
+    /// 20 characters and TRIMS anything longer instead of refusing it. That silent trim is the
+    /// dangerous part: the label is what comes back as the user's next message, so a trimmed one
+    /// no longer matches the option it came from — the orientation answer stops being recognised,
+    /// the status shortcut never fires, and the model receives half a sentence. Failing the
+    /// button test here instead means the choices are shown as a numbered list, which is
+    /// answerable and which this file already knows how to render.
+    /// </summary>
+    public const int SalesIqOptionLabelLength = 20;
+
+    /// <summary>
+    /// The value of ChatRequest.Source that means "this conversation is being relayed by Zoho
+    /// SalesIQ, not rendered by the TAS widget". One definition rather than the literal repeated
+    /// at each gate: three separate behaviours hang off this answer, and two of them going one way
+    /// while the third goes the other is the failure mode worth designing out — a relay judged
+    /// non-relay for the ticket gate alone silently duplicates every helpdesk ticket.
+    ///
+    /// Ordinal-ignore-case because the value is client JSON: "SalesIQ" is how Zoho spells its own
+    /// product, and it is the spelling a person configuring the Zobot is most likely to send.
+    /// </summary>
+    public static bool IsRelaySource(string? source)
+        => string.Equals(source?.Trim(), "salesiq", StringComparison.OrdinalIgnoreCase);
 
     // How many clarifying questions in a row before the reply also names a human to talk to.
     //
@@ -166,6 +191,52 @@ public class ChatService
             count++;
         }
         return count;
+    }
+
+    /// <summary>
+    /// Turns whatever a caller sent as its conversation id into the Guid this service keys
+    /// sessions by. A real Guid is used as-is; anything else is hashed into a stable one.
+    ///
+    /// It used to be Guid.TryParse and nothing else, so a token in any other shape was silently
+    /// dropped and EVERY turn opened a fresh session — no history, no second clarifying round,
+    /// no status shortcut, and a bot that answers each message as if it were the first. That is
+    /// invisible from the outside: it looks like the model forgetting, not like a rejected id.
+    /// Zoho's own conversation ids (1473081000000457007) are exactly that shape, so any future
+    /// integration keyed on them would have hit it.
+    ///
+    /// SHA-256, not string.GetHashCode: GetHashCode is randomised per process on .NET Core, so
+    /// the same conversation would land on a different session after every restart — the same
+    /// bug, just rarer and harder to see. Truncating a 256-bit digest to 128 bits leaves
+    /// collisions far below the level worth engineering against.
+    ///
+    /// The salt is what keeps this from undoing the 2026-09-08 cross-conversation history fix.
+    /// A Guid session id is 122 random bits and cannot be guessed; a FOREIGN id generally can be
+    /// — Zoho hands out consecutive numbers — so hashing one unsalted would publish a formula for
+    /// turning "the conversation before this one" into a live session key. CanResumeSessionAsync
+    /// cannot catch that: every X-Api-Key caller authenticates as the same system principal, so
+    /// ownership passes for any widget visitor (see its own remarks). With a server-side salt the
+    /// mapping is unguessable without the secret, and still perfectly stable with it.
+    ///
+    /// An empty salt therefore does NOT mean "hash it anyway" — it means refuse, and a foreign id
+    /// goes back to starting a fresh conversation, exactly as it did before this method existed.
+    /// Degrading to the old behaviour is safe; degrading to a guessable one is not.
+    ///
+    /// Guid.Empty means "no usable token" and is never a valid session id.
+    /// </summary>
+    public static Guid ResolveSessionToken(string? token, string? salt)
+    {
+        if (string.IsNullOrWhiteSpace(token)) return Guid.Empty;
+        if (Guid.TryParse(token, out var parsed)) return parsed;
+        if (string.IsNullOrEmpty(salt)) return Guid.Empty;
+
+        // HMAC rather than SHA256(salt + token): with plain concatenation, salt "ab" + token
+        // "c" and salt "a" + token "bc" hash to the same value, and a caller able to influence
+        // either half could aim at another session. HMAC keys the hash instead of prefixing it,
+        // so no separator is needed and none can be smuggled past one.
+        var digest = System.Security.Cryptography.HMACSHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(salt),
+            System.Text.Encoding.UTF8.GetBytes(token.Trim()));
+        return new Guid(digest.AsSpan(0, 16));
     }
 
     /// <summary>
@@ -451,8 +522,9 @@ public class ChatService
     //     are not, the widget shows NO buttons, and the list has to stay for those too or the
     //     question becomes unanswerable.
     // Public + static, like ResolvePageOverride, so the tests exercise the shipping logic.
-    public static bool OptionsRenderAsButtons(List<string> options, bool clientRendersParamerter)
-        => clientRendersParamerter && OptionsCanBeButtons(options);
+    public static bool OptionsRenderAsButtons(
+        List<string> options, bool clientRendersParamerter, int maxLabelLength = MaxOptionLabelLength)
+        => clientRendersParamerter && OptionsCanBeButtons(options, maxLabelLength);
 
     // Is this set of options fit to be rendered as buttons at all, for any client? The single
     // place that answers it, so ChatResponse.QuickReplies (and the Paramerter derived from it)
@@ -465,9 +537,11 @@ public class ChatService
     // No cap on how MANY: the prompt asks for 2-4 and a longer set means the model improvised,
     // but silently dropping choices the user was asked to pick between is worse than showing
     // more buttons than intended.
-    public static bool OptionsCanBeButtons(List<string> options)
+    // maxLabelLength defaults to the widget's budget, so every existing caller and test keeps the
+    // behaviour it had; only a relay with a tighter cap of its own passes something smaller.
+    public static bool OptionsCanBeButtons(List<string> options, int maxLabelLength = MaxOptionLabelLength)
         => options.Count >= 2
-           && options.All(o => o.Length <= MaxOptionLabelLength)
+           && options.All(o => o.Length <= maxLabelLength)
            && BuildWidgetParamerter(options) != null;
 
     // One clarifying question plus its options, rendered ONCE: as buttons alone where the client
@@ -730,6 +804,17 @@ public class ChatService
         // no deploy. Same rule as above: only a literal "false" turns it off.
         _modelAuthoredFirstClarify = !string.Equals(
             configuration["Milo:ModelAuthoredFirstClarify"], "false", StringComparison.OrdinalIgnoreCase);
+
+        // The key that makes a foreign conversation id unguessable (see ResolveSessionToken).
+        // Jwt:Secret rather than a new setting: it is already required in production, already at
+        // least 32 characters, and already the one value nobody is tempted to put in a document.
+        // Rotating it restarts every relayed conversation and nothing else — the TAS widget sends
+        // real Guids, which never touch this. Absent (dev, or a half-filled config) the feature
+        // turns itself off rather than falling back to a guessable mapping.
+        _sessionTokenSalt = configuration["Jwt:Secret"];
+        if (string.IsNullOrEmpty(_sessionTokenSalt))
+            _logger.LogWarning("[CHAT] Jwt:Secret is not set — a non-Guid conversation id will start a fresh session instead of resuming one");
+
         _zoho = zoho;
         _zohoQueue = zohoQueue;
     }
@@ -747,8 +832,12 @@ public class ChatService
     /// other but NOT two widget visitors. Doing that properly needs a per-visitor id stored on
     /// the session row — the widget does now supply customerId (see ChatRequest) — and that is a
     /// schema change, not this fix.
+    ///
+    /// NeedsRow separates the two reasons this says yes, because they are not the same situation:
+    /// the session is this caller's own AND has a row, or there is no row at all. The second one
+    /// has to be told apart, or the conversation runs "rowless" forever — see the caller.
     /// </summary>
-    private async Task<bool> CanResumeSessionAsync(Guid sessionId, Guid userId)
+    private async Task<(bool CanResume, bool NeedsRow)> CanResumeSessionAsync(Guid sessionId, Guid userId)
     {
         try
         {
@@ -760,19 +849,21 @@ public class ChatService
             // No row: a token for a session that was never persisted (the pre-2026-09-08
             // behaviour, and still what happens whenever the DB was down when it was minted).
             // Treat it as this caller's own empty conversation rather than throwing history away.
-            if (owner == null) return true;
+            if (owner == null) return (true, NeedsRow: true);
 
-            if (owner == userId) return true;
+            if (owner == userId) return (true, NeedsRow: false);
 
             _logger.LogWarning("[CHAT] Session {SessionId} belongs to another user — starting a fresh conversation instead", sessionId);
-            return false;
+            return (false, NeedsRow: false);
         }
         catch (Exception ex)
         {
             // DB unavailable: honour the token. Dropping a user's history because we could not
             // verify ownership would be a worse failure than the one this guards against.
+            // NeedsRow stays false — we already know a write would fail, so there is no point
+            // making the caller attempt one just to catch the same exception again.
             Console.WriteLine($"⚠️ [CHAT] Session ownership not verified (DB unavailable): {ex.Message}");
-            return true;
+            return (true, NeedsRow: false);
         }
     }
 
@@ -790,24 +881,86 @@ public class ChatService
         // (via OCI) instead of failing the whole request — persistence is just skipped.
         Guid sessionId = Guid.NewGuid();
         bool continuedSession = false;
-        if (!string.IsNullOrEmpty(request.SessionToken)
-            && Guid.TryParse(request.SessionToken, out var existingId)
-            && await CanResumeSessionAsync(existingId, userId))
+        var resumeId = ResolveSessionToken(request.SessionToken, _sessionTokenSalt);
+        var resume = resumeId != Guid.Empty
+            ? await CanResumeSessionAsync(resumeId, userId)
+            : (CanResume: false, NeedsRow: false);
+
+        if (resume.CanResume)
         {
-            sessionId = existingId;
+            sessionId = resumeId;
             continuedSession = true;
+
+            if (resume.NeedsRow)
+            {
+                // Resuming an id that has no row of its own. Nothing here used to mint one, and
+                // the conversation then stayed rowless for its whole life — every turn resumed
+                // the same id, found no row, and moved on. That is silent and it defeats
+                // escalation end to end: the "escalated" block below does
+                // FirstOrDefaultAsync(...) and simply skips the assignment when the row is
+                // missing, while still logging [TICKET-ESCALATED], so the log says a human was
+                // asked for and nothing recorded it. ZohoTicketSync then reads Escalated=false
+                // and leaves the ticket Closed at Low priority — the exact opposite of the
+                // priority routing this is supposed to drive.
+                //
+                // It was unreachable while a session id had to be a GUID we minted. It stops
+                // being unreachable the moment a caller supplies its own conversation id, which
+                // is precisely what ResolveSessionToken now allows: for a relayed conversation
+                // the id is Zoho's, never ours, so EVERY relayed conversation would be rowless.
+                // Minting the row here is what makes resuming a foreign id a real session.
+                var row = new ChatSession
+                {
+                    Id = sessionId,               // the caller's id, not a fresh one — that is the point
+                    UserId = userId,
+                    Source = request.Source
+                };
+                try
+                {
+                    _db.ChatSessions.Add(row);
+                    await _db.SaveChangesAsync();
+                }
+                catch (Exception ex)
+                {
+                    // Unlike every other write on this path, this one can fail while the database
+                    // is perfectly healthy: two turns of the same conversation arriving together
+                    // both read no row and both insert the SAME primary key, so the loser gets a
+                    // duplicate-key error (2627 — not in EnableRetryOnFailure's transient list).
+                    //
+                    // Detaching is not tidiness, it is the whole fix. EF only accepts changes
+                    // after a SUCCESSFUL save, so a swallowed failure leaves this entity sitting
+                    // in the tracker as Added — and _db is scoped to the request and shared by
+                    // every later write in this turn. Each of those calls SaveChangesAsync, which
+                    // re-sends this insert, hits 2627 again and takes the real write down with
+                    // it: the user's message, the assistant's reply, the audit log and the
+                    // escalation flag this block exists to make possible. It would also hand the
+                    // escalation query below a phantom — FirstOrDefaultAsync resolves against the
+                    // tracker first and would return this Added instance instead of the row the
+                    // winning request committed, turning the UPDATE into another failed INSERT.
+                    //
+                    // Detached, the loser simply proceeds on the winner's row, which is exactly
+                    // the outcome it wanted. A genuine outage still costs only the escalation
+                    // flag, as before.
+                    _db.Entry(row).State = EntityState.Detached;
+                    Console.WriteLine($"⚠️ [CHAT] Resumed session {sessionId} not persisted: {ex.Message}");
+                }
+            }
         }
         else
         {
+            var session = new ChatSession { UserId = userId, Source = request.Source };
             try
             {
-                var session = new ChatSession { UserId = userId, Source = request.Source };
                 _db.ChatSessions.Add(session);
                 await _db.SaveChangesAsync();
                 sessionId = session.Id;
             }
             catch (Exception ex)
             {
+                // Same reason as above. This branch mints its own Guid so it cannot lose a race,
+                // but a failure here used to leave the entity Added with sessionId still pointing
+                // at a DIFFERENT Guid — so if a later save in the turn succeeded it wrote a
+                // session row that none of this turn's messages belong to.
+                _db.Entry(session).State = EntityState.Detached;
                 Console.WriteLine($"⚠️ [CHAT] Session not persisted (DB unavailable): {ex.Message}");
             }
         }
@@ -987,6 +1140,16 @@ public class ChatService
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
         var isInternalAudience = string.Equals(request.Source, "internal", StringComparison.OrdinalIgnoreCase);
+
+        // The chat is being relayed by Zoho SalesIQ rather than rendered by the TAS widget. Three
+        // things in this file are written for a client we control and are wrong through a relay:
+        // the helpdesk ticket (SalesIQ raises its own from the chat, so ours would be a duplicate),
+        // the HTML anchor appended to the reply (SalesIQ shows plain text, so the tag would be
+        // read out as characters), and the button-label budget (SalesIQ silently truncates a
+        // label past 20 characters — and the truncated text is what comes back as the user's next
+        // message). Nothing else changes: Source has never gated anything but "internal", so every
+        // other path behaves exactly as it does for the widget.
+        var isSalesIqRelay = IsRelaySource(request.Source);
 
         string intent, responseText, page;
         List<string> modelOptions;
@@ -1197,8 +1360,13 @@ public class ChatService
                 // they are fit to BE buttons — and Paramerter is derived from it. An unfit set
                 // (an over-long label, a comma) is shown as the numbered list and nothing else,
                 // which is what stops a client from rendering it both ways.
-                quickReplies = OptionsCanBeButtons(clarifyOptions) ? clarifyOptions : new List<string>();
-                optionsRenderAsButtons = OptionsRenderAsButtons(quickReplies, request.IsTasWidgetClient);
+                // A SalesIQ relay draws the choices itself, from ChatResponse.QuickReplies, so it
+                // counts as a client that renders buttons — with its own tighter label budget.
+                var labelBudget = isSalesIqRelay ? SalesIqOptionLabelLength : MaxOptionLabelLength;
+                var clientDrawsButtons = request.IsTasWidgetClient || isSalesIqRelay;
+
+                quickReplies = OptionsCanBeButtons(clarifyOptions, labelBudget) ? clarifyOptions : new List<string>();
+                optionsRenderAsButtons = OptionsRenderAsButtons(quickReplies, clientDrawsButtons, labelBudget);
                 responseText = ComposeClarifyText(clarifyQuestion, clarifyOptions, optionsRenderAsButtons);
             }
         }
@@ -1264,7 +1432,19 @@ public class ChatService
                 responseText += $"\n\n{reportSelectText}";
             }
 
-            responseText += $"\n\n<a href=\"{safeUrl}\" target=\"_top\" rel=\"noopener\">{safeLabel}</a>";
+            // A relay that renders plain text would read the tag out as characters, so it gets the
+            // label and the bare URL instead — which every chat client linkifies on its own.
+            //
+            // Deliberately NOT "suppress the anchor and let the client use RedirectPage /
+            // RedirectLabel": those two fields are on the response, but nothing has ever read
+            // them — the live TAS widget contains no occurrence of either, and neither does this
+            // repo outside the line that writes them. Dropping the anchor in favour of them would
+            // leave the user with a reply that names a page and offers no way to open it. The
+            // caption also has to come from `label` here rather than RedirectLabel, because that
+            // field is always the Hebrew Label with no language branch at all.
+            responseText += isSalesIqRelay
+                ? $"\n\n{label}\n{pageUrl}"
+                : $"\n\n<a href=\"{safeUrl}\" target=\"_top\" rel=\"noopener\">{safeLabel}</a>";
         }
 
         var escalated = intent == "escalate";
@@ -1401,7 +1581,9 @@ public class ChatService
         //
         // Skipped for source:"internal" — that is TripEx's own staff chat, and its conversations
         // are not customer support tickets.
-        if (_zoho.Options.IsConfigured && !isInternalAudience)
+        // Also skipped for a SalesIQ relay: that chat already becomes a Desk ticket on Zoho's own
+        // side, so mirroring it here would put every conversation in the helpdesk twice.
+        if (_zoho.Options.IsConfigured && !isInternalAudience && !isSalesIqRelay)
         {
             _zohoQueue.Enqueue(new ZohoSyncRequest(
                 sessionId,
