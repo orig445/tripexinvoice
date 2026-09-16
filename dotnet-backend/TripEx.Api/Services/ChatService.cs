@@ -1024,7 +1024,16 @@ public class ChatService
         else
         {
             // ── Call Oracle AI ──
-            var rawContent = await _oracle.ChatAsync(messages, maxTokens, temperature, allowCustomModel: true);
+            // forceJsonOutput sets response_format={"type":"json_object"} on the request, so the
+            // JSON contract this whole path depends on is enforced by the API and not only asked
+            // for in the prompt's CRITICAL OUTPUT RULE. It was never passed here — only the two
+            // OCR call sites used it — which is why ParseAiResponse carries a whole repair layer
+            // and why prod logged "[OCI-PARSE] Truncated JSON" on 2026-09-07. The prompt already
+            // says "Respond with ONLY a JSON object", which is the wording these modes require.
+            // ParseAiResponse is unchanged and still handles a fenced or broken reply, so this
+            // only removes failures; it cannot introduce one.
+            var rawContent = await _oracle.ChatAsync(
+                messages, maxTokens, temperature, forceJsonOutput: true, allowCustomModel: true);
             (intent, responseText, page, modelOptions) = ParseAiResponse(rawContent);
         }
 

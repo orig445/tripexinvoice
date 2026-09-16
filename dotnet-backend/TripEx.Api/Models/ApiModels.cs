@@ -114,8 +114,27 @@ public class ChatRequest
     /// Folds the widget's flat shape into the canonical properties. An explicit canonical value
     /// always wins, so a caller that already speaks the documented shape is unaffected.
     /// </summary>
+    /// <summary>
+    /// Longest incoming message that is carried through as-is.
+    ///
+    /// There was no cap at all: whatever arrived went into the prompt (billed per token, on a
+    /// request that already carries ~38,000 of them), into chat_messages, and into the Zoho
+    /// ticket transcript. A pasted stack trace or a mis-wired client could put megabytes through
+    /// all three. 8,000 characters is far past any real support question — the longest genuine
+    /// message seen in production is under 300 — while still leaving room for someone pasting an
+    /// error they were asked to paste.
+    /// </summary>
+    public const int MaxTextLength = 8000;
+
     public void NormalizeWidgetShape()
     {
+        // Trimmed rather than rejected: the first 8,000 characters of an over-long paste still
+        // contain the question, so the customer gets an answer instead of an error about their
+        // own message. The marker is deliberately visible to the model — an answer based on a
+        // truncated question should be able to say so.
+        if (Text != null && Text.Length > MaxTextLength)
+            Text = Text[..MaxTextLength] + "\n[… message truncated]";
+
         // Any of the flat fields means the caller speaks the widget's shape. customerName alone
         // would do in practice (the widget always sends it, falling back to "Guest" — see the
         // captured payload above), but keying off the whole set means a future widget build that
