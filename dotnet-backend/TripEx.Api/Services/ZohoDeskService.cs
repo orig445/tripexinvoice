@@ -753,9 +753,49 @@ public class ZohoDeskService
     /// Those survive translation, so they are the reliable cut.
     /// </summary>
     private static readonly System.Text.RegularExpressions.Regex StructuralCut = new(
-        @"^[ \t]*(?:-{3,}.*-{3,}|_{10,}|-{10,}|={10,}|>.*)[ \t]*$",
+        @"^[ \t]*(?:-{3,}.*-{3,}|_{10,}|-{10,}|={10,})[ \t]*$",
         System.Text.RegularExpressions.RegexOptions.Multiline
         | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Where a block of "&gt;" quoted lines that runs to the END of the message begins, or -1.
+    ///
+    /// The "runs to the end" condition is the entire point, and it is there because the obvious
+    /// version was wrong in a way that lost replies. Cutting at the first "&gt;" line unconditionally
+    /// erases a reply that OPENS with a quote — an agent quoting the customer's question before
+    /// answering it, which is an ordinary thing to do. The body came out empty, the relay read
+    /// that as "nothing to say", and because nothing was stored the thread id was never recorded
+    /// either, so no later poll retried it. The customer waited for an answer that had been
+    /// written and thrown away.
+    ///
+    /// A quote block that reaches the end is quoted history. One with the agent's own words after
+    /// it is not, and is left alone: showing a customer a line they wrote is cosmetic noise,
+    /// losing the answer is not.
+    /// </summary>
+    private static int FindTrailingQuoteBlock(string text)
+    {
+        var lines = text.Split('\n');
+        var start = -1;
+        var offset = 0;
+        var offsets = new int[lines.Length];
+
+        for (var i = 0; i < lines.Length; i++)
+        {
+            offsets[i] = offset;
+            offset += lines[i].Length + 1;   // +1 for the '\n' that Split consumed
+        }
+
+        for (var i = lines.Length - 1; i >= 0; i--)
+        {
+            var line = lines[i].TrimEnd('\r').TrimStart(' ', '\t');
+
+            if (line.Length == 0) continue;            // blank lines belong to either side
+            if (line.StartsWith('>')) { start = i; continue; }
+            break;                                      // real text — the block ends here
+        }
+
+        return start < 0 ? -1 : offsets[start];
+    }
 
     /// <summary>
     /// Trims a reply down to what the agent actually wrote. Returns "" when nothing is left,
@@ -777,6 +817,9 @@ public class ZohoDeskService
         // survey has no punctuation of its own to find it by.
         var structural = StructuralCut.Match(text);
         if (structural.Success && structural.Index < cut) cut = structural.Index;
+
+        var quoted = FindTrailingQuoteBlock(text);
+        if (quoted >= 0 && quoted < cut) cut = quoted;
 
         var body = text[..cut];
 

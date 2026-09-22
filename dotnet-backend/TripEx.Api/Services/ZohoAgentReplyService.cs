@@ -119,12 +119,14 @@ public class ZohoAgentReplyService
             }),
         });
 
-        // Moving SyncedThrough forward is what stops the mirror sending this message straight
-        // back to Desk on the next turn. It is the agent's own text: Desk wrote it, Desk has it,
-        // and echoing it into the ticket would duplicate the reply inside the ticket itself.
-        var now = DateTime.UtcNow;
-        if (map.SyncedThrough == null || map.SyncedThrough < now) map.SyncedThrough = now;
-        map.UpdatedAt = now;
+        // SyncedThrough is deliberately NOT touched here. Moving it to "now" would indeed stop
+        // the mirror echoing this reply back into its own ticket, but it is a watermark — a
+        // position in the conversation, not a flag — and every customer or Milo message written
+        // before this instant and not yet mirrored would fall behind it and never be sent. A
+        // customer whose question arrives while an agent is typing would simply vanish from the
+        // ticket the agent is reading. The echo is stopped where it belongs instead, by excluding
+        // the agent role from the mirror's own query (see ZohoTicketSync).
+        map.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync(ct);
 

@@ -111,9 +111,19 @@ public class ZohoTicketSyncWorker : BackgroundService
             .FirstOrDefaultAsync(t => t.SessionId == request.SessionId, ct);
 
         // Everything this conversation has said that Zoho has not been told about yet.
+        //
+        // Agent rows are excluded at the source rather than skipped over later. They are replies
+        // Zoho itself wrote, relayed back to us and stored so the customer could read them — the
+        // ticket already contains every one of them. Sending them back would duplicate the agent's
+        // own words inside their own ticket, and worse, each copy is a new thread on that ticket,
+        // which fires the webhook again. That is the echo loop, closed here rather than by moving
+        // the watermark: a watermark is a position, and jumping it to "now" to skip one row throws
+        // away every customer message that had not been mirrored yet, permanently.
         var since = map?.SyncedThrough ?? DateTime.MinValue;
         var pending = await db.ChatMessages
-            .Where(m => m.SessionId == request.SessionId && m.CreatedAt > since)
+            .Where(m => m.SessionId == request.SessionId
+                        && m.CreatedAt > since
+                        && m.Role != ZohoAgentReplyService.AgentRole)
             .OrderBy(m => m.CreatedAt)
             .Select(m => new TranscriptMessage(m.Role, m.Content, m.Intent, m.CreatedAt))
             .ToListAsync(ct);

@@ -55,9 +55,16 @@ public class ChatController : ControllerBase
             {
                 text = m.Text,
                 agentName = m.AgentName,
-                // Round-tripped by the widget as the next `since`, so the format has to be one
-                // that survives a JS Date and comes back parseable. ISO-8601 with an explicit Z.
-                createdAt = m.CreatedAtUtc.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+                // Round-trip format ("o"), and the precision is the whole point rather than a
+                // detail. This value comes straight back as the next `since`, and the filter is
+                // CreatedAt > since. created_at is datetime2(7) holding all 7 fractional digits,
+                // so emitting only 3 — as "yyyy-MM-ddTHH:mm:ss.fffZ" does, truncating rather than
+                // rounding — hands the client a cursor that sits BEFORE the row it is meant to
+                // mark. The row then matches again on the next poll, and the one after, and the
+                // cursor never advances past it: the customer watches the agent's reply reappear
+                // every few seconds forever. "o" keeps all 7 digits, binds back exactly, and is
+                // parsed fine by both the ASP.NET binder and JS Date.
+                createdAt = m.CreatedAtUtc.ToString("o"),
             }),
         });
     }

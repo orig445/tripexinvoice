@@ -241,7 +241,6 @@ public class AgentReplyRelayTests
     [InlineData("__________________________________")]   // the Outlook-style rule
     [InlineData("----------------------------------")]
     [InlineData("==================================")]
-    [InlineData("> a quoted line, in any language")]
     public void The_separators_that_survive_translation_all_cut(string separator)
     {
         var raw = "Real answer.\n\n" + separator + "\nolder conversation";
@@ -312,5 +311,76 @@ public class AgentReplyRelayTests
         // the model reads the customer's question as its own answer.
         Assert.Equal("user", ChatService.ToModelRole("user"));
         Assert.NotEqual("user", ChatService.ToModelRole("assistant"));
+    }
+    // ── Losing a reply is worse than showing one extra line ──────────────────────────────────
+
+    [Fact]
+    public void A_reply_that_opens_by_quoting_the_customer_is_never_erased()
+    {
+        // Quoting the question before answering it is an ordinary thing for an agent to do.
+        // Cutting at the first "> " line turned that reply into an empty string, which the relay
+        // read as "nothing to say" — so it was never stored, the thread id was never recorded,
+        // and no later poll retried it. The customer waited for an answer that had been written
+        // and thrown away. Showing the quoted line back is noise; losing the answer is not.
+        var raw = "> למה הכפתור אפור?\n\nכי הנסיעה עדיין ממתינה לאישור. אישרתי אותה עכשיו.";
+
+        var tidied = ZohoDeskService.TidyReply(raw);
+
+        Assert.Contains("אישרתי אותה עכשיו.", tidied);
+        Assert.NotEqual("", tidied);
+    }
+
+    [Fact]
+    public void Quoted_history_that_runs_to_the_end_is_still_cut()
+    {
+        // The other half of the same rule: a quote block with nothing after it IS quoted history.
+        var raw = "אישרתי את הנסיעה.\n\n> למה הכפתור אפור?\n> ניסיתי פעמיים";
+
+        Assert.Equal("אישרתי את הנסיעה.", ZohoDeskService.TidyReply(raw));
+    }
+
+    [Fact]
+    public void A_reply_that_is_only_a_quote_still_comes_back_empty()
+    {
+        // Nothing was written, so there is nothing to relay.
+        Assert.Equal("", ZohoDeskService.TidyReply("> just the quote\n> and another line"));
+    }
+    // ── The poll cursor ──────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_cursor_the_widget_gets_back_is_not_earlier_than_the_row_it_marks()
+    {
+        // This is the whole contract of /api/chat/updates: the client returns the last createdAt
+        // it saw as `since`, and the filter is `CreatedAt > since`. created_at is datetime2(7),
+        // so the emitted value must carry all 7 fractional digits.
+        //
+        // With "yyyy-MM-ddTHH:mm:ss.fffZ" it carried 3, TRUNCATED rather than rounded — so the
+        // cursor landed BEFORE the row it was supposed to mark, that row matched again on the
+        // next poll, and the cursor never advanced past it. The customer watched the agent's
+        // reply reappear every few seconds, forever. It is invisible in any test that uses a
+        // whole-millisecond timestamp, which is why this one deliberately does not.
+        var stored = new DateTime(2026, 9, 22, 10, 0, 0, DateTimeKind.Utc).AddTicks(1234567);
+
+        Assert.NotEqual(0, stored.Ticks % TimeSpan.TicksPerMillisecond);   // the case that bit us
+
+        var emitted = stored.ToString("o");
+        var roundTripped = DateTime.Parse(emitted, null,
+            System.Globalization.DateTimeStyles.RoundtripKind);
+
+        Assert.Equal(stored, roundTripped);
+        Assert.False(stored > roundTripped, "the row must not still match its own cursor");
+    }
+
+    [Fact]
+    public void The_old_millisecond_format_is_shown_to_lose_the_row()
+    {
+        // Kept as the counter-example, so nobody "simplifies" the format back and reintroduces a
+        // bug that no ordinary test would catch.
+        var stored = new DateTime(2026, 9, 22, 10, 0, 0, DateTimeKind.Utc).AddTicks(1234567);
+
+        var lossy = DateTime.Parse(stored.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"), null,
+            System.Globalization.DateTimeStyles.RoundtripKind);
+
+        Assert.True(stored > lossy, "truncating to milliseconds puts the cursor before the row");
     }
 }
