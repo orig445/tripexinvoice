@@ -109,6 +109,24 @@ public class ChatService
         => string.Equals(source?.Trim(), "salesiq", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// Turns a stored chat_messages role into one the chat completions API will accept.
+    ///
+    /// The table's vocabulary is wider than the API's and has just grown again: "agent" is a
+    /// reply typed by a human in Zoho Desk. The API takes system, user and assistant and nothing
+    /// else, so an unmapped role is a rejected request — and because the row stays in history
+    /// forever, that rejection repeats on every later turn. A conversation a person helped with
+    /// would be a conversation Milo could never answer in again.
+    ///
+    /// Everything that is not the user is mapped to assistant, which is the honest reading rather
+    /// than a safe default: whoever wrote it, it was said back TO the user, and Milo needs to see
+    /// it or its next turn will contradict the human who just resolved the problem.
+    /// </summary>
+    public static string ToModelRole(string? storedRole)
+        => string.Equals(storedRole?.Trim(), "user", StringComparison.OrdinalIgnoreCase)
+            ? "user"
+            : "assistant";
+
+    /// <summary>
     /// Values of Jwt:Secret that are published in this repository and therefore secret to nobody:
     /// the one appsettings.json ships and the one the production template tells you to replace.
     /// A config layer always supplies SOME value for that key, so "did anyone actually set it"
@@ -1164,7 +1182,22 @@ public class ChatService
         {
             new() { Role = "system", Content = systemPrompt }
         };
-        messages.AddRange(history.Select(h => new OracleMessage { Role = h.Role, Content = h.Content }));
+        // The role is MAPPED rather than passed through, and it has to be. chat_messages now
+        // carries a third role — "agent", a reply typed by a human in Zoho Desk — while the chat
+        // completions API accepts only system/user/assistant. Sending "agent" straight through
+        // would be rejected, and the row stays in history forever, so Milo would stop answering
+        // that conversation permanently from the moment a person helped in it. The one thing this
+        // feature exists to make possible would be the thing that breaks it.
+        //
+        // "assistant" is also the honest mapping and not merely the safe one: from the
+        // conversation's point of view the agent's reply IS a previous answer, and Milo has to see
+        // it — otherwise its next turn cheerfully contradicts the person who just sorted it out.
+        // Anything that is not the user is something said back TO the user.
+        messages.AddRange(history.Select(h => new OracleMessage
+        {
+            Role = ToModelRole(h.Role),
+            Content = h.Content,
+        }));
 
         // The current user message is normally already the last entry in `history`
         // (saved to the DB above, then reloaded). But DB access is best-effort — if

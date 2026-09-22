@@ -276,4 +276,41 @@ public class AgentReplyRelayTests
 
         Assert.Equal(raw, ZohoDeskService.TidyReply(raw));
     }
+    // ── The role the model is allowed to see ─────────────────────────────────────────────────
+
+    [Fact]
+    public void An_agents_reply_reaches_the_model_as_an_assistant_turn()
+    {
+        // chat_messages now stores a third role. The chat completions API accepts only
+        // system/user/assistant, and an agent row stays in history forever — so passing "agent"
+        // through would not break one turn, it would break every later turn in that conversation.
+        // The feature that lets a human help would be the thing that stops Milo working.
+        Assert.Equal("assistant", ChatService.ToModelRole(ZohoAgentReplyService.AgentRole));
+    }
+
+    [Theory]
+    [InlineData("user", "user")]
+    [InlineData("User", "user")]
+    [InlineData("  user  ", "user")]
+    [InlineData("assistant", "assistant")]
+    [InlineData("agent", "assistant")]
+    [InlineData("system", "assistant")]
+    [InlineData("", "assistant")]
+    [InlineData(null, "assistant")]
+    [InlineData("something_added_in_2027", "assistant")]
+    public void Every_stored_role_maps_to_one_the_api_accepts(string? stored, string expected)
+    {
+        // Deliberately a whitelist of one: anything that is not the user was said back TO the
+        // user. A role invented later fails closed into a valid request rather than a rejected one.
+        Assert.Equal(expected, ChatService.ToModelRole(stored));
+    }
+
+    [Fact]
+    public void The_customers_own_turn_is_never_relabelled()
+    {
+        // The mirror image of the bug above, and just as bad: map a user turn to assistant and
+        // the model reads the customer's question as its own answer.
+        Assert.Equal("user", ChatService.ToModelRole("user"));
+        Assert.NotEqual("user", ChatService.ToModelRole("assistant"));
+    }
 }
