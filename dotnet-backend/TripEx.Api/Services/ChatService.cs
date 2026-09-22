@@ -1504,11 +1504,24 @@ public class ChatService
         // request: a page link is attached to most answers, so that caveat was on nearly every
         // reply — it reads as the bot hedging on an answer that is in fact correct, and works
         // against the "answer confidently, be concise" direction the rest of the prompt gives.
+        //
+        // Which of the two things it says depends on whether a human can actually reach the
+        // customer here. Naming an email address is the right answer only while this window is a
+        // dead end: it asks them to start again somewhere else, and that is worth saying when the
+        // alternative is nothing. Once the agent-reply relay is live a person answers in this very
+        // thread, and sending someone to their inbox at that moment is the worst possible advice —
+        // they leave, and the reply they were waiting for arrives in a window they closed.
         if (escalated)
         {
-            responseText += isHebrewReply
-                ? $"\n\nניתן לפנות לתמיכה במייל {_supportContact}"
-                : $"\n\nYou can reach support by email at {_supportContact}";
+            var handingOverInThisWindow = _zoho.Options.IsRelayConfigured;
+
+            responseText += (isHebrewReply, handingOverInThisWindow) switch
+            {
+                (true, true)   => "\n\nמעביר אותך לנציג — אפשר להישאר כאן, התשובה תגיע בצ'אט הזה",
+                (true, false)  => $"\n\nניתן לפנות לתמיכה במייל {_supportContact}",
+                (false, true)  => "\n\nConnecting you to an agent — stay here, their reply will arrive in this chat",
+                (false, false) => $"\n\nYou can reach support by email at {_supportContact}",
+            };
         }
         else if (ClarifyTypeIntents.Contains(intent) && !optionsRenderAsButtons)
         {

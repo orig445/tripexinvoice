@@ -222,4 +222,58 @@ public class AgentReplyRelayTests
         o.Enabled = false;
         Assert.False(o.IsRelayConfigured);
     }
+    // ── Languages ────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_non_english_portal_still_gets_its_quoted_history_cut()
+    {
+        // Every worded marker is English, and Zoho translates both the quoted-history header and
+        // the survey. On a Hebrew portal the worded list matches nothing, so the cut has to come
+        // from the punctuation Zoho fences those blocks with — which survives translation.
+        var raw = "אישרתי את הנסיעה, תנסה שוב.\n\n"
+                + "---- ביום חמישי, 15 באפריל 2021, support@tripex.io כתב ----\n"
+                + "> למה הכפתור אפור?";
+
+        Assert.Equal("אישרתי את הנסיעה, תנסה שוב.", ZohoDeskService.TidyReply(raw));
+    }
+
+    [Theory]
+    [InlineData("__________________________________")]   // the Outlook-style rule
+    [InlineData("----------------------------------")]
+    [InlineData("==================================")]
+    [InlineData("> a quoted line, in any language")]
+    public void The_separators_that_survive_translation_all_cut(string separator)
+    {
+        var raw = "Real answer.\n\n" + separator + "\nolder conversation";
+
+        Assert.Equal("Real answer.", ZohoDeskService.TidyReply(raw));
+    }
+
+    [Fact]
+    public void An_agents_own_text_is_passed_through_in_whatever_language_they_wrote_it()
+    {
+        // The relay never translates and never inspects the language of the reply. Whatever the
+        // agent typed is what the customer reads — Hebrew, English, Russian, Arabic or mixed.
+        foreach (var written in new[]
+                 {
+                     "אישרתי את הנסיעה, תנסה שוב.",
+                     "Approved the trip, please try again.",
+                     "Одобрил поездку, попробуйте снова.",
+                     "تمت الموافقة على الرحلة.",
+                     "Approved — הנסיעה אושרה, try again.",
+                 })
+        {
+            Assert.Equal(written, ZohoDeskService.TidyReply(written));
+        }
+    }
+
+    [Fact]
+    public void A_dash_inside_a_sentence_is_not_mistaken_for_a_separator()
+    {
+        // The structural cut only fires on a LINE that is a rule. A hyphen or dash used mid
+        // sentence must never truncate the agent halfway through a thought.
+        var raw = "The export is locked - the trip is still pending approval.\nTry again after 14:00.";
+
+        Assert.Equal(raw, ZohoDeskService.TidyReply(raw));
+    }
 }

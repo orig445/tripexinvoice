@@ -737,10 +737,25 @@ public class ZohoDeskService
     {
         "---- On ",                      // Zoho's quoted-history header: "---- On Thu, 15 Apr 2021 ... wrote ----"
         "-----Original Message-----",
-        "________________________________",
         "How would you rate our customer service?",
         "Sent from Zoho Desk",
     };
+
+    /// <summary>
+    /// The same seams, found by SHAPE instead of by wording — which is what makes this work when
+    /// the Desk portal is not in English.
+    ///
+    /// Every marker above is an English string, and Zoho localises both the quoted-history header
+    /// and the satisfaction survey. On a Hebrew portal the English list matches nothing and the
+    /// customer gets the entire conversation quoted back underneath every agent reply. What does
+    /// NOT change between languages is the punctuation Zoho builds those blocks from: a line
+    /// fenced by runs of dashes, a long rule of underscores, and quoted lines prefixed with "&gt;".
+    /// Those survive translation, so they are the reliable cut.
+    /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex StructuralCut = new(
+        @"^[ \t]*(?:-{3,}.*-{3,}|_{10,}|-{10,}|={10,}|>.*)[ \t]*$",
+        System.Text.RegularExpressions.RegexOptions.Multiline
+        | System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// <summary>
     /// Trims a reply down to what the agent actually wrote. Returns "" when nothing is left,
@@ -756,6 +771,12 @@ public class ZohoDeskService
             var at = text.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
             if (at >= 0 && at < cut) cut = at;
         }
+
+        // Whichever seam comes first wins. The structural match is what carries a non-English
+        // portal, but it is checked alongside the worded ones rather than instead of them: the
+        // survey has no punctuation of its own to find it by.
+        var structural = StructuralCut.Match(text);
+        if (structural.Success && structural.Index < cut) cut = structural.Index;
 
         var body = text[..cut];
 
