@@ -231,6 +231,19 @@ public class ChatResponse
     // show a "connect to a human agent" option pointing at SupportContact.
     public bool Escalated { get; set; }
     public string? SupportContact { get; set; }
+
+    /// <summary>
+    /// The short, customer-facing Zoho Desk ticket number for this conversation — the one an agent
+    /// reads out and a customer can quote back, not the long internal id the API uses.
+    ///
+    /// Set only on an escalation turn, and only once the ticket actually exists: it is opened by a
+    /// background worker, so an escalation on the very first turn of a conversation can legitimately
+    /// have none. Null therefore means "no reference to show yet", never an error — a client should
+    /// keep the last non-null value it saw rather than clearing its display when one turn omits it.
+    /// It is also appended to Text, so a client that ignores this field still shows the customer
+    /// their number.
+    /// </summary>
+    public string? TicketNumber { get; set; }
 }
 
 /// <summary>

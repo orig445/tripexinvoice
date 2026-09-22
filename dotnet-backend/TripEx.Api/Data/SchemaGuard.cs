@@ -112,11 +112,19 @@ IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'chat_session_tickets')
 CREATE TABLE [dbo].[chat_session_tickets] (
     [session_id]        UNIQUEIDENTIFIER PRIMARY KEY,
     [zoho_ticket_id]    NVARCHAR(50)   NOT NULL,
+    [zoho_ticket_number] NVARCHAR(50)  NULL,
     [synced_through]    DATETIME2      NULL,
     [escalation_synced] BIT            NOT NULL DEFAULT 0,
     [created_at]        DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
     [updated_at]        DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
-);");
+);
+
+-- Upgrade path, and the reason this whole block is not just the CREATE above: every portal that
+-- already ran Milo has this table WITHOUT zoho_ticket_number, and the CREATE is skipped for them.
+-- Without this ALTER, EF would select a column the table does not have and every Zoho sync would
+-- fail with ""Invalid column name"" — on exactly the deployments that are already working.
+IF COL_LENGTH('dbo.chat_session_tickets', 'zoho_ticket_number') IS NULL
+    ALTER TABLE [dbo].[chat_session_tickets] ADD [zoho_ticket_number] NVARCHAR(50) NULL;");
     }
 
     private static async Task EnsureAsync(TripExDbContext db, string tableName, string ddl)

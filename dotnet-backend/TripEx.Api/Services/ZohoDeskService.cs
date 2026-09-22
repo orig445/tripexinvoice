@@ -371,6 +371,16 @@ public class ZohoDeskService
     /// <summary>One public reply from a human agent, ready to show a customer.</summary>
     public readonly record struct AgentReply(string ThreadId, string Text, string? AuthorName);
 
+    /// <summary>
+    /// A ticket Zoho just created, under both of the numbers it has.
+    ///
+    /// Id is the internal key every later API call needs. Number is the short one Desk shows its
+    /// agents — the only one worth quoting to a customer, and the only one they could read back to
+    /// an agent over the phone. Number is nullable because it is a convenience: if Zoho ever omits
+    /// it the ticket still exists and still works, the customer simply does not get a reference.
+    /// </summary>
+    public readonly record struct CreatedTicket(string Id, string? Number);
+
     private async Task<ZohoCallResult> GetAsync(string path, CancellationToken ct)
     {
         try
@@ -407,7 +417,7 @@ public class ZohoDeskService
     // ── Operations ───────────────────────────────────────────────────────────────────────────
 
     /// <summary>Creates the ticket for a conversation. Returns its id, or null on any failure.</summary>
-    public async Task<string?> CreateTicketAsync(ZohoTicketDraft draft, CancellationToken ct = default)
+    public async Task<CreatedTicket?> CreateTicketAsync(ZohoTicketDraft draft, CancellationToken ct = default)
     {
         if (!Options.IsConfigured) return null;
 
@@ -486,11 +496,22 @@ public class ZohoDeskService
         if (json == null) return null;
 
         string? id;
+        string? number;
         string? assignedTo;
         try
         {
             using var doc = JsonDocument.Parse(json);
             id = doc.RootElement.TryGetProperty("id", out var idProp) ? idProp.GetString() : null;
+
+            // Two different numbers, and only one of them is fit to say to a customer. "id" is
+            // Zoho's internal key — 31138000011972149 — which is what every API call needs and
+            // what nobody can read down a phone line. "ticketNumber" is the short one Desk shows
+            // agents and puts in its subject lines. Both are kept: the id to work with, the
+            // number to quote.
+            number = doc.RootElement.TryGetProperty("ticketNumber", out var numProp)
+                ? (numProp.ValueKind == JsonValueKind.Number ? numProp.ToString() : numProp.GetString())
+                : null;
+
             assignedTo = doc.RootElement.TryGetProperty("assigneeId", out var aProp) && aProp.ValueKind == JsonValueKind.String
                 ? aProp.GetString()
                 : null;
@@ -523,7 +544,7 @@ public class ZohoDeskService
                     id, Options.AssigneeId);
         }
 
-        return id;
+        return id == null ? null : new CreatedTicket(id, number);
     }
 
     /// <summary>Moves a ticket to a specific agent. Separate from UpdateStatusAndPriorityAsync so the two

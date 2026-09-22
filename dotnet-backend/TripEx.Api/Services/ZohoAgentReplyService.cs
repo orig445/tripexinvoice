@@ -164,6 +164,33 @@ public class ZohoAgentReplyService
     /// <summary>One relayed reply, shaped for the widget.</summary>
     public readonly record struct AgentMessage(string Text, DateTime CreatedAtUtc, string? AgentName);
 
+    /// <summary>
+    /// This conversation's customer-facing ticket number, or null if there is not one to show.
+    ///
+    /// Null has several ordinary causes — no ticket opened yet, a row written before the column
+    /// existed, Zoho switched off — and none of them is worth failing a poll over. The caller
+    /// treats it as "nothing to display", and a client that has already been given a number keeps
+    /// showing it rather than clearing on a null.
+    /// </summary>
+    public async Task<string?> GetTicketNumberAsync(Guid sessionId, CancellationToken ct = default)
+    {
+        if (sessionId == Guid.Empty) return null;
+
+        try
+        {
+            return await _db.ChatSessionTickets
+                .Where(t => t.SessionId == sessionId)
+                .Select(t => t.ZohoTicketNumber)
+                .FirstOrDefaultAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("[AGENT-REPLY] ticket number not read for session {SessionId}: {Message}",
+                sessionId, ex.Message);
+            return null;
+        }
+    }
+
     private static string? ReadAgentName(string? metadata)
     {
         if (string.IsNullOrWhiteSpace(metadata)) return null;

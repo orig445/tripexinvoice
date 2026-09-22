@@ -41,11 +41,19 @@ IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'chat_session_tickets')
 CREATE TABLE [dbo].[chat_session_tickets] (
     [session_id]        UNIQUEIDENTIFIER PRIMARY KEY,
     [zoho_ticket_id]    NVARCHAR(50)   NOT NULL,
+    [zoho_ticket_number] NVARCHAR(50)  NULL,
     [synced_through]    DATETIME2      NULL,
     [escalation_synced] BIT            NOT NULL DEFAULT 0,
     [created_at]        DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
     [updated_at]        DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
 );
+GO
+
+-- Upgrade path: the short, customer-facing ticket number, added to portals whose table predates
+-- it. zoho_ticket_id is Zoho's internal key (31138000011972149) and is what the API needs;
+-- this is the short one an agent reads out and a customer can quote back.
+IF COL_LENGTH('dbo.chat_session_tickets', 'zoho_ticket_number') IS NULL
+    ALTER TABLE [dbo].[chat_session_tickets] ADD [zoho_ticket_number] NVARCHAR(50) NULL;
 GO
 
 -- ── chat_messages ──────────────────────────────────────────────────

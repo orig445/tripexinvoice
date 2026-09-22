@@ -49,8 +49,15 @@ public class ChatController : ControllerBase
 
         var messages = await _agentReplies.GetAgentMessagesSinceAsync(sessionId, since, HttpContext.RequestAborted);
 
+        // Returned on every poll, not only when there are messages. The ticket is opened by a
+        // background worker, so a conversation that escalated on its very first turn had no number
+        // to quote in the reply itself; this is where the widget picks it up a few seconds later,
+        // without the customer having to send anything to trigger it.
+        var ticketNumber = await _agentReplies.GetTicketNumberAsync(sessionId, HttpContext.RequestAborted);
+
         return Ok(new
         {
+            ticketNumber,
             messages = messages.Select(m => new
             {
                 text = m.Text,

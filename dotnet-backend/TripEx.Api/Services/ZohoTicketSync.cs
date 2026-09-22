@@ -160,8 +160,8 @@ public class ZohoTicketSyncWorker : BackgroundService
                 SessionId: request.SessionId,
                 Escalated: escalated);
 
-            var ticketId = await _zoho.CreateTicketAsync(draft, CancellationToken.None);
-            if (ticketId == null)
+            var created = await _zoho.CreateTicketAsync(draft, CancellationToken.None);
+            if (created == null)
             {
                 // Left unmapped on purpose: the next turn retries the create and carries these
                 // same messages with it, because SyncedThrough was never advanced.
@@ -170,10 +170,17 @@ public class ZohoTicketSyncWorker : BackgroundService
                 return;
             }
 
+            var ticketId = created.Value.Id;
+
             map = new ChatSessionTicket
             {
                 SessionId = request.SessionId,
                 ZohoTicketId = ticketId,
+                // The customer-facing reference. Stored at creation because it is the only moment
+                // Zoho volunteers it — every later call works off the internal id and never
+                // mentions this one, so not catching it here means another round trip to find a
+                // number we were already handed.
+                ZohoTicketNumber = created.Value.Number,
                 SyncedThrough = batches[0].Through,
                 // Creating an already-escalated ticket sets the right status up front, so there
                 // is no follow-up PATCH to make.

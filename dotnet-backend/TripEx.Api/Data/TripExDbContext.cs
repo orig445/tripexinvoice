@@ -80,6 +80,14 @@ public class ChatSessionTicket
 {
     [Key, Column("session_id")] public Guid SessionId { get; set; }
     [Column("zoho_ticket_id")] public string ZohoTicketId { get; set; } = "";
+    /// <summary>
+    /// The short, human-readable ticket number Desk shows its agents — the one worth quoting to a
+    /// customer, as opposed to ZohoTicketId, which is the internal key every API call needs and
+    /// which nobody could read back over the phone. Nullable: rows created before this column
+    /// existed have none, and so does a ticket whose create response omitted the field. Treat its
+    /// absence as "no reference to show", never as an error.
+    /// </summary>
+    [Column("zoho_ticket_number")] public string? ZohoTicketNumber { get; set; }
     /// <summary>CreatedAt of the last chat_message already mirrored. Everything later than this
     /// is what the next sync sends — which is what makes a failed sync self-healing.</summary>
     [Column("synced_through")] public DateTime? SyncedThrough { get; set; }

@@ -880,6 +880,34 @@ public class ChatService
     /// has to be told apart, or the conversation runs "rowless" forever — see the caller.
     /// </summary>
     /// <summary>
+    /// The short, customer-facing number of this conversation's Zoho ticket, or null.
+    ///
+    /// Null is an ordinary answer with several ordinary causes: Zoho is switched off, the ticket
+    /// has not been opened yet (a background worker does that, so the first turn of a conversation
+    /// usually beats it), the row predates the column, or the database is simply unavailable.
+    /// None of them is worth failing a reply over — a chat answer that works without a reference
+    /// number beats an error that has one.
+    /// </summary>
+    private async Task<string?> LookupTicketNumberAsync(Guid sessionId)
+    {
+        if (!_zoho.Options.IsConfigured || sessionId == Guid.Empty) return null;
+
+        try
+        {
+            return await _db.ChatSessionTickets
+                .Where(t => t.SessionId == sessionId)
+                .Select(t => t.ZohoTicketNumber)
+                .FirstOrDefaultAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("[CHAT] Ticket number not read for session {SessionId}: {Message}",
+                sessionId, ex.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// The session a caller's own token points at, or Guid.Empty if it points at nothing it may
     /// read. Exists so a read-only caller — the widget asking whether a human has answered yet —
     /// can be held to exactly the same ownership rule as a caller sending a message, without
@@ -1528,6 +1556,10 @@ public class ChatService
         }
 
         var escalated = intent == "escalate";
+        // Filled only on an escalation, and carried onto the response as well as into the text —
+        // the text is what the customer reads now, the field is what lets a client keep the
+        // reference on screen instead of scrolling back for it.
+        string? ticketNumber = null;
         // The support contact line is added here (deterministically, in code) rather than left to
         // the AI's own wording — guarantees it always names the real address. It now appears ONLY
         // on a true escalation, where routing the user to a human IS the point of the message.
@@ -1555,6 +1587,20 @@ public class ChatService
                 (false, true)  => "\n\nConnecting you to an agent — stay here, their reply will arrive in this chat",
                 (false, false) => $"\n\nYou can reach support by email at {_supportContact}",
             };
+
+            // The reference number, when there is one to give. Looked up rather than assumed,
+            // because the ticket is opened by a background worker: on the very first turn of a
+            // conversation it may not exist yet, and an escalation on that turn therefore has no
+            // number to quote. Silence is the right answer then — a made-up or "pending"
+            // reference is worse than none, and the widget gets the number on the response as
+            // soon as it appears (see TicketNumber below), so nothing is lost by waiting.
+            ticketNumber = await LookupTicketNumberAsync(sessionId);
+            if (!string.IsNullOrWhiteSpace(ticketNumber))
+            {
+                responseText += isHebrewReply
+                    ? $"\n\nמספר הקריאה שלך: {ticketNumber}"
+                    : $"\n\nYour ticket number: {ticketNumber}";
+            }
         }
         else if (ClarifyTypeIntents.Contains(intent) && !optionsRenderAsButtons)
         {
@@ -1695,7 +1741,8 @@ public class ChatService
             RedirectLabel = pageLink?.Label,
             SessionId = sessionId.ToString(),
             Escalated = escalated,
-            SupportContact = escalated ? _supportContact : null
+            SupportContact = escalated ? _supportContact : null,
+            TicketNumber = ticketNumber
         };
     }
 
