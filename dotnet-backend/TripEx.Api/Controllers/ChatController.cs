@@ -12,10 +12,54 @@ namespace TripEx.Api.Controllers;
 public class ChatController : ControllerBase
 {
     private readonly ChatService _chatService;
+    private readonly ZohoAgentReplyService _agentReplies;
 
-    public ChatController(ChatService chatService)
+    public ChatController(ChatService chatService, ZohoAgentReplyService agentReplies)
     {
         _chatService = chatService;
+        _agentReplies = agentReplies;
+    }
+
+    /// <summary>
+    /// Has a human answered since I last looked?
+    ///
+    /// Milo's chat has always been strictly request/response: the widget asks, the widget is
+    /// answered, nothing else ever arrives. A reply written by a support agent in Zoho Desk is
+    /// the first message that appears without the customer having asked for it, so the widget
+    /// needs somewhere to look. This is that place, and it is deliberately a poll rather than a
+    /// socket — the widget opens no sockets today, and a conversation waiting on a person is
+    /// measured in minutes, not milliseconds.
+    ///
+    /// `since` is the CreatedAtUtc of the last agent message the caller already has; pass it back
+    /// unchanged and nothing repeats. Omit it and the whole conversation's agent messages come
+    /// back, which is what a reloaded page needs.
+    ///
+    /// Returns an empty list — never 404 — for a token that resolves to nothing. Whether a given
+    /// conversation exists is not something an unrelated caller should be able to find out.
+    /// </summary>
+    [HttpGet("updates")]
+    public async Task<ActionResult> Updates(
+        [FromQuery] string? sessionToken, [FromQuery] DateTime? since)
+    {
+        var userId = GetUserId();
+        if (userId == null) return Unauthorized();
+
+        var sessionId = await _chatService.ResolveOwnedSessionAsync(sessionToken, userId.Value);
+        if (sessionId == Guid.Empty) return Ok(new { messages = Array.Empty<object>() });
+
+        var messages = await _agentReplies.GetAgentMessagesSinceAsync(sessionId, since, HttpContext.RequestAborted);
+
+        return Ok(new
+        {
+            messages = messages.Select(m => new
+            {
+                text = m.Text,
+                agentName = m.AgentName,
+                // Round-tripped by the widget as the next `since`, so the format has to be one
+                // that survives a JS Date and comes back parseable. ISO-8601 with an explicit Z.
+                createdAt = m.CreatedAtUtc.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+            }),
+        });
     }
 
     /// <summary>

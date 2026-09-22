@@ -861,6 +861,29 @@ public class ChatService
     /// the session is this caller's own AND has a row, or there is no row at all. The second one
     /// has to be told apart, or the conversation runs "rowless" forever — see the caller.
     /// </summary>
+    /// <summary>
+    /// The session a caller's own token points at, or Guid.Empty if it points at nothing it may
+    /// read. Exists so a read-only caller — the widget asking whether a human has answered yet —
+    /// can be held to exactly the same ownership rule as a caller sending a message, without
+    /// duplicating either the token resolution or the check.
+    ///
+    /// Empty is returned for "no token", "unknown token" and "someone else's conversation"
+    /// alike. Telling those apart would answer the question an attacker is asking.
+    ///
+    /// Note what this deliberately does NOT do: it never mints a session row. A caller polling
+    /// for updates on a conversation that does not exist should learn nothing and create nothing.
+    /// </summary>
+    public async Task<Guid> ResolveOwnedSessionAsync(string? sessionToken, Guid userId)
+    {
+        var sessionId = ResolveSessionToken(sessionToken, _sessionTokenSalt);
+        if (sessionId == Guid.Empty) return Guid.Empty;
+
+        var resume = await CanResumeSessionAsync(sessionId, userId);
+
+        // NeedsRow means no row exists — there is no conversation here to read, whoever asked.
+        return resume is { CanResume: true, NeedsRow: false } ? sessionId : Guid.Empty;
+    }
+
     private async Task<(bool CanResume, bool NeedsRow)> CanResumeSessionAsync(Guid sessionId, Guid userId)
     {
         try

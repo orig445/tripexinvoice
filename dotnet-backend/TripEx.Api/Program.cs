@@ -190,6 +190,10 @@ builder.Services.AddHostedService<DbCleanupService>();
 builder.Services.AddSingleton<ZohoDeskService>();
 builder.Services.AddSingleton<ZohoTicketSyncQueue>();
 builder.Services.AddHostedService<ZohoTicketSyncWorker>();
+// Scoped, not singleton like the two above: it holds the request's DbContext. ZohoDeskService is
+// a singleton and safe to take from here — it keeps only the OAuth token, which is shared on
+// purpose.
+builder.Services.AddScoped<ZohoAgentReplyService>();
 
 var app = builder.Build();
 

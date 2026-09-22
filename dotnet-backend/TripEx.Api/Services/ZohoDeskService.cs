@@ -87,6 +87,42 @@ public class ZohoDeskOptions
 
     public int TimeoutSeconds { get; set; } = 15;
 
+    // ── The way back: an agent's reply reaching the customer in Milo's own widget ────────────
+
+    /// <summary>
+    /// Our own client id, sent as the "sourceId" header on every write we make to Desk and set as
+    /// the webhook's ignoreSourceId. Desk then does not fire the webhook for changes WE caused.
+    ///
+    /// Without it the relay is a loop: we mirror the customer's turn into the ticket, Desk tells
+    /// us a thread was added, we treat it as new traffic, and round it goes. Zoho requires a UUID
+    /// here and rejects anything else, so an invalid value is worse than an empty one — empty
+    /// simply means "no suppression", which is safe as long as AgentRelayEnabled is off.
+    /// </summary>
+    public string SourceId { get; set; } = "";
+
+    /// <summary>
+    /// The off switch for the reply relay alone. Separate from Enabled on purpose: mirroring
+    /// conversations into tickets and pushing an agent's reply back to the customer are different
+    /// risks. The first is a record nobody sees; the second puts text in front of a customer.
+    ///
+    /// With this false the webhook endpoint still answers 200 — Desk deletes a subscription that
+    /// 410s and disables one that keeps failing, so refusing loudly would cost us the
+    /// registration — but nothing is fetched, stored or shown.
+    /// </summary>
+    public bool AgentRelayEnabled { get; set; }
+
+    /// <summary>
+    /// Shared secret that forms the last segment of the webhook URL we hand Zoho, e.g.
+    /// /api/zoho/desk/thread/{this}. Desk supports no auth header at all on a webhook
+    /// ("Only open webhooks that are publicly accessible and do not require authentication are
+    /// supported"), so an unguessable path is the only gate available at the door.
+    ///
+    /// It is deliberately NOT the only defence: the endpoint treats the payload purely as a
+    /// signal and re-reads the reply from Desk over our own authenticated connection, so the
+    /// worst a leaked URL buys an attacker is making us fetch a ticket we already own.
+    /// </summary>
+    public string WebhookSecret { get; set; } = "";
+
     /// <summary>Everything that must be present before a single call is worth attempting.</summary>
     public bool IsConfigured =>
         Enabled
@@ -96,6 +132,15 @@ public class ZohoDeskOptions
         && !string.IsNullOrWhiteSpace(OrgId)
         && !string.IsNullOrWhiteSpace(DepartmentId)
         && !string.IsNullOrWhiteSpace(FallbackContactEmail);
+
+    /// <summary>
+    /// The relay needs everything a ticket needs, plus its own switch and a secret long enough to
+    /// be worth having. Checked as one property so no caller can half-enable it.
+    /// </summary>
+    public bool IsRelayConfigured =>
+        IsConfigured
+        && AgentRelayEnabled
+        && WebhookSecret.Trim().Length >= 24;
 }
 
 /// <summary>What a new ticket needs to exist. Assembled by the sync worker from our own records.</summary>
@@ -251,7 +296,112 @@ public class ZohoDeskService
         http.BaseAddress = new Uri(Options.ApiBaseUrl.TrimEnd('/') + "/");
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Zoho-oauthtoken", token);
         http.DefaultRequestHeaders.Add("orgId", Options.OrgId);
+
+        // Stamps every write as ours. Paired with the webhook's ignoreSourceId, this is what
+        // stops the relay eating itself: Desk skips the webhook for changes carrying this id, so
+        // mirroring the customer's own turn into the ticket does not come back to us as if an
+        // agent had written it. Harmless when no webhook exists, so it is sent unconditionally
+        // rather than only when the relay is on — a header that is sometimes absent is the kind
+        // of thing that works in testing and loops in production.
+        if (!string.IsNullOrWhiteSpace(Options.SourceId))
+            http.DefaultRequestHeaders.Add("sourceId", Options.SourceId.Trim());
+
         return http;
+    }
+
+    /// <summary>
+    /// The public reply an agent last wrote on a ticket, as PLAIN TEXT.
+    ///
+    /// Deliberately a fresh read rather than trusting the webhook's own body, for three reasons
+    /// that all point the same way. The webhook carries "content" as a raw HTML email body —
+    /// signature block, Zoho's happiness survey and the entire quoted history included — and no
+    /// plain-text field; it can arrive truncated (isContentTruncated) with the remainder behind
+    /// another fetch anyway; and its payload reaches us over an endpoint Zoho requires to be
+    /// unauthenticated, so anything it says is a claim rather than a fact. Reading it back over
+    /// our own authenticated connection answers all three: the text is clean, complete, and
+    /// actually from Zoho.
+    ///
+    /// needPublic=true asks for the customer-visible reply, never an internal note.
+    /// </summary>
+    public async Task<AgentReply?> GetLatestPublicReplyAsync(string ticketId, CancellationToken ct = default)
+    {
+        if (!Options.IsConfigured || string.IsNullOrWhiteSpace(ticketId)) return null;
+
+        var result = await GetAsync(
+            $"api/v1/tickets/{Uri.EscapeDataString(ticketId)}/latestThread?needPublic=true&include=plainText", ct);
+        if (result.Outcome != ZohoCallOutcome.Ok || string.IsNullOrWhiteSpace(result.Body)) return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(result.Body);
+            var root = doc.RootElement;
+
+            var threadId = root.TryGetProperty("id", out var id) ? id.GetString() : null;
+            if (string.IsNullOrWhiteSpace(threadId)) return null;
+
+            // "out" is Desk's own word for a thread leaving the helpdesk towards the customer.
+            // An "in" thread is the customer's own message coming back to us — relaying that to
+            // the widget would show the customer their own words in an agent's voice.
+            var direction = root.TryGetProperty("direction", out var d) ? d.GetString() : null;
+            if (!string.Equals(direction, "out", StringComparison.OrdinalIgnoreCase)) return null;
+
+            // plainText is what include=plainText adds; content is the HTML we asked to avoid and
+            // is only a fallback for the case where Zoho omits the field entirely.
+            var text = root.TryGetProperty("plainText", out var p) ? p.GetString() : null;
+            if (string.IsNullOrWhiteSpace(text) && root.TryGetProperty("content", out var c))
+                text = StripHtml(c.GetString());
+
+            text = TidyReply(text);
+            if (string.IsNullOrWhiteSpace(text)) return null;
+
+            var author = root.TryGetProperty("author", out var a) && a.ValueKind == JsonValueKind.Object
+                ? (a.TryGetProperty("name", out var n) ? n.GetString() : null)
+                : null;
+
+            return new AgentReply(threadId!, text!, author);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning("[ZOHO] latestThread for ticket {TicketId} was not readable JSON: {Message}",
+                ticketId, ex.Message);
+            return null;
+        }
+    }
+
+    /// <summary>One public reply from a human agent, ready to show a customer.</summary>
+    public readonly record struct AgentReply(string ThreadId, string Text, string? AuthorName);
+
+    private async Task<ZohoCallResult> GetAsync(string path, CancellationToken ct)
+    {
+        try
+        {
+            using var http = await CreateAuthorizedClientAsync(ct);
+            if (http == null) return new ZohoCallResult(null, ZohoCallOutcome.Rejected);
+
+            using var response = await http.GetAsync(path, ct);
+            var body = await response.Content.ReadAsStringAsync(ct);
+
+            if (response.IsSuccessStatusCode) return new ZohoCallResult(body, ZohoCallOutcome.Ok);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                _accessToken = null;
+                _accessTokenExpiresUtc = DateTime.MinValue;
+            }
+
+            _logger.LogWarning("[ZOHO] GET {Path} → {Status} {Body}",
+                path, (int)response.StatusCode, Truncate(body, 400));
+            return new ZohoCallResult(null, (int)response.StatusCode >= 500
+                ? ZohoCallOutcome.Unknown
+                : ZohoCallOutcome.Rejected);
+        }
+        catch (Exception ex)
+        {
+            // A read changes nothing, so every failure here is simply "we did not get it" — the
+            // Unknown/Rejected distinction that matters for writes does not apply.
+            _logger.LogWarning("[ZOHO] GET {Path} threw: {Message}", path, ex.Message);
+            return new ZohoCallResult(null, ZohoCallOutcome.Unknown);
+        }
     }
 
     // ── Operations ───────────────────────────────────────────────────────────────────────────
@@ -569,5 +719,72 @@ public class ZohoDeskService
         return max <= marker.Length
             ? value[..max]
             : value[..(max - marker.Length)] + marker;
+    }
+
+    // ── Making an agent's reply fit to show a customer ───────────────────────────────────────
+
+    /// <summary>
+    /// Everything a helpdesk staples onto a reply that the person who wrote it never typed, and
+    /// that a chat bubble must not show: the quoted history of the whole conversation, the
+    /// agent's signature, and Zoho's own satisfaction survey. Desk marks the seams in HTML with
+    /// title="beforequote:::" / "sign_holder::start" / "survey_holder::start", but plain text
+    /// keeps only the human-readable headers, so those are what we cut on.
+    ///
+    /// Everything from the first marker onwards goes — a reply is written above its quoted
+    /// history, never below it.
+    /// </summary>
+    private static readonly string[] ReplyCutMarkers =
+    {
+        "---- On ",                      // Zoho's quoted-history header: "---- On Thu, 15 Apr 2021 ... wrote ----"
+        "-----Original Message-----",
+        "________________________________",
+        "How would you rate our customer service?",
+        "Sent from Zoho Desk",
+    };
+
+    /// <summary>
+    /// Trims a reply down to what the agent actually wrote. Returns "" when nothing is left,
+    /// which the caller treats as "no reply to relay" rather than sending an empty bubble.
+    /// </summary>
+    public static string TidyReply(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "";
+
+        var cut = text.Length;
+        foreach (var marker in ReplyCutMarkers)
+        {
+            var at = text.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (at >= 0 && at < cut) cut = at;
+        }
+
+        var body = text[..cut];
+
+        // Collapse the runs of blank lines a stripped signature leaves behind, without touching
+        // the single blank line a person uses between paragraphs.
+        body = System.Text.RegularExpressions.Regex.Replace(body, @"(\r?\n){3,}", "\n\n");
+        return body.Trim();
+    }
+
+    /// <summary>
+    /// Last-resort HTML to text, for the case where Zoho returns no plainText field at all.
+    /// Not a general-purpose converter and not trying to be: it drops script/style outright,
+    /// turns block boundaries into newlines so sentences do not run together, strips what is
+    /// left of the tags and decodes entities.
+    /// </summary>
+    public static string StripHtml(string? html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return "";
+
+        var t = System.Text.RegularExpressions.Regex.Replace(
+            html, @"<(script|style)\b[^>]*>.*?</\1>", " ",
+            System.Text.RegularExpressions.RegexOptions.Singleline
+            | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        t = System.Text.RegularExpressions.Regex.Replace(
+            t, @"<br\s*/?>|</(p|div|li|tr|h[1-6])>", "\n",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        t = System.Text.RegularExpressions.Regex.Replace(t, @"<[^>]+>", "");
+        return System.Net.WebUtility.HtmlDecode(t);
     }
 }
