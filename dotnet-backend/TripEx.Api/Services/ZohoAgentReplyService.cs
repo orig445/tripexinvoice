@@ -174,7 +174,13 @@ public class ZohoAgentReplyService
     /// </summary>
     public async Task<string?> GetTicketNumberAsync(Guid sessionId, CancellationToken ct = default)
     {
-        if (sessionId == Guid.Empty) return null;
+        // The IsConfigured check is not just an optimisation. zoho_ticket_number is added to
+        // chat_session_tickets by SchemaGuard, which only ever runs on the sync path — so on a
+        // deployment where Zoho has never been switched on, the column does not exist and this
+        // query would throw "Invalid column name". The catch below would swallow it, but the
+        // widget polls every few seconds, so it would swallow it into a warning every few seconds
+        // forever. With Zoho off there is no ticket to name anyway.
+        if (sessionId == Guid.Empty || !_zoho.Options.IsConfigured) return null;
 
         try
         {
