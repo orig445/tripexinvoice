@@ -211,6 +211,27 @@ public class ZohoDeskService
         {
             _logger.LogInformation("[ZOHO] Enabled — mirroring conversations to {BaseUrl} department={Dept}",
                 Options.ApiBaseUrl, Options.DepartmentId);
+
+            // Said out loud at startup because there is no other way to find out. The relay's
+            // config is read once, here, into a singleton — so editing appsettings without
+            // recycling changes nothing, and the webhook endpoint deliberately answers
+            // identically whether the relay is on or off (an open endpoint should not report its
+            // own configuration to whoever asks). Without this line the only way to learn the
+            // answer is to make a customer wait for a reply that never arrives.
+            if (Options.IsRelayConfigured)
+            {
+                _logger.LogInformation(
+                    "[ZOHO] Agent reply relay is ON — an agent's reply on a mirrored ticket will be shown " +
+                    "to the customer. sourceId={SourceIdSet}",
+                    string.IsNullOrWhiteSpace(Options.SourceId) ? "MISSING (echo loop risk)" : "set");
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "[ZOHO] Agent reply relay is OFF — enabled={Enabled} secretLength={Len} (needs true and 24+). " +
+                    "Webhook calls will be acknowledged and ignored.",
+                    Options.AgentRelayEnabled, Options.WebhookSecret.Trim().Length);
+            }
         }
     }
 
