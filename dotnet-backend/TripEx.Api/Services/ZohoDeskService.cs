@@ -343,13 +343,32 @@ public class ZohoDeskService
     /// actually from Zoho.
     ///
     /// needPublic=true asks for the customer-visible reply, never an internal note.
+    ///
+    /// threadId is the thread the webhook actually pointed at, and passing it is what stops
+    /// replies being lost. Asking for "latestThread" means asking a question whose answer changes
+    /// underneath you: if a second agent replies before the first notification is processed — or
+    /// if Desk simply batches both thread events into one POST, which needs no timing luck at all
+    /// — then both notifications read the same newest thread, the first reply is never stored, and
+    /// nothing ever looks for it again. Naming the thread makes each notification about the thread
+    /// it was actually raised for.
+    ///
+    /// The id comes from an unauthenticated payload, but it is used as a POINTER and never as
+    /// content: it selects which thread OF THIS TICKET to fetch over our own authenticated
+    /// connection, and a thread that is not on this ticket simply does not resolve.
+    ///
+    /// Null threadId falls back to latestThread, which is still right for a payload that carried
+    /// no id at all.
     /// </summary>
-    public async Task<AgentReply?> GetLatestPublicReplyAsync(string ticketId, CancellationToken ct = default)
+    public async Task<AgentReply?> GetPublicReplyAsync(
+        string ticketId, string? threadId, CancellationToken ct = default)
     {
         if (!Options.IsConfigured || string.IsNullOrWhiteSpace(ticketId)) return null;
 
-        var result = await GetAsync(
-            $"api/v1/tickets/{Uri.EscapeDataString(ticketId)}/latestThread?needPublic=true&include=plainText", ct);
+        var path = string.IsNullOrWhiteSpace(threadId)
+            ? $"api/v1/tickets/{Uri.EscapeDataString(ticketId)}/latestThread?needPublic=true&include=plainText"
+            : $"api/v1/tickets/{Uri.EscapeDataString(ticketId)}/threads/{Uri.EscapeDataString(threadId)}?include=plainText";
+
+        var result = await GetAsync(path, ct);
         if (result.Outcome != ZohoCallOutcome.Ok || string.IsNullOrWhiteSpace(result.Body)) return null;
 
         try
@@ -357,14 +376,24 @@ public class ZohoDeskService
             using var doc = JsonDocument.Parse(result.Body);
             var root = doc.RootElement;
 
-            var threadId = root.TryGetProperty("id", out var id) ? id.GetString() : null;
-            if (string.IsNullOrWhiteSpace(threadId)) return null;
+            var resolvedThreadId = root.TryGetProperty("id", out var id) ? id.GetString() : null;
+            if (string.IsNullOrWhiteSpace(resolvedThreadId)) return null;
 
             // "out" is Desk's own word for a thread leaving the helpdesk towards the customer.
             // An "in" thread is the customer's own message coming back to us — relaying that to
             // the widget would show the customer their own words in an agent's voice.
             var direction = root.TryGetProperty("direction", out var d) ? d.GetString() : null;
             if (!string.Equals(direction, "out", StringComparison.OrdinalIgnoreCase)) return null;
+
+            // Checked HERE, in code, and not left to the query string. The latestThread path asks
+            // Zoho for needPublic=true and is filtered server-side; fetching a named thread is not,
+            // so without this an internal note — the thing agents write to each other believing the
+            // customer cannot see it — would be relayed straight into the customer's chat window.
+            // It is the single most damaging thing this class could do, so it is not conditional on
+            // which path was taken.
+            var visibility = root.TryGetProperty("visibility", out var v) ? v.GetString() : null;
+            if (visibility != null && !string.Equals(visibility, "public", StringComparison.OrdinalIgnoreCase))
+                return null;
 
             // plainText is what include=plainText adds; content is the HTML we asked to avoid and
             // is only a fallback for the case where Zoho omits the field entirely.
@@ -379,7 +408,7 @@ public class ZohoDeskService
                 ? (a.TryGetProperty("name", out var n) ? n.GetString() : null)
                 : null;
 
-            return new AgentReply(threadId!, text!, author);
+            return new AgentReply(resolvedThreadId!, text!, author);
         }
         catch (JsonException ex)
         {

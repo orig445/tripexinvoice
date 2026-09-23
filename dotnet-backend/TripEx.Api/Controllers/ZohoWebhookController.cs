@@ -71,11 +71,11 @@ public class ZohoWebhookController : ControllerBase
             return Ok(new { ok = true, relayed = 0 });
         }
 
-        var ticketIds = ExtractTicketIds(body);
-        if (ticketIds.Count == 0) return Ok(new { ok = true, relayed = 0 });
+        var events = ExtractThreadEvents(body);
+        if (events.Count == 0) return Ok(new { ok = true, relayed = 0 });
 
         var relayed = 0;
-        foreach (var ticketId in ticketIds)
+        foreach (var e in events)
         {
             try
             {
@@ -83,14 +83,15 @@ public class ZohoWebhookController : ControllerBase
                 // waits for our answer, not how long we may take: abandoning a half-finished relay
                 // because the client hung up would drop an agent's reply on the floor, and Desk's
                 // retry policy is undocumented so there may be no second chance.
-                var outcome = await _relay.RelayLatestReplyAsync(ticketId, CancellationToken.None);
+                var outcome = await _relay.RelayReplyAsync(e.TicketId, e.ThreadId, CancellationToken.None);
                 if (outcome == ZohoAgentReplyService.RelayOutcome.Delivered) relayed++;
             }
             catch (Exception ex)
             {
-                // One bad ticket must not cost the others in the same batch, and must not turn
+                // One bad event must not cost the others in the same batch, and must not turn
                 // into a non-200 that counts against the subscription.
-                _logger.LogError(ex, "[ZOHO-HOOK] relaying ticket {TicketId} threw", ticketId);
+                _logger.LogError(ex, "[ZOHO-HOOK] relaying ticket {TicketId} thread {ThreadId} threw",
+                    e.TicketId, e.ThreadId);
             }
         }
 
@@ -114,29 +115,38 @@ public class ZohoWebhookController : ControllerBase
         return a.Length == b.Length && System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(a, b);
     }
 
+    /// <summary>One thread Desk says was added: which ticket, and which thread on it.</summary>
+    public readonly record struct ThreadEvent(string TicketId, string? ThreadId);
+
     /// <summary>
-    /// Pulls the ticket ids out of a Ticket_Thread_Add batch, keeping only the events that could
-    /// possibly be an agent answering a customer.
+    /// Pulls the (ticket, thread) pairs out of a Ticket_Thread_Add batch, keeping only the events
+    /// that could possibly be an agent answering a customer.
+    ///
+    /// Each event is kept SEPARATELY, including several on the same ticket. Collapsing them per
+    /// ticket — which is what this did first — silently loses replies: Desk batches thread events
+    /// into one POST, so an agent who writes "let me check" and then the actual answer produces two
+    /// events, one relay, and only the newer thread ever reaches the customer. No timing race is
+    /// needed for that, just a batch.
     ///
     /// The filtering here is a cheap first pass, not the decision: an event that survives it only
     /// earns a re-read from Desk, and that read applies the real check. Written defensively
     /// because this parses a body from an unauthenticated endpoint — every field is optional,
     /// every type is checked, and anything unexpected is skipped rather than thrown on.
     /// </summary>
-    public static List<string> ExtractTicketIds(JsonElement body)
+    public static List<ThreadEvent> ExtractThreadEvents(JsonElement body)
     {
-        var ids = new List<string>();
+        var events = new List<ThreadEvent>();
 
         // Desk documents an array. A single object is accepted too, because a payload shape that
         // changes under us should degrade to working rather than to silence.
-        var events = body.ValueKind switch
+        var rawEvents = body.ValueKind switch
         {
             JsonValueKind.Array => body.EnumerateArray().ToList(),
             JsonValueKind.Object => new List<JsonElement> { body },
             _ => new List<JsonElement>(),
         };
 
-        foreach (var ev in events)
+        foreach (var ev in rawEvents)
         {
             if (ev.ValueKind != JsonValueKind.Object) continue;
 
@@ -163,17 +173,29 @@ public class ZohoWebhookController : ControllerBase
 
             if (!payload.TryGetProperty("ticketId", out var tid)) continue;
 
-            // Zoho sends ids as strings, but a numeric id in a future payload should not be lost.
-            var id = tid.ValueKind switch
-            {
-                JsonValueKind.String => tid.GetString(),
-                JsonValueKind.Number => tid.ToString(),
-                _ => null,
-            };
+            var ticketId = ReadId(tid);
+            if (string.IsNullOrWhiteSpace(ticketId)) continue;
 
-            if (!string.IsNullOrWhiteSpace(id) && !ids.Contains(id!)) ids.Add(id!);
+            // The thread's own id — which thread this notification is actually about. Optional:
+            // a payload without it falls back to "the latest thread on that ticket", which is what
+            // this always did and is still right when there is nothing better to go on.
+            var threadId = payload.TryGetProperty("id", out var thr) ? ReadId(thr) : null;
+
+            // Deduped on the PAIR, not on the ticket. Two notifications for the same thread are
+            // genuinely the same event and only need relaying once; two threads on one ticket are
+            // two different replies and both belong to the customer.
+            var candidate = new ThreadEvent(ticketId!, threadId);
+            if (!events.Contains(candidate)) events.Add(candidate);
         }
 
-        return ids;
+        return events;
     }
+
+    /// <summary>Zoho sends ids as strings; a numeric one in a future payload should not be lost.</summary>
+    private static string? ReadId(JsonElement e) => e.ValueKind switch
+    {
+        JsonValueKind.String => e.GetString(),
+        JsonValueKind.Number => e.ToString(),
+        _ => null,
+    };
 }

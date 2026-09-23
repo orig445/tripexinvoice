@@ -204,9 +204,14 @@ public class ZohoTicketSyncWorker : BackgroundService
         {
             if (!await _zoho.AddCommentAsync(map.ZohoTicketId, batch.Content, CancellationToken.None))
             {
-                _logger.LogWarning("[ZOHO-SYNC] session={SessionId} ticket={TicketId} comment failed — will retry on the next turn",
+                // Stop sending transcript, but do NOT leave the method: the escalation push below
+                // is what tells a human this conversation needs them, and it must not be held
+                // hostage to a transcript comment. Losing some transcript means an agent opens a
+                // ticket with less context; losing the escalation means no agent opens it at all,
+                // while the customer sits in a chat window that told them to wait.
+                _logger.LogWarning("[ZOHO-SYNC] session={SessionId} ticket={TicketId} comment failed — transcript incomplete, will resend from the watermark",
                     request.SessionId, map.ZohoTicketId);
-                return;
+                break;
             }
 
             map.SyncedThrough = batch.Through;

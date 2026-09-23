@@ -18,13 +18,19 @@ public class AgentReplyRelayTests
 {
     private static JsonElement Json(string s) => JsonDocument.Parse(s).RootElement.Clone();
 
+    /// <summary>The ticket ids of a batch, in order — what most of these tests care about.</summary>
+    private static List<string> Ids(JsonElement body) =>
+        ZohoWebhookController.ExtractThreadEvents(body).Select(e => e.TicketId).ToList();
+
     private static string Event(
         string ticketId = "31138000011972149",
         string direction = "out",
         string visibility = "public",
-        bool isDescriptionThread = false)
+        bool isDescriptionThread = false,
+        string threadId = "31138000011974105")
         => $@"{{
                 ""payload"": {{
+                    ""id"": ""{threadId}"",
                     ""ticketId"": ""{ticketId}"",
                     ""direction"": ""{direction}"",
                     ""visibility"": ""{visibility}"",
@@ -40,7 +46,7 @@ public class AgentReplyRelayTests
     [Fact]
     public void An_agents_public_reply_is_picked_up()
     {
-        var ids = ZohoWebhookController.ExtractTicketIds(Json($"[{Event()}]"));
+        var ids = Ids(Json($"[{Event()}]"));
 
         Assert.Equal(new[] { "31138000011972149" }, ids);
     }
@@ -50,7 +56,7 @@ public class AgentReplyRelayTests
     {
         // Desk fires Ticket_Thread_Add for inbound threads too. Relaying one would show customers
         // their own words rendered as if support had said them.
-        Assert.Empty(ZohoWebhookController.ExtractTicketIds(Json($"[{Event(direction: "in")}]")));
+        Assert.Empty(Ids(Json($"[{Event(direction: "in")}]")));
     }
 
     [Fact]
@@ -58,22 +64,61 @@ public class AgentReplyRelayTests
     {
         // The single most damaging thing this code could do: agents write notes to each other on
         // the same ticket, in the belief that the customer cannot see them.
-        Assert.Empty(ZohoWebhookController.ExtractTicketIds(Json($"[{Event(visibility: "private")}]")));
+        Assert.Empty(Ids(Json($"[{Event(visibility: "private")}]")));
     }
 
     [Fact]
     public void The_tickets_opening_description_is_not_a_reply()
     {
-        Assert.Empty(ZohoWebhookController.ExtractTicketIds(Json($"[{Event(isDescriptionThread: true)}]")));
+        Assert.Empty(Ids(Json($"[{Event(isDescriptionThread: true)}]")));
     }
 
     [Fact]
-    public void A_batch_is_read_whole_and_deduped()
+    public void A_batch_is_read_whole()
     {
-        // Desk batches events into one array, and two threads on one ticket only need one read.
-        var body = Json($"[{Event(ticketId: "111")},{Event(ticketId: "222")},{Event(ticketId: "111")}]");
+        var body = Json($"[{Event(ticketId: "111")},{Event(ticketId: "222")}]");
 
-        Assert.Equal(new[] { "111", "222" }, ZohoWebhookController.ExtractTicketIds(body));
+        Assert.Equal(new[] { "111", "222" }, Ids(body));
+    }
+
+    [Fact]
+    public void Two_replies_on_one_ticket_are_two_events_not_one()
+    {
+        // The bug this replaced: collapsing a batch per TICKET. Desk batches thread events, so an
+        // agent who writes "let me check" and then the actual answer produces two events in one
+        // POST — and keeping only one of them meant the customer only ever saw the later reply,
+        // with the earlier one unreachable forever. No timing race was needed, just a batch.
+        var body = Json($"[{Event(ticketId: "111", threadId: "T1")},{Event(ticketId: "111", threadId: "T2")}]");
+
+        var events = ZohoWebhookController.ExtractThreadEvents(body);
+
+        Assert.Equal(2, events.Count);
+        Assert.Equal(new[] { "T1", "T2" }, events.Select(e => e.ThreadId));
+        Assert.All(events, e => Assert.Equal("111", e.TicketId));
+    }
+
+    [Fact]
+    public void The_same_thread_twice_is_still_one_event()
+    {
+        // Genuinely the same notification — Zoho's retry policy is undocumented, so a duplicate
+        // delivery is expected. Deduping on the PAIR keeps this collapsed while leaving two
+        // different threads on one ticket alone.
+        var body = Json($"[{Event(ticketId: "111", threadId: "T1")},{Event(ticketId: "111", threadId: "T1")}]");
+
+        Assert.Single(ZohoWebhookController.ExtractThreadEvents(body));
+    }
+
+    [Fact]
+    public void A_payload_with_no_thread_id_still_produces_an_event()
+    {
+        // It falls back to "the latest thread on that ticket", which is what the relay always did
+        // and is still the right answer when the payload gives nothing better to aim at.
+        var body = Json(@"[{""payload"": {""ticketId"": ""111"", ""direction"": ""out""}}]");
+
+        var events = ZohoWebhookController.ExtractThreadEvents(body);
+
+        Assert.Single(events);
+        Assert.Null(events[0].ThreadId);
     }
 
     [Fact]
@@ -81,7 +126,7 @@ public class AgentReplyRelayTests
     {
         // Documented as an array. Accepting a bare object too means a payload shape that changes
         // under us degrades to working rather than to silence.
-        Assert.Single(ZohoWebhookController.ExtractTicketIds(Json(Event())));
+        Assert.Single(Ids(Json(Event())));
     }
 
     [Theory]
@@ -99,7 +144,7 @@ public class AgentReplyRelayTests
     {
         // This parses input from an endpoint that cannot require authentication, so a crash here
         // is reachable by anyone who finds the URL. Every one of these must be a quiet no-op.
-        Assert.Empty(ZohoWebhookController.ExtractTicketIds(Json(body)));
+        Assert.Empty(Ids(Json(body)));
     }
 
     [Fact]
@@ -107,7 +152,7 @@ public class AgentReplyRelayTests
     {
         // Zoho sends ids as strings today. A future payload that sends a number should not
         // silently stop the relay.
-        var ids = ZohoWebhookController.ExtractTicketIds(
+        var ids = Ids(
             Json(@"[{""payload"": {""ticketId"": 31138000011972149, ""direction"": ""out""}}]"));
 
         Assert.Equal(new[] { "31138000011972149" }, ids);
@@ -118,7 +163,7 @@ public class AgentReplyRelayTests
     {
         // Absent is not the same as "in". An unknown shape earns a re-read from Desk, which is
         // where the real decision is made — the parsing here is only a cheap first pass.
-        var ids = ZohoWebhookController.ExtractTicketIds(Json(@"[{""payload"": {""ticketId"": ""999""}}]"));
+        var ids = Ids(Json(@"[{""payload"": {""ticketId"": ""999""}}]"));
 
         Assert.Equal(new[] { "999" }, ids);
     }

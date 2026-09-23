@@ -190,6 +190,11 @@ builder.Services.AddHostedService<DbCleanupService>();
 builder.Services.AddSingleton<ZohoDeskService>();
 builder.Services.AddSingleton<ZohoTicketSyncQueue>();
 builder.Services.AddHostedService<ZohoTicketSyncWorker>();
+// The safety net under the queue above. That queue lives in memory, so an app-pool recycle throws
+// away whatever is still in it — and since escalation now tells the customer to stay in the chat
+// rather than giving them an email address, there is no "next turn" to retry on. This sweeps the
+// database for escalations that never reached the helpdesk and re-queues them.
+builder.Services.AddHostedService<ZohoEscalationRecoveryWorker>();
 // Scoped, not singleton like the two above: it holds the request's DbContext. ZohoDeskService is
 // a singleton and safe to take from here — it keeps only the OAuth token, which is shared on
 // purpose.

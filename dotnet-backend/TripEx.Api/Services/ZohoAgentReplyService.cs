@@ -63,7 +63,8 @@ public class ZohoAgentReplyService
     /// checked before inserting, which matters because Zoho's webhook retry policy is undocumented
     /// and a duplicate would appear to the customer as the agent saying the same thing twice.
     /// </summary>
-    public async Task<RelayOutcome> RelayLatestReplyAsync(string ticketId, CancellationToken ct = default)
+    public async Task<RelayOutcome> RelayReplyAsync(
+        string ticketId, string? threadId = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(ticketId)) return RelayOutcome.NotOurs;
 
@@ -79,7 +80,7 @@ public class ZohoAgentReplyService
             return RelayOutcome.NotOurs;
         }
 
-        var reply = await _zoho.GetLatestPublicReplyAsync(ticketId, ct);
+        var reply = await _zoho.GetPublicReplyAsync(ticketId, threadId, ct);
         if (reply == null)
         {
             // Either Desk was unreachable or the latest thread was not a public outgoing one.
@@ -89,7 +90,7 @@ public class ZohoAgentReplyService
             return RelayOutcome.Unavailable;
         }
 
-        var threadId = reply.Value.ThreadId;
+        var relayedThreadId = reply.Value.ThreadId;
 
         // Dedupe on the thread id rather than on the text: an agent who deliberately sends the
         // same short line twice ("Any luck?") must not have the second one swallowed.
@@ -97,7 +98,7 @@ public class ZohoAgentReplyService
             m => m.SessionId == map.SessionId
                  && m.Role == AgentRole
                  && m.Metadata != null
-                 && m.Metadata.Contains(threadId), ct);
+                 && m.Metadata.Contains(relayedThreadId), ct);
 
         if (alreadyStored) return RelayOutcome.AlreadySeen;
 
@@ -113,7 +114,7 @@ public class ZohoAgentReplyService
             // the widget can put on the bubble so the customer knows a person has taken over.
             Metadata = System.Text.Json.JsonSerializer.Serialize(new
             {
-                zohoThreadId = threadId,
+                zohoThreadId = relayedThreadId,
                 zohoTicketId = ticketId,
                 agentName = reply.Value.AuthorName,
             }),
@@ -132,7 +133,7 @@ public class ZohoAgentReplyService
 
         _logger.LogInformation(
             "[AGENT-REPLY] ticket={TicketId} thread={ThreadId} session={SessionId} relayed {Chars} chars from {Agent}",
-            ticketId, threadId, map.SessionId, text.Length, reply.Value.AuthorName ?? "an agent");
+            ticketId, relayedThreadId, map.SessionId, text.Length, reply.Value.AuthorName ?? "an agent");
 
         return RelayOutcome.Delivered;
     }
