@@ -162,6 +162,14 @@ public class HandoverTests
         Assert.Contains(hebrew ? "לחבר אותך לצוות התמיכה" : "happy to connect you", offer);
     }
 
+    [Fact]
+    public void The_support_offer_comes_on_the_fourth_question_in_a_row()
+    {
+        // Roi, 2026-09-24: most conversations reach an answer within two or three questions, so
+        // the offer is for the customer who is visibly going round — 4, 8, 12, not 3, 6, 9.
+        Assert.Equal(4, ChatService.SupportOfferEveryNClarifications);
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]

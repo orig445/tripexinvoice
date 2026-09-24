@@ -183,7 +183,8 @@ public class ChatService
         => hebrew ? "✓ ההודעה הועברה לנציג" : "✓ Sent to the agent";
 
     /// <summary>
-    /// The aside every third clarifying question adds, offering a person instead of more questions.
+    /// The aside every fourth clarifying question adds (SupportOfferEveryNClarifications), offering a
+    /// person instead of more questions.
     ///
     /// Where an agent can answer in this window, it offers to CONNECT them — the customer only has
     /// to accept, and the escalation that follows hands the chat to a person right here. Worded as
@@ -252,9 +253,12 @@ public class ChatService
     // going badly. Removed 2026-09-15 at Roi's request — a user who is still answering the
     // questions is making progress, and ending the flow on a turn count threw that progress
     // away. The offer replaces the cap: Milo asks as many questions as it needs to, and every
-    // Nth one carries the support address beside it, so leaving is always one line away and
-    // never forced. N counts the question being asked right now, so it lands on 3, 6, 9, …
-    private const int SupportOfferEveryNClarifications = 3;
+    // Nth one carries the support offer beside it, so leaving is always one line away and
+    // never forced. N counts the question being asked right now, so it lands on 4, 8, 12, …
+    // (3 until 2026-09-24; Roi moved it to 4 — most conversations get their answer within two or
+    // three questions, and the offer should come only to someone who is visibly going round.)
+    // Public so a test can pin it.
+    public const int SupportOfferEveryNClarifications = 4;
 
     // The TAS trip/expense-report status values, exactly as they appear in the system —
     // supplied directly by the product owner (2026-09-03), NOT derived from any live TAS
@@ -2638,7 +2642,7 @@ In particular, do NOT escalate:
   - because you are not fully certain. Two candidate answers is ""clarify""; one best specific
     guess grounded in the Knowledge Base is still an answer.
   - as a polite way to end a conversation that has run long. That is handled for you — every
-    third clarifying question already offers support automatically.
+    fourth clarifying question already offers support automatically.
   - for a general question about what a status, field or feature MEANS. That is general guidance
     and you can give it without seeing anyone's live record (see 3b).
 - {escalationRule}
