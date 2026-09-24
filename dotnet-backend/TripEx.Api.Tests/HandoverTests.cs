@@ -159,7 +159,7 @@ public class HandoverTests
         var offer = ChatService.SupportOffer(hebrew, agentAnswersHere: true, "support@tripex.io");
 
         Assert.DoesNotContain("@", offer);
-        Assert.Contains(hebrew ? "לחבר אותך לנציג" : "connect you to a support agent", offer);
+        Assert.Contains(hebrew ? "לחבר אותך לצוות התמיכה" : "happy to connect you", offer);
     }
 
     [Theory]
