@@ -149,6 +149,30 @@ public class HandoverTests
         Assert.Equal(hebrew, ChatService.IsHebrewReceipt(text, locale));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Where_an_agent_answers_the_support_offer_connects_instead_of_naming_an_email(bool hebrew)
+    {
+        // Roi, 2026-09-24: sending someone to an inbox when a person could pick the chat up right
+        // here makes them leave the one window the agent's reply would arrive in.
+        var offer = ChatService.SupportOffer(hebrew, agentAnswersHere: true, "support@tripex.io");
+
+        Assert.DoesNotContain("@", offer);
+        Assert.Contains(hebrew ? "לחבר אותך לנציג" : "connect you to a support agent", offer);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Where_no_agent_can_answer_the_support_offer_still_names_the_email(bool hebrew)
+    {
+        // Relay off, internal chat, SalesIQ: offering to "connect" them would be a promise nothing
+        // keeps, so the address is still the honest way to a person.
+        Assert.Contains("support@tripex.io",
+            ChatService.SupportOffer(hebrew, agentAnswersHere: false, "support@tripex.io"));
+    }
+
     [Fact]
     public void A_message_that_did_not_arrive_asks_to_be_sent_again()
     {

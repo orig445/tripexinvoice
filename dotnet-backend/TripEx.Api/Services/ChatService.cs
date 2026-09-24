@@ -183,6 +183,25 @@ public class ChatService
         => hebrew ? "✓ ההודעה הועברה לנציג" : "✓ Sent to the agent";
 
     /// <summary>
+    /// The aside every third clarifying question adds, offering a person instead of more questions.
+    ///
+    /// Where an agent can answer in this window, it offers to CONNECT them — the customer only has
+    /// to say so, and the escalation that follows hands the chat to a person right here. Sending
+    /// them to an inbox at that point would be the worst of both: they leave, and the human who
+    /// could have picked the conversation up never sees it. The email address is kept only for the
+    /// windows no agent can reach (relay off, internal chat, SalesIQ), where it is still the one
+    /// way to a person.
+    /// </summary>
+    public static string SupportOffer(bool hebrew, bool agentAnswersHere, string supportContact)
+        => (hebrew, agentAnswersHere) switch
+        {
+            (true, true)   => "\n\nאם בא לך לדלג על השאלות — אני יכול לחבר אותך לנציג תמיכה, רק תגיד",
+            (false, true)  => "\n\nIf you'd rather skip the questions, I can connect you to a support agent — just say the word",
+            (true, false)  => $"\n\nאם בא לך לדלג על השאלות ולדבר עם בן אדם — התמיכה שלנו במייל {supportContact}",
+            (false, false) => $"\n\nIf you'd rather skip the questions and talk to a person — our support is at {supportContact}",
+        };
+
+    /// <summary>
     /// Shown instead when the customer's message could not be stored. Silence would be a lie here:
     /// the message never reached the ticket, so nobody is going to answer it.
     /// </summary>
@@ -1875,9 +1894,7 @@ public class ChatService
             && clarifyRoundNumber % SupportOfferEveryNClarifications == 0
             && !escalated)
         {
-            responseText += isHebrewReply
-                ? $"\n\nאם בא לך לדלג על השאלות ולדבר עם בן אדם — התמיכה שלנו במייל {_supportContact}"
-                : $"\n\nIf you'd rather skip the questions and talk to a person — our support is at {_supportContact}";
+            responseText += SupportOffer(isHebrewReply, agentAnswersHere, _supportContact);
         }
 
         // ── Save corrections (learning from OCR corrections) ──
