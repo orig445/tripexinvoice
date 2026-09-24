@@ -109,6 +109,89 @@ public class ChatService
         => string.Equals(source?.Trim(), "salesiq", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// Can a human support agent actually answer the customer inside this chat window?
+    ///
+    /// One question with two consequences, and they have to agree. It decides what an escalation
+    /// SAYS ("stay here, the reply will arrive in this chat" versus "email support"), and it
+    /// decides whether Milo goes quiet afterwards so the agent can take over. Answered in two
+    /// places it drifted: the handover message used the relay switch alone, so TripEx's own
+    /// "internal" staff chat — which never opens a ticket — was told to wait for a reply nobody
+    /// would ever write.
+    ///
+    /// True only when all three hold: the relay is switched on (a reply can come back at all),
+    /// the conversation is mirrored into Desk (see IsMirroredSource — so there is a ticket for an
+    /// agent to open), and the caller is the TAS widget, which is the only client that polls
+    /// /api/chat/updates. That last one is a positive signal on purpose: Source cannot tell the
+    /// widget apart from this repo's own /chat page (both arrive as "web"), and a client that never
+    /// polls would be told to wait for a reply it can never display — and then be silenced.
+    /// </summary>
+    public static bool AgentAnswersHere(bool relayConfigured, string? source, bool isTasWidgetClient)
+        => relayConfigured && isTasWidgetClient && IsMirroredSource(source);
+
+    /// <summary>
+    /// Is a conversation from this source mirrored into a Zoho Desk ticket? Not "internal" (TripEx's
+    /// own staff chat is not customer support) and not a SalesIQ relay (SalesIQ raises its own
+    /// ticket, so ours would be a duplicate). The one definition every Zoho path consults — the
+    /// enqueue in this class, the recovery sweep and the worker itself — so that no path can open a
+    /// ticket the others assume does not exist.
+    /// </summary>
+    public static bool IsMirroredSource(string? source)
+        => !string.Equals(source?.Trim(), "internal", StringComparison.OrdinalIgnoreCase)
+           && !IsRelaySource(source);
+
+    /// <summary>
+    /// The intent stored on a customer message that needs a PERSON to see it: one that went to the
+    /// agent instead of to Milo, or a repeat request for a human in a conversation that already
+    /// escalated. It is the durable record of that need — the Zoho worker reads it to reopen a
+    /// ticket the agent had closed, and the recovery sweep reads it to retry one that did not reach
+    /// the ticket — and it survives a restart between the message and the sync, which an in-memory
+    /// flag on the queue item would not. It also shows in the ticket transcript as "[handover]", so
+    /// the agent can tell which lines were written to them.
+    /// </summary>
+    public const string HandoverIntent = "handover";
+
+    /// <summary>
+    /// Once a conversation has been handed to a person, Milo stops answering in it.
+    ///
+    /// Answering alongside the agent is worse than useless: the customer gets two voices, one of
+    /// which has not read the ticket, and Milo's reply lands first because it never waits for a
+    /// human to type. Worse, it tends to contradict the agent, or re-escalate a conversation a
+    /// person is already handling.
+    ///
+    /// Deliberately NOT ended by the agent closing the ticket. Desk's "Send and Close" closes it
+    /// in the same click as the reply, so ending the handover on close would route the customer's
+    /// very next line — "thanks, but it still doesn't work" — to Milo instead of to the person
+    /// who just answered. A customer writing to a closed ticket reopens it, which is how every
+    /// helpdesk treats a reply. The customer gets Milo back by starting a new chat.
+    ///
+    /// humanInvolved is "Milo escalated it" OR "an agent has already replied in it". The second
+    /// half matters because every conversation is mirrored, including the ones Milo handled alone:
+    /// an agent can reply on one of those tickets without any escalation, the reply reaches the
+    /// widget, and the customer's answer to it is meant for that agent — not for Milo.
+    /// </summary>
+    public static bool IsHandedOver(bool continuedSession, bool humanInvolved, bool agentAnswersHere)
+        => continuedSession && humanInvolved && agentAnswersHere;
+
+    /// <summary>
+    /// The reply body for a message forwarded to the agent. The updated widget draws nothing for
+    /// a handed-over turn (it checks HandedOver); this text is only for a widget that has not been
+    /// updated yet, which renders an empty reply as a stock "Here's where you can find more:" line.
+    /// A short receipt is the honest thing to show there — and it means the backend and the widget
+    /// can go live in either order.
+    /// </summary>
+    public static string HandoverReceipt(bool hebrew)
+        => hebrew ? "✓ ההודעה הועברה לנציג" : "✓ Sent to the agent";
+
+    /// <summary>
+    /// Shown instead when the customer's message could not be stored. Silence would be a lie here:
+    /// the message never reached the ticket, so nobody is going to answer it.
+    /// </summary>
+    public static string HandoverNotDelivered(bool hebrew)
+        => hebrew
+            ? "ההודעה לא הגיעה לנציג — אפשר לשלוח אותה שוב?"
+            : "That message didn't reach the agent — could you send it again?";
+
+    /// <summary>
     /// Turns a stored chat_messages role into one the chat completions API will accept.
     ///
     /// The table's vocabulary is wider than the API's and has just grown again: "agent" is a
@@ -908,6 +991,134 @@ public class ChatService
     }
 
     /// <summary>
+    /// Is a person involved in this conversation — did Milo escalate it, or has an agent already
+    /// replied in it? False whenever it cannot be told: a new conversation, a check the caller does
+    /// not need, or a database that will not answer.
+    ///
+    /// False is the safe side of that doubt on purpose: a customer Milo answers while an agent is
+    /// also on the ticket gets one reply too many, but a customer Milo ignores because a read
+    /// failed gets none at all.
+    /// </summary>
+    /// <summary>
+    /// The query behind IsHumanInvolvedAsync, exposed so a test can prove it translates to SQL —
+    /// a LINQ shape EF cannot translate compiles fine and only throws at runtime, on the chat path.
+    /// </summary>
+    public static IQueryable<bool> HumanInvolvedQuery(TripExDbContext db, Guid sessionId)
+        => db.ChatSessions
+            .Where(s => s.Id == sessionId)
+            .Select(s => s.Escalated
+                         || db.ChatMessages.Any(m => m.SessionId == s.Id
+                                                     && m.Role == ZohoAgentReplyService.AgentRole));
+
+    private async Task<bool> IsHumanInvolvedAsync(Guid sessionId, bool worthAsking)
+    {
+        if (!worthAsking) return false;
+
+        try
+        {
+            return await HumanInvolvedQuery(_db, sessionId).FirstOrDefaultAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("[HANDOVER] session={SessionId} escalation state not read — Milo answers this turn: {Message}",
+                sessionId, ex.Message);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// A message the customer sent after the hand-off: on to the ticket, no reply from Milo.
+    ///
+    /// The message itself was already stored by the caller, tagged with HandoverIntent. What is
+    /// left is making sure a person sees it: the Zoho worker posts it on the ticket, and — because
+    /// of that tag — reopens the ticket if the agent had closed it. A customer who replies after
+    /// "Send and Close" is not finished, and the ticket should say so.
+    ///
+    /// Deliberately NOT a re-push of the escalation. That PATCH also sets the escalation priority,
+    /// and repeating it on every customer line would undo whatever the agent had set — an Urgent
+    /// ticket dropped back to High by "any update?", a custom status reset to Open. It would also
+    /// re-arm the recovery sweep on every message, so a ticket that can no longer be written to
+    /// would be retried every two minutes for a week.
+    /// </summary>
+    private async Task<ChatResponse> ForwardToAgentAsync(ChatRequest request, Guid sessionId, bool userMessageSaved)
+    {
+        var hebrew = IsHebrewReceipt(request.Text, request.Widget?.Locale);
+
+        if (!userMessageSaved)
+        {
+            // Nothing reached the ticket, so nobody will answer it — say so rather than go quiet.
+            _logger.LogWarning("[HANDOVER] session={SessionId} customer message NOT stored — asked them to resend",
+                sessionId);
+            return new ChatResponse
+            {
+                Text = HandoverNotDelivered(hebrew),
+                SessionId = sessionId.ToString(),
+            };
+        }
+
+        await TouchSessionAsync(sessionId);
+
+        // AgentAnswersHere already required IsRelayConfigured, which requires IsConfigured, so the
+        // worker is running and this is the same hand-off every answered turn makes.
+        _zohoQueue.Enqueue(new ZohoSyncRequest(
+            sessionId,
+            request.Widget?.CustomerName,
+            request.Widget?.CompanyName,
+            request.Widget?.Email));
+
+        _logger.LogInformation(
+            "[HANDOVER] session={SessionId} source={Source} forwarded to the agent, Milo silent\n  Q: {Message}",
+            sessionId, request.Source ?? "-", request.Text);
+
+        return new ChatResponse
+        {
+            Text = HandoverReceipt(hebrew),
+            SessionId = sessionId.ToString(),
+            HandedOver = true,
+            // Kept on the response so the header badge stays right for a widget that was reloaded
+            // after the ticket number arrived.
+            TicketNumber = await LookupTicketNumberAsync(sessionId),
+        };
+    }
+
+    /// <summary>
+    /// Which language the one-line handover receipt goes out in.
+    ///
+    /// The message decides when it clearly can. A short Latin fragment inside a Hebrew
+    /// conversation — "ok", "PDF?", "TID 55123" — says nothing about the customer's language, so
+    /// under a handful of Latin letters a Hebrew widget locale wins instead of flipping the receipt
+    /// to English mid-conversation.
+    /// </summary>
+    public static bool IsHebrewReceipt(string text, string? locale)
+    {
+        if (IsHebrewDominant(text)) return true;
+
+        var latin = text.Count(ch => (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z'));
+        return latin < 4 && locale?.StartsWith("he", StringComparison.OrdinalIgnoreCase) == true;
+    }
+
+    /// <summary>
+    /// Moves chat_sessions.updated_at for a message that bypassed the normal turn. The recovery
+    /// sweep finds handed-over messages that never reached the ticket by looking at recently active
+    /// conversations, and a forwarded message writes nothing else to the session row.
+    /// </summary>
+    private async Task TouchSessionAsync(Guid sessionId)
+    {
+        try
+        {
+            var now = DateTime.UtcNow;
+            await _db.ChatSessions
+                .Where(s => s.Id == sessionId)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.UpdatedAt, now));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("[HANDOVER] session={SessionId} activity time not updated: {Message}",
+                sessionId, ex.Message);
+        }
+    }
+
+    /// <summary>
     /// The session a caller's own token points at, or Guid.Empty if it points at nothing it may
     /// read. Exists so a read-only caller — the widget asking whether a human has answered yet —
     /// can be held to exactly the same ownership rule as a caller sending a message, without
@@ -1107,20 +1318,48 @@ public class ChatService
             };
         }
 
+        // ── Handed over to a person? ──
+        // Decided BEFORE the message is stored, so it can be stored with the HandoverIntent that
+        // tells the Zoho worker a person needs to see it (see HandoverIntent). Acted on after the
+        // save, below. See IsHandedOver for why this lasts until the customer starts a new chat
+        // rather than until the ticket closes.
+        var agentAnswersHere = AgentAnswersHere(_zoho.Options.IsRelayConfigured, request.Source, request.IsTasWidgetClient);
+        var handedOver = IsHandedOver(
+            continuedSession,
+            await IsHumanInvolvedAsync(sessionId, continuedSession && agentAnswersHere),
+            agentAnswersHere);
+
         // ── Save user message (best-effort) ──
+        var userMessage = new ChatMessage
+        {
+            SessionId = sessionId,
+            Role = "user",
+            Content = request.Text,
+            Intent = handedOver ? HandoverIntent : null
+        };
+        var userMessageSaved = false;
         try
         {
-            _db.ChatMessages.Add(new ChatMessage
-            {
-                SessionId = sessionId,
-                Role = "user",
-                Content = request.Text
-            });
+            _db.ChatMessages.Add(userMessage);
             await _db.SaveChangesAsync();
+            userMessageSaved = true;
         }
         catch (Exception ex)
         {
+            // NOT detached, unlike the session row above: that one fails on a duplicate key, which
+            // is permanent, while this row has a fresh Guid and fails only when the database does.
+            // Left pending, it rides along with the assistant-message save at the end of the turn
+            // and still lands if the outage was brief.
             Console.WriteLine($"⚠️ [CHAT] User message not persisted (DB unavailable): {ex.Message}");
+        }
+
+        // ── Handed over to a person: Milo stays out of it ──
+        // Before any of the expensive work below — no history, no knowledge search, no model call.
+        // The customer is talking to a human now; the only job left is to get their words onto the
+        // ticket that human is reading.
+        if (handedOver)
+        {
+            return await ForwardToAgentAsync(request, sessionId, userMessageSaved);
         }
 
         // ── Load history (best-effort; empty when DB is unavailable) ──
@@ -1578,7 +1817,9 @@ public class ChatService
         // they leave, and the reply they were waiting for arrives in a window they closed.
         if (escalated)
         {
-            var handingOverInThisWindow = _zoho.Options.IsRelayConfigured;
+            // The same answer that decides whether Milo goes quiet on the next turn — see
+            // AgentAnswersHere. "Stay here" is a promise, and only this predicate can keep it.
+            var handingOverInThisWindow = agentAnswersHere;
 
             responseText += (isHebrewReply, handingOverInThisWindow) switch
             {
@@ -1695,6 +1936,17 @@ public class ChatService
                 var ticket = await _db.ChatSessions.FirstOrDefaultAsync(s => s.Id == sessionId);
                 if (ticket != null)
                 {
+                    // A SECOND request for a human in a conversation that already escalated. The
+                    // escalation push is recorded as done once it lands, so on its own this turn
+                    // would change nothing at Zoho — and an agent who closed the ticket after the
+                    // first hand-off would never hear about the second. Tagging the customer's line
+                    // as one a person must see makes the worker reopen a Closed ticket, status only.
+                    // Deliberately NOT a re-run of the escalation push: that also re-applies the
+                    // escalation priority, overwriting whatever the agent had set since. (With the
+                    // relay on this is mostly unreachable, since Milo stops answering after the first
+                    // hand-off; with it off, Milo keeps answering and can escalate again.)
+                    if (ticket.Escalated) userMessage.Intent = HandoverIntent;
+
                     ticket.Escalated = true;
                     ticket.EscalatedAt = DateTime.UtcNow;
                     ticket.Status = "escalated";

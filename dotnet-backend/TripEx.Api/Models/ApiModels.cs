@@ -244,6 +244,16 @@ public class ChatResponse
     /// their number.
     /// </summary>
     public string? TicketNumber { get; set; }
+
+    /// <summary>
+    /// True when this conversation belongs to a human agent now and Milo did not answer: the
+    /// customer's message was forwarded to the ticket, and the agent's reply will arrive through
+    /// /api/chat/updates. A client should draw no bot bubble for this turn.
+    ///
+    /// Text still carries a one-line receipt, for a client that does not know this field yet —
+    /// see ChatService.HandoverReceipt.
+    /// </summary>
+    public bool HandedOver { get; set; }
 }
 
 /// <summary>

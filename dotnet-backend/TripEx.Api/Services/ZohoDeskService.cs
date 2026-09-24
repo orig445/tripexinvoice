@@ -418,6 +418,75 @@ public class ZohoDeskService
         }
     }
 
+    /// <summary>
+    /// The ticket's status TYPE — "Open", "On Hold" or "Closed" — with the outcome of reading it.
+    ///
+    /// The type rather than the status name, because the name is whatever this portal's admin called
+    /// it ("Resolved", "סגור", "Waiting on supplier") while the type is one of three fixed values.
+    /// Asking "is it closed?" of the name would break the first time someone renames a status.
+    ///
+    /// Carries the call's outcome alongside, because the caller has to tell "Desk is having a bad
+    /// minute, try again" (Unknown) from "Desk refused, and will refuse again" (Rejected — the
+    /// ticket was deleted, merged, or is not ours to read). Only the first is worth waiting for.
+    /// </summary>
+    public async Task<TicketStatus> GetTicketStatusAsync(string ticketId, CancellationToken ct = default)
+    {
+        if (!Options.IsConfigured || string.IsNullOrWhiteSpace(ticketId))
+            return new TicketStatus(null, ZohoCallOutcome.Rejected);
+
+        var result = await GetAsync($"api/v1/tickets/{Uri.EscapeDataString(ticketId)}", ct);
+        if (result.Outcome != ZohoCallOutcome.Ok) return new TicketStatus(null, result.Outcome);
+
+        // Read fine but no recognisable type: an answer, just not a useful one. Ok with a null type,
+        // so the caller neither reopens on a guess nor waits for a retry that would say the same.
+        return new TicketStatus(ReadStatusType(result.Body), ZohoCallOutcome.Ok);
+    }
+
+    /// <summary>A ticket's status type, and whether reading it worked.</summary>
+    public readonly record struct TicketStatus(string? StatusType, ZohoCallOutcome Outcome);
+
+    /// <summary>
+    /// Sets the ticket's status and nothing else — no priority, no assignee. The reopen a customer's
+    /// reply is owed, as distinct from UpdateStatusAndPriorityAsync, which is the escalation itself.
+    /// Returns the raw outcome so the caller can retry a timeout but not a refusal.
+    /// </summary>
+    public async Task<ZohoCallOutcome> SetStatusAsync(string ticketId, string status, CancellationToken ct = default)
+    {
+        if (!Options.IsConfigured || string.IsNullOrWhiteSpace(ticketId)) return ZohoCallOutcome.Rejected;
+
+        var result = await SendAsync(HttpMethod.Patch, $"api/v1/tickets/{Uri.EscapeDataString(ticketId)}",
+            new Dictionary<string, object?> { ["status"] = status }, ct);
+        return result.Outcome;
+    }
+
+    /// <summary>Pulls statusType out of a ticket body. Split out so it can be tested without Desk.</summary>
+    public static string? ReadStatusType(string? ticketJson)
+    {
+        if (string.IsNullOrWhiteSpace(ticketJson)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(ticketJson);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return null;
+
+            if (root.TryGetProperty("statusType", out var t) && t.ValueKind == JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(t.GetString()))
+                return t.GetString()!.Trim();
+
+            // No type in the body: fall back to the one status name whose meaning is fixed — Desk's
+            // built-in "Closed". Anything else is unknown, and unknown must not trigger a reopen.
+            if (root.TryGetProperty("status", out var s) && s.ValueKind == JsonValueKind.String
+                && string.Equals(s.GetString()?.Trim(), "Closed", StringComparison.OrdinalIgnoreCase))
+                return "Closed";
+
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>One public reply from a human agent, ready to show a customer.</summary>
     public readonly record struct AgentReply(string ThreadId, string Text, string? AuthorName);
 

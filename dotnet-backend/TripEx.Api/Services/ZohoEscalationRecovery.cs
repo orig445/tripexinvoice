@@ -45,6 +45,15 @@ public class ZohoEscalationRecoveryWorker : BackgroundService
     /// </summary>
     private static readonly TimeSpan LookBack = TimeSpan.FromDays(7);
 
+    /// <summary>
+    /// How long to keep retrying a message the customer wrote to the agent after the hand-off that
+    /// never reached the ticket. Short on purpose. What it exists for — an app-pool recycle (every
+    /// publish is one) swallowing the queued item, or a one-off Zoho error on the comment — is over
+    /// within minutes. A ticket that is still refusing after an hour has usually been merged or
+    /// deleted, and retrying it every two minutes for a week would only burn API credits.
+    /// </summary>
+    private static readonly TimeSpan HandoverRetryWindow = TimeSpan.FromHours(1);
+
     /// <summary>Most sessions to re-enqueue in one sweep, so a bad day cannot flood the queue.</summary>
     private const int BatchLimit = 50;
 
@@ -105,30 +114,71 @@ public class ZohoEscalationRecoveryWorker : BackgroundService
     }
 
     /// <summary>
+    /// The conversations the sweep should re-enqueue. A static builder so a test can prove it
+    /// translates to SQL without a database.
+    ///
+    /// Left join in LINQ: sessions that escalated, minus the ones already fully pushed — plus
+    /// the ones where the customer wrote to a person after the hand-off and that message is
+    /// still behind the watermark. Milo does not answer those, so nothing else will ever send it.
+    /// That also covers a hand-off whose REOPEN failed: the worker reopens before it posts, and
+    /// holds the transcript back on a temporary failure, so the message stays behind the
+    /// watermark and this leg retries the reopen and the comment together.
+    ///
+    /// Only sources that are mirrored at all (see ChatService.IsMirroredSource). ChatService never
+    /// enqueues "internal" or "salesiq", so they never get a ticket row — and without this filter
+    /// "escalated with no ticket row" matched every one of them, and this sweep would open a Desk
+    /// ticket for TripEx's own staff chat or duplicate the one SalesIQ raised. SQL Server's default
+    /// collation compares case-insensitively, which matches IsMirroredSource.
+    ///
+    /// Newest first, so conversations that just failed are recovered before ones that have been
+    /// failing for days and may never succeed.
+    /// </summary>
+    public static IQueryable<Guid> StuckQuery(TripExDbContext db, DateTime nowUtc)
+    {
+        var cutoff = nowUtc - LookBack;
+        var handoverCutoff = nowUtc - HandoverRetryWindow;
+
+        return
+            from s in db.ChatSessions
+            where s.UpdatedAt >= cutoff
+                  && s.Source != "internal" && s.Source != "salesiq"
+            join t in db.ChatSessionTickets on s.Id equals t.SessionId into map
+            from t in map.DefaultIfEmpty()
+            where (s.Escalated && (t == null || !t.EscalationSynced))
+                  // The handover leg does NOT require Escalated. A conversation is also handed over
+                  // when an agent replies on a ticket Milo never escalated (see
+                  // ChatService.IsHandedOver), and a customer line tagged HandoverIntent is proof
+                  // enough that a person owns it. It does require a ticket row: these are replies on
+                  // an existing ticket, never the creation of one.
+                  || (t != null
+                      && s.UpdatedAt >= handoverCutoff
+                      && db.ChatMessages.Any(m => m.SessionId == s.Id
+                                                  && m.Role == "user"
+                                                  && m.Intent == ChatService.HandoverIntent
+                                                  && (t.SyncedThrough == null || m.CreatedAt > t.SyncedThrough)))
+            orderby s.UpdatedAt descending
+            select s.Id;
+    }
+
+    /// <summary>
     /// Finds escalated conversations whose escalation never made it to Zoho and re-enqueues them.
     ///
-    /// "Never made it" is deliberately two different situations, both of which leave a customer
+    /// "Never made it" is deliberately three different situations, all of which leave a customer
     /// waiting: the ticket was never created at all (no mapping row), or it exists but the status
-    /// and priority push never landed (EscalationSynced false). Re-enqueuing covers both, because
+    /// and priority push never landed (EscalationSynced false). Re-enqueuing covers those two, because
     /// SyncOneAsync creates the ticket when the mapping is missing and pushes the escalation when
     /// it is not yet synced — it is already idempotent, which is what makes this safe to repeat.
+    ///
+    /// The third is a message the customer wrote to the agent after the hand-off that is still
+    /// behind the watermark — Milo does not answer those, so without this nothing would send it.
+    /// Retried for an hour only (HandoverRetryWindow).
     /// </summary>
     private async Task SweepAsync(CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TripExDbContext>();
 
-        var cutoff = DateTime.UtcNow - LookBack;
-
-        // Left join in LINQ: sessions that escalated, minus the ones already fully pushed.
-        var stuck = await (
-            from s in db.ChatSessions
-            where s.Escalated && s.UpdatedAt >= cutoff
-            join t in db.ChatSessionTickets on s.Id equals t.SessionId into map
-            from t in map.DefaultIfEmpty()
-            where t == null || !t.EscalationSynced
-            orderby s.UpdatedAt
-            select s.Id).Take(BatchLimit).ToListAsync(ct);
+        var stuck = await StuckQuery(db, DateTime.UtcNow).Take(BatchLimit).ToListAsync(ct);
 
         if (stuck.Count == 0) return;
 

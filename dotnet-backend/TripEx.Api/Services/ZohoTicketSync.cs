@@ -132,6 +132,18 @@ public class ZohoTicketSyncWorker : BackgroundService
             .FirstOrDefaultAsync(s => s.Id == request.SessionId, ct);
         var escalated = session?.Escalated ?? false;
 
+        // Never mirror a conversation the rest of the system assumes has no ticket. ChatService
+        // does not enqueue these, but the recovery sweep enqueues by database state, and one
+        // missed filter there would open an Open/High ticket for TripEx's own staff chat, or a
+        // duplicate of the one SalesIQ already raised. Checked here, at the one place every path
+        // goes through, rather than trusted to each caller.
+        if (session != null && !ChatService.IsMirroredSource(session.Source))
+        {
+            _logger.LogInformation("[ZOHO-SYNC] session={SessionId} source={Source} is not mirrored — skipped",
+                request.SessionId, session.Source);
+            return;
+        }
+
         // Nothing new to say, and no status change to make.
         if (pending.Count == 0 && (map == null || !escalated || map.EscalationSynced)) return;
 
@@ -142,6 +154,7 @@ public class ZohoTicketSyncWorker : BackgroundService
         // becomes a SECOND ticket on the next turn, and this row is the only thing standing
         // between us and that — Zoho has no idempotency key to fall back on.
         var batches = BuildTranscriptBatches(pending, ZohoDeskService.MaxCommentLength);
+        var createdThisPass = false;
 
         if (map == null)
         {
@@ -195,6 +208,28 @@ public class ZohoTicketSyncWorker : BackgroundService
 
             await db.SaveChangesAsync(CancellationToken.None);
             batches.RemoveAt(0);
+            createdThisPass = true;
+        }
+
+        // The customer wrote to a person after the hand-off, and Milo stayed silent — so these lines
+        // have no reader unless someone sees them. If the agent had closed the ticket (Desk's "Send
+        // and Close" does that in the same click as the reply), put it back to Open first, the way a
+        // customer's email reply would. Skipped when the full escalation push below is about to run,
+        // because that reopens the ticket anyway, and for a ticket opened a moment ago.
+        //
+        // BEFORE the transcript, deliberately. A comment is useless on a ticket nobody is looking
+        // at, and posting it moves the watermark — after which nothing would remember that the
+        // reopen is still owed. Done first, a temporary failure can hold the whole pass back: the
+        // messages stay behind the watermark, which is exactly what the recovery sweep's handover
+        // leg looks for, so the reopen and the comment are retried together.
+        if (!createdThisPass
+            && !(escalated && !map.EscalationSynced)
+            && pending.Any(IsWrittenToTheAgent)
+            && !await ReopenIfClosedAsync(request.SessionId, map.ZohoTicketId))
+        {
+            _logger.LogWarning("[ZOHO-SYNC] session={SessionId} ticket={TicketId} transcript held until the ticket can be reopened — the recovery sweep retries",
+                request.SessionId, map.ZohoTicketId);
+            return;
         }
 
         // Whatever did not fit in the ticket body goes on as comments, one per batch, each one
@@ -247,6 +282,67 @@ public class ZohoTicketSyncWorker : BackgroundService
                 _logger.LogWarning("[ZOHO-SYNC] session={SessionId} ticket={TicketId} status not updated — will retry",
                     request.SessionId, map.ZohoTicketId);
             }
+        }
+    }
+
+    /// <summary>
+    /// A customer line that needs a PERSON to see it: written after the hand-off while Milo stayed
+    /// silent, or a repeat request for a human in a conversation that had already escalated.
+    /// </summary>
+    public static bool IsWrittenToTheAgent(TranscriptMessage message)
+        => string.Equals(message.Role, "user", StringComparison.OrdinalIgnoreCase)
+           && string.Equals(message.Intent, ChatService.HandoverIntent, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Puts a Closed ticket back to Open. Returns true to carry on posting the transcript, false to
+    /// hold it for a retry.
+    ///
+    /// Status only, and only when the ticket is actually Closed. Never the priority, and never a
+    /// ticket the agent has in any other state: those are the agent's decisions — an Urgent they
+    /// raised, a custom "waiting on supplier" — and a customer's "any update?" must not undo them.
+    ///
+    /// Only a temporary failure (Unknown: a 5xx, a timeout) holds the pass back, and only for as
+    /// long as the sweep's handover window lasts. A refusal (Rejected: the ticket was deleted or
+    /// merged, or a closed ticket this portal will not reopen) will be refused again, so waiting for
+    /// it would only keep the customer's words off the ticket — they are posted anyway, and the
+    /// failure is logged for a person to look at.
+    /// </summary>
+    private async Task<bool> ReopenIfClosedAsync(Guid sessionId, string ticketId)
+    {
+        var status = await _zoho.GetTicketStatusAsync(ticketId, CancellationToken.None);
+
+        switch (status.Outcome)
+        {
+            case ZohoDeskService.ZohoCallOutcome.Unknown:
+                _logger.LogWarning("[ZOHO-SYNC] session={SessionId} ticket={TicketId} status unreadable right now — will retry",
+                    sessionId, ticketId);
+                return false;
+
+            case ZohoDeskService.ZohoCallOutcome.Rejected:
+                _logger.LogError("[ZOHO-SYNC] session={SessionId} ticket={TicketId} refused a status read (deleted or merged?) — the customer's message is posted but the ticket was not reopened",
+                    sessionId, ticketId);
+                return true;
+        }
+
+        if (!string.Equals(status.StatusType, "Closed", StringComparison.OrdinalIgnoreCase)) return true;
+
+        switch (await _zoho.SetStatusAsync(ticketId, _zoho.Options.EscalatedStatus, CancellationToken.None))
+        {
+            case ZohoDeskService.ZohoCallOutcome.Ok:
+                _logger.LogInformation("[ZOHO-SYNC] session={SessionId} ticket={TicketId} reopened — the customer wrote to the agent after it was closed",
+                    sessionId, ticketId);
+                return true;
+
+            case ZohoDeskService.ZohoCallOutcome.Unknown:
+                // May even have landed. Setting a status twice is harmless, so the retry is safe.
+                _logger.LogWarning("[ZOHO-SYNC] session={SessionId} ticket={TicketId} reopen did not confirm — will retry",
+                    sessionId, ticketId);
+                return false;
+
+            default:
+                _logger.LogError("[ZOHO-SYNC] session={SessionId} ticket={TicketId} is Closed and refused to reopen — the customer's message is posted on a closed ticket",
+                    sessionId, ticketId);
+                return true;
         }
     }
 
