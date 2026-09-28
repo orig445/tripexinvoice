@@ -29,6 +29,10 @@ public class ZohoAgentReplyService
     /// <summary>Hard ceiling on a relayed reply, so one pasted document cannot fill a chat bubble.</summary>
     public const int MaxRelayedReplyLength = 4000;
 
+    /// <summary>Serialises the dedupe check and the insert across every instance in this process —
+    /// see the note where RelayReplyAsync takes it.</summary>
+    private static readonly SemaphoreSlim StoreLock = new(1, 1);
+
     private readonly TripExDbContext _db;
     private readonly ZohoDeskService _zoho;
     private readonly ILogger<ZohoAgentReplyService> _logger;
@@ -52,7 +56,11 @@ public class ZohoAgentReplyService
         NotOurs,
         /// <summary>Nothing worth showing — an internal note, an inbound thread, or empty text.</summary>
         NothingToSay,
-        /// <summary>Desk could not be read. The next signal, or the customer's next turn, retries.</summary>
+        /// <summary>
+        /// Desk could not be read, or the thread was not a public outgoing one. Nothing on the
+        /// webhook path retries it — the customer's next turn does not either. The retry is the
+        /// backfill sweep (ZohoAgentReplyBackfillWorker), when Zoho:AgentReplyBackfill switches it on.
+        /// </summary>
         Unavailable,
     }
 
@@ -61,7 +69,9 @@ public class ZohoAgentReplyService
     ///
     /// Safe to call repeatedly for the same ticket: the thread id is recorded with the message and
     /// checked before inserting, which matters because Zoho's webhook retry policy is undocumented
-    /// and a duplicate would appear to the customer as the agent saying the same thing twice.
+    /// and a duplicate would appear to the customer as the agent saying the same thing twice. The
+    /// webhook and the backfill sweep both call this — the one entry point, so a recovered reply
+    /// passes exactly the checks a signalled one does.
     /// </summary>
     public async Task<RelayOutcome> RelayReplyAsync(
         string ticketId, string? threadId = null, CancellationToken ct = default)
@@ -83,53 +93,74 @@ public class ZohoAgentReplyService
         var reply = await _zoho.GetPublicReplyAsync(ticketId, threadId, ct);
         if (reply == null)
         {
-            // Either Desk was unreachable or the latest thread was not a public outgoing one.
-            // Both are ordinary; neither is worth alarming about, and neither is retried here —
-            // a failed read leaves the ticket unchanged, so the next signal sees the same thread.
+            // Either Desk was unreachable or the thread was not a public outgoing one. Both are
+            // ordinary; neither is worth alarming about, and neither is retried here. Nothing is
+            // stored, so nothing marks the thread as seen: with Zoho:AgentReplyBackfill on, the
+            // backfill worker finds it again in the ticket's thread list and asks again, a few
+            // times at most. With the backfill off, a read that failed here is lost unless Desk
+            // happens to re-send the same event (its retry policy is undocumented): the next
+            // signal names a different thread.
             _logger.LogInformation("[AGENT-REPLY] ticket={TicketId} had no public agent reply to relay", ticketId);
             return RelayOutcome.Unavailable;
         }
 
         var relayedThreadId = reply.Value.ThreadId;
+        string text;
 
-        // Dedupe on the thread id rather than on the text: an agent who deliberately sends the
-        // same short line twice ("Any luck?") must not have the second one swallowed.
-        var alreadyStored = await _db.ChatMessages.AnyAsync(
-            m => m.SessionId == map.SessionId
-                 && m.Role == AgentRole
-                 && m.Metadata != null
-                 && m.Metadata.Contains(relayedThreadId), ct);
-
-        if (alreadyStored) return RelayOutcome.AlreadySeen;
-
-        var text = ZohoDeskService.Truncate(reply.Value.Text, MaxRelayedReplyLength);
-        if (string.IsNullOrWhiteSpace(text)) return RelayOutcome.NothingToSay;
-
-        _db.ChatMessages.Add(new ChatMessage
+        // Check-then-insert, and there is no unique constraint behind it, so two callers relaying
+        // the same thread at once would both see "not stored" and both insert — the customer reads
+        // the agent saying it twice. There are two callers now: the webhook, and the backfill sweep
+        // that recovers what the webhook missed. The lock makes the check and the insert one step
+        // inside this process. Only the database work sits under it; the Desk read above does not,
+        // so a slow Zoho call never holds up another ticket's reply. It is static because this
+        // service is scoped — one instance per request — and the thing being guarded is the table.
+        // It does not reach across processes: a web garden or a second server would need a unique
+        // index instead, which is a schema change.
+        await StoreLock.WaitAsync(ct);
+        try
         {
-            SessionId = map.SessionId,
-            Role = AgentRole,
-            Content = text,
-            // The thread id is the dedupe key and the audit trail back to Desk; the name is what
-            // the widget can put on the bubble so the customer knows a person has taken over.
-            Metadata = System.Text.Json.JsonSerializer.Serialize(new
+            // Dedupe on the thread id rather than on the text: an agent who deliberately sends the
+            // same short line twice ("Any luck?") must not have the second one swallowed.
+            if (await IsThreadStoredAsync(map.SessionId, relayedThreadId, ct)) return RelayOutcome.AlreadySeen;
+
+            text = ZohoDeskService.Truncate(reply.Value.Text, MaxRelayedReplyLength);
+            if (string.IsNullOrWhiteSpace(text)) return RelayOutcome.NothingToSay;
+
+            // CreatedAt is deliberately left at its default of "now", even for a reply the backfill
+            // recovers an hour after the agent wrote it. The widget asks for agent messages with
+            // CreatedAt AFTER the last one it has (GetAgentMessagesSinceAsync), so a row stamped with
+            // the thread's own, earlier time would sit behind that cursor and never be shown. Late
+            // and visible is the right trade against on time and invisible.
+            _db.ChatMessages.Add(new ChatMessage
             {
-                zohoThreadId = relayedThreadId,
-                zohoTicketId = ticketId,
-                agentName = reply.Value.AuthorName,
-            }),
-        });
+                SessionId = map.SessionId,
+                Role = AgentRole,
+                Content = text,
+                // The thread id is the dedupe key and the audit trail back to Desk; the name is what
+                // the widget can put on the bubble so the customer knows a person has taken over.
+                Metadata = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    zohoThreadId = relayedThreadId,
+                    zohoTicketId = ticketId,
+                    agentName = reply.Value.AuthorName,
+                }),
+            });
 
-        // SyncedThrough is deliberately NOT touched here. Moving it to "now" would indeed stop
-        // the mirror echoing this reply back into its own ticket, but it is a watermark — a
-        // position in the conversation, not a flag — and every customer or Milo message written
-        // before this instant and not yet mirrored would fall behind it and never be sent. A
-        // customer whose question arrives while an agent is typing would simply vanish from the
-        // ticket the agent is reading. The echo is stopped where it belongs instead, by excluding
-        // the agent role from the mirror's own query (see ZohoTicketSync).
-        map.UpdatedAt = DateTime.UtcNow;
+            // SyncedThrough is deliberately NOT touched here. Moving it to "now" would indeed stop
+            // the mirror echoing this reply back into its own ticket, but it is a watermark — a
+            // position in the conversation, not a flag — and every customer or Milo message written
+            // before this instant and not yet mirrored would fall behind it and never be sent. A
+            // customer whose question arrives while an agent is typing would simply vanish from the
+            // ticket the agent is reading. The echo is stopped where it belongs instead, by excluding
+            // the agent role from the mirror's own query (see ZohoTicketSync).
+            map.UpdatedAt = DateTime.UtcNow;
 
-        await _db.SaveChangesAsync(ct);
+            await _db.SaveChangesAsync(ct);
+        }
+        finally
+        {
+            StoreLock.Release();
+        }
 
         _logger.LogInformation(
             "[AGENT-REPLY] ticket={TicketId} thread={ThreadId} session={SessionId} relayed {Chars} chars from {Agent}",
@@ -137,6 +168,23 @@ public class ZohoAgentReplyService
 
         return RelayOutcome.Delivered;
     }
+
+    /// <summary>
+    /// Has this Desk thread already been relayed into this conversation? The one definition of
+    /// "already stored", shared by RelayReplyAsync and the backfill sweep — the sweep asks first so
+    /// that a reply the webhook delivered costs no second Desk read, and if the two ever disagreed
+    /// the sweep would either re-fetch every stored reply or skip one that was never stored.
+    ///
+    /// A substring match on the metadata JSON rather than a column, because the thread id lives
+    /// there and a column would be a schema change. It is the predicate the relay has always used,
+    /// moved here unchanged, scoped to one conversation's agent rows.
+    /// </summary>
+    public Task<bool> IsThreadStoredAsync(Guid sessionId, string threadId, CancellationToken ct = default)
+        => _db.ChatMessages.AnyAsync(
+            m => m.SessionId == sessionId
+                 && m.Role == AgentRole
+                 && m.Metadata != null
+                 && m.Metadata.Contains(threadId), ct);
 
     /// <summary>
     /// Agent messages in a conversation that the caller has not seen yet — the read side of the
@@ -159,7 +207,12 @@ public class ZohoAgentReplyService
             .Select(m => new { m.Content, m.CreatedAt, m.Metadata })
             .ToListAsync(ct);
 
-        return rows.Select(r => new AgentMessage(r.Content, r.CreatedAt, ReadAgentName(r.Metadata))).ToList();
+        // created_at only ever holds DateTime.UtcNow, but EF hands datetime2 back as
+        // Kind=Unspecified. Relabelling it here makes CreatedAtUtc mean what its name says for any
+        // caller; the ticks are untouched, so the cursor the widget gets back is unchanged.
+        // ChatController.FormatCursor marks it UTC as well, so this is a safeguard, not the fix.
+        return rows.Select(r => new AgentMessage(
+            r.Content, DateTime.SpecifyKind(r.CreatedAt, DateTimeKind.Utc), ReadAgentName(r.Metadata))).ToList();
     }
 
     /// <summary>One relayed reply, shaped for the widget.</summary>

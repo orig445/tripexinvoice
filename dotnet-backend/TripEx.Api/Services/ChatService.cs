@@ -22,6 +22,11 @@ public class ChatService
     private readonly string _supportContact;
     private readonly bool _statusListShortcut;
     private readonly bool _modelAuthoredFirstClarify;
+    private readonly double _temperature;
+    // 0 = the "which temperature is in force" line has not been logged in this process yet.
+    // Static because ChatService is scoped (a new instance per request, see Program.cs), and the
+    // line is meant to appear once after a restart, not on every turn.
+    private static int _temperatureLogged;
     private readonly string? _sessionTokenSalt;
     private readonly ZohoDeskService _zoho;
     private readonly ZohoTicketSyncQueue _zohoQueue;
@@ -80,33 +85,9 @@ public class ChatService
     // Longest an option may be and still work as a button label (see OptionsCanBeButtons). A
     // choice is a label the user clicks and, when clicked, becomes their next message verbatim —
     // so a whole clause is not a choice, it's the model having written prose into the wrong
-    // field. Comfortably above the longest fixed option that ships ("Other (Matched / Closed /
-    // Pending for Cancel / Cancelled)", 55).
+    // field. Comfortably above the longest fixed option that ships ("Matched / Closed / Pending
+    // for Cancel / Cancelled", 49).
     private const int MaxOptionLabelLength = 60;
-
-    /// <summary>
-    /// The same budget for a client that relays through Zoho SalesIQ, which caps a suggestion at
-    /// 20 characters and TRIMS anything longer instead of refusing it. That silent trim is the
-    /// dangerous part: the label is what comes back as the user's next message, so a trimmed one
-    /// no longer matches the option it came from — the orientation answer stops being recognised,
-    /// the status shortcut never fires, and the model receives half a sentence. Failing the
-    /// button test here instead means the choices are shown as a numbered list, which is
-    /// answerable and which this file already knows how to render.
-    /// </summary>
-    public const int SalesIqOptionLabelLength = 20;
-
-    /// <summary>
-    /// The value of ChatRequest.Source that means "this conversation is being relayed by Zoho
-    /// SalesIQ, not rendered by the TAS widget". One definition rather than the literal repeated
-    /// at each gate: three separate behaviours hang off this answer, and two of them going one way
-    /// while the third goes the other is the failure mode worth designing out — a relay judged
-    /// non-relay for the ticket gate alone silently duplicates every helpdesk ticket.
-    ///
-    /// Ordinal-ignore-case because the value is client JSON: "SalesIQ" is how Zoho spells its own
-    /// product, and it is the spelling a person configuring the Zobot is most likely to send.
-    /// </summary>
-    public static bool IsRelaySource(string? source)
-        => string.Equals(source?.Trim(), "salesiq", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Can a human support agent actually answer the customer inside this chat window?
@@ -130,14 +111,12 @@ public class ChatService
 
     /// <summary>
     /// Is a conversation from this source mirrored into a Zoho Desk ticket? Not "internal" (TripEx's
-    /// own staff chat is not customer support) and not a SalesIQ relay (SalesIQ raises its own
-    /// ticket, so ours would be a duplicate). The one definition every Zoho path consults — the
+    /// own staff chat is not customer support). The one definition every Zoho path consults — the
     /// enqueue in this class, the recovery sweep and the worker itself — so that no path can open a
     /// ticket the others assume does not exist.
     /// </summary>
     public static bool IsMirroredSource(string? source)
-        => !string.Equals(source?.Trim(), "internal", StringComparison.OrdinalIgnoreCase)
-           && !IsRelaySource(source);
+        => !string.Equals(source?.Trim(), "internal", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// The intent stored on a customer message that needs a PERSON to see it: one that went to the
@@ -192,8 +171,8 @@ public class ChatService
     /// still asking, so it must read as an alternative, not as the bot giving up. Sending
     /// them to an inbox at that point would be the worst of both: they leave, and the human who
     /// could have picked the conversation up never sees it. The email address is kept only for the
-    /// windows no agent can reach (relay off, internal chat, SalesIQ), where it is still the one
-    /// way to a person.
+    /// windows no agent can reach (relay off, internal chat, a client other than the TAS widget),
+    /// where it is still the one way to a person.
     /// </summary>
     public static string SupportOffer(bool hebrew, bool agentAnswersHere, string supportContact)
         => (hebrew, agentAnswersHere) switch
@@ -246,6 +225,47 @@ public class ChatService
         "REPLACE_WITH_A_RANDOM_STRING_AT_LEAST_32_CHARS",
     };
 
+    // The sampling temperature of the full-prompt conversational answer — the one model call per
+    // turn that writes what the customer reads, model-authored clarify options included.
+    //
+    // 0, set here in code, by owner decision on 2026-09-28: the same question should get the
+    // same answer, not a slightly different one each time it is asked. It used to come from
+    // chatbot_config.temperature (0.30 in the seeded row, and 0.3 again whenever the DB could
+    // not be reached). That column is now deliberately NOT read — no .NET endpoint ever wrote
+    // it, so it could only be changed with direct SQL, and the one temperature control in the
+    // admin UI writes to the Lovable bot's Supabase table, which this service never reads.
+    // Leaving the column in charge would have meant a value nobody could see or reason about.
+    //
+    // Milo:Temperature overrides it, for the same reason Milo:StatusListShortcut exists: only
+    // real traffic can say whether greedy decoding suits a thinking model (the known failure
+    // is a repeat loop that runs into the token budget and surfaces as "[OCI-PARSE] Truncated
+    // JSON"), so going back must be a config edit and a restart, not a rebuild and a publish.
+    //
+    // The status-list classifier in ResolveStatusListIntentAsync is NOT governed by this: it is
+    // hard-coded to 0 and stays there even if someone raises the override. Public so a test can
+    // pin it.
+    public const double DefaultConversationalTemperature = 0;
+
+    /// <summary>
+    /// Reads Milo:Temperature. Missing, blank, unparseable, NaN, infinite or outside 0–2 all give
+    /// <see cref="DefaultConversationalTemperature"/> rather than a clamped value: the default is
+    /// the owner's chosen setting, so a typo in the config file has to land back on it and never
+    /// silently raise the temperature to the nearest bound. Parsed with the invariant culture so
+    /// "0.3" means 0.3 on a server whose regional settings use a decimal comma — and "0,3" is
+    /// rejected outright instead of being read as 3.
+    /// </summary>
+    public static double ResolveConversationalTemperature(string? configured)
+    {
+        if (string.IsNullOrWhiteSpace(configured))
+            return DefaultConversationalTemperature;
+
+        if (!double.TryParse(configured.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var t)
+            || double.IsNaN(t) || t < 0 || t > 2)
+            return DefaultConversationalTemperature;
+
+        return t;
+    }
+
     // How many clarifying questions in a row before the reply also names a human to talk to.
     //
     // This used to be a HARD CAP of 2: the third clarify in a row had its intent rewritten to
@@ -268,8 +288,11 @@ public class ChatService
     // guidance for whichever status the user picks, not a live per-customer fact. Split in two
     // because a question about a standalone expense report (no trip involved) only has 3 of
     // the 16 total statuses available to it — showing all 16 there would offer choices that
-    // can't actually apply. "Other" bundles the 4 statuses that didn't fit either named list
-    // (Matched / Closed / Pending for Cancel / Cancelled) rather than silently dropping them.
+    // can't actually apply. The last trip entry bundles the 4 statuses that didn't fit either
+    // named list (Matched / Closed / Pending for Cancel / Cancelled) rather than silently dropping
+    // them. Neither list carries an "Other" of its own any more: since 2026-09-28 every clarifying
+    // question gets the same generic one appended (WithOtherOption), and a status bucket still
+    // labelled "Other (…)" beside it would have been two different buttons both called Other.
     // Update by hand if TAS's own status set ever changes — and note that the exact wording is
     // load-bearing twice over: the chosen option is sent back verbatim as the next user message,
     // and it has to survive the widget's button rules (no commas, no "TID" — see
@@ -279,13 +302,133 @@ public class ChatService
     {
         "Draft", "TR Approval", "Coordinator Approval", "Reservations", "Proposal Approval",
         "Approved", "Issued", "Active", "Travel Completed", "Expense Report", "Expense Approval",
-        "Expense Approved", "Other (Matched / Closed / Pending for Cancel / Cancelled)",
+        "Expense Approved", "Matched / Closed / Pending for Cancel / Cancelled",
     };
 
     public static readonly IReadOnlyList<string> TripStatusOptionsForExpenseOnly = new[]
     {
-        "Expense Report", "Expense Approval", "Expense Approved", "Other",
+        "Expense Report", "Expense Approval", "Expense Approved",
     };
+
+    // The "none of these" choice, appended to every clarifying question that offers options
+    // (Roi, 2026-09-28: a customer whose case is not on the list had no button to press, and had
+    // to either pick a wrong one or work out that typing was allowed). One label per language,
+    // chosen by the language of the question it sits under.
+    //
+    // Clicking it re-sends the label verbatim, like any option, and IsOtherOptionPick recognises
+    // that on the next turn so the reply is instant and fixed rather than a 20-second model turn
+    // spent working out that the user wants to explain in their own words.
+    public const string OtherOptionHe = "אחר";
+    public const string OtherOptionEn = "Other";
+
+    public static string OtherOptionReply(bool hebrew)
+        => hebrew
+            ? "אין בעיה. אפשר לכתוב לי במילים שלך מה מחפשים, ואנסה לעזור."
+            : "No problem. Tell me in your own words what you're looking for, and I'll do my best to help.";
+
+    // Catch-all choices the model writes on its own despite the prompt rule against it. Matched
+    // exactly (after the usual option normalisation), never as substrings: "Other reports" and
+    // "דוח אחר" are real choices and must survive.
+    private static readonly HashSet<string> CatchAllOptionWordings = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "משהו אחר", "אף אחד מאלה", "אף אחת מהאפשרויות", "אף אחת מהן", "אחר (לפרט)",
+        "something else", "none of these", "none of the above", "other (please specify)",
+    };
+
+    /// <summary>
+    /// The options with the generic "Other" appended. A catch-all the model already wrote
+    /// ("None of these", "משהו אחר") is swapped for the canonical label in place, so there is
+    /// only ever one way out and pressing it takes the instant fixed reply (IsOtherOptionPick
+    /// matches the canonical label only). Returns a new list; the shipped option sets are
+    /// read-only and must stay that way.
+    /// </summary>
+    public static List<string> WithOtherOption(IEnumerable<string> options, bool hebrew)
+    {
+        var list = options.ToList();
+        if (list.Count == 0) return list;
+
+        var label = hebrew ? OtherOptionHe : OtherOptionEn;
+        var existing = list.FindIndex(o =>
+            IsOtherOptionText(o)
+            || CatchAllOptionWordings.Contains(NormalizeForOptionMatch(StripBidiMarks(o))));
+
+        if (existing >= 0)
+        {
+            // The canonical label in the question's language, whatever wording the model chose.
+            list[existing] = label;
+            return list;
+        }
+
+        list.Add(label);
+        return list;
+    }
+
+    // Any Hebrew letter at all. A deliberately different test from IsHebrewDominant, for the
+    // "Other" label and its reply: a Hebrew question that names English report titles or TAS
+    // statuses ("האם התכוונת ל-Budget by Division או Budget by Cost Center?") has more Latin
+    // letters than Hebrew ones, and an English question has no reason to contain Hebrew.
+    private static bool ContainsHebrew(string? text)
+        => !string.IsNullOrEmpty(text) && text.Any(ch => ch >= (char)0x05D0 && ch <= (char)0x05EA);
+
+    /// <summary>
+    /// Which language the "Other" label goes out in: Hebrew when the question, or the message
+    /// it answers, is Hebrew.
+    /// </summary>
+    public static bool OtherLabelIsHebrew(string? question, string? userText)
+        => ContainsHebrew(question) || (userText != null && IsHebrewDominant(userText));
+
+    /// <summary>
+    /// Which language the reply to an "Other" pick goes out in. The label alone can't say — a
+    /// Hebrew-speaking customer may have pressed an English "Other" — so the question it was
+    /// pressed under counts too.
+    /// </summary>
+    public static bool OtherReplyIsHebrew(
+        IReadOnlyList<(string Role, string Content, string? Intent)> historyRows, string? userText)
+    {
+        if (ContainsHebrew(userText)) return true;
+        for (var i = (historyRows?.Count ?? 0) - 1; i >= 0; i--)
+        {
+            if (historyRows![i].Role != "assistant") continue;
+            return ContainsHebrew(historyRows[i].Content);
+        }
+        return false;
+    }
+
+    private static bool IsOtherOptionText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var normalized = NormalizeForOptionMatch(StripBidiMarks(text));
+        return normalized.Equals(NormalizeForOptionMatch(OtherOptionHe), StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals(NormalizeForOptionMatch(OtherOptionEn), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Did the user just press "Other" under a clarifying question? Only then — the most recent
+    /// assistant turn has to be one that could have offered it — so a customer who simply writes
+    /// "other" at the start of a conversation still gets a real answer from the model.
+    /// </summary>
+    public static bool IsOtherOptionPick(
+        IReadOnlyList<(string Role, string Content, string? Intent)> historyRows, string? userText)
+    {
+        if (historyRows == null || !IsOtherOptionText(userText)) return false;
+
+        for (var i = historyRows.Count - 1; i >= 0; i--)
+        {
+            if (historyRows[i].Role != "assistant") continue;
+            // clarify_other is itself a clarifying turn but offers no options, so pressing
+            // "Other" cannot have come from it.
+            return historyRows[i].Intent is string it
+                && ClarifyTypeIntents.Contains(it)
+                && it != OtherPickIntent;
+        }
+        return false;
+    }
+
+    // The intent recorded on the fixed reply to an "Other" pick. A clarifying-type intent on
+    // purpose (see ClarifyTypeIntents): the reply is Milo asking the user again, so it keeps the
+    // run of questions — and with it the every-fourth support offer — counting, and a clarify
+    // that follows it is treated as a later round, not a fresh fixed orientation question.
+    public const string OtherPickIntent = "clarify_other";
 
     // The three areas offered by the fixed first orientation question, in both languages.
     // Constants rather than literals at the point of use because they are matched BACK on the
@@ -306,10 +449,11 @@ public class ChatService
     // Every intent that counts as a "clarifying-type" turn for the consecutive-clarification
     // cap — "clarify" (the fixed 3-way orientation round) plus the two fixed status-list
     // follow-ups (kept as distinct intent values for logging: which one fired tells you
-    // whether the user was on the trip or the expense-only path).
+    // whether the user was on the trip or the expense-only path), and the fixed reply to an
+    // "Other" pick (OtherPickIntent).
     private static readonly HashSet<string> ClarifyTypeIntents = new(StringComparer.Ordinal)
     {
-        "clarify", "clarify_status_trip", "clarify_status_expense",
+        "clarify", "clarify_status_trip", "clarify_status_expense", OtherPickIntent,
     };
 
     // Counts, from the end, an unbroken run of assistant turns whose Intent was one of
@@ -663,9 +807,8 @@ public class ChatService
     //     are not, the widget shows NO buttons, and the list has to stay for those too or the
     //     question becomes unanswerable.
     // Public + static, like ResolvePageOverride, so the tests exercise the shipping logic.
-    public static bool OptionsRenderAsButtons(
-        List<string> options, bool clientRendersParamerter, int maxLabelLength = MaxOptionLabelLength)
-        => clientRendersParamerter && OptionsCanBeButtons(options, maxLabelLength);
+    public static bool OptionsRenderAsButtons(List<string> options, bool clientRendersParamerter)
+        => clientRendersParamerter && OptionsCanBeButtons(options);
 
     // Is this set of options fit to be rendered as buttons at all, for any client? The single
     // place that answers it, so ChatResponse.QuickReplies (and the Paramerter derived from it)
@@ -678,11 +821,9 @@ public class ChatService
     // No cap on how MANY: the prompt asks for 2-4 and a longer set means the model improvised,
     // but silently dropping choices the user was asked to pick between is worse than showing
     // more buttons than intended.
-    // maxLabelLength defaults to the widget's budget, so every existing caller and test keeps the
-    // behaviour it had; only a relay with a tighter cap of its own passes something smaller.
-    public static bool OptionsCanBeButtons(List<string> options, int maxLabelLength = MaxOptionLabelLength)
+    public static bool OptionsCanBeButtons(List<string> options)
         => options.Count >= 2
-           && options.All(o => o.Length <= maxLabelLength)
+           && options.All(o => o.Length <= MaxOptionLabelLength)
            && BuildWidgetParamerter(options) != null;
 
     // One clarifying question plus its options, rendered ONCE: as buttons alone where the client
@@ -904,7 +1045,8 @@ public class ChatService
         ["clarify"]          = (new(), null),
         ["clarify_status_trip"]     = (new(), null),
         ["clarify_status_expense"]  = (new(), null),
-        ["scan"]             = (new() { "Camera" }, null),
+        [OtherPickIntent]           = (new(), null),
+        ["scan"]            = (new() { "Camera" }, null),
         ["expense"]          = (new(), null),
         ["expense_complete"] = (new(), null),
         ["bi"]               = (new() { "DisplayResults" }, null),
@@ -946,12 +1088,16 @@ public class ChatService
         _modelAuthoredFirstClarify = !string.Equals(
             configuration["Milo:ModelAuthoredFirstClarify"], "false", StringComparison.OrdinalIgnoreCase);
 
+        // Rollback override for the conversational temperature (code default 0, see
+        // DefaultConversationalTemperature) — same config-edit-plus-restart rule as the two above.
+        _temperature = ResolveConversationalTemperature(configuration["Milo:Temperature"]);
+
         // The key that makes a foreign conversation id unguessable (see ResolveSessionToken).
         // Jwt:Secret rather than a new setting: it is already required in production, already at
         // least 32 characters, and already the one value nobody is tempted to put in a document.
-        // Rotating it restarts every relayed conversation and nothing else — the TAS widget sends
-        // real Guids, which never touch this. Absent, the feature turns itself off rather than
-        // falling back to a guessable mapping.
+        // Rotating it restarts every conversation keyed on a non-Guid id and nothing else — the
+        // TAS widget sends real Guids, which never touch this. Absent, the feature turns itself
+        // off rather than falling back to a guessable mapping.
         //
         // "Absent" has to include the shipped placeholders, and that is the whole reason this is
         // not a plain null check. appsettings.json carries Jwt:Secret with a placeholder value, so
@@ -1057,7 +1203,10 @@ public class ChatService
     /// The message itself was already stored by the caller, tagged with HandoverIntent. What is
     /// left is making sure a person sees it: the Zoho worker posts it on the ticket, and — because
     /// of that tag — reopens the ticket if the agent had closed it. A customer who replies after
-    /// "Send and Close" is not finished, and the ticket should say so.
+    /// "Send and Close" is not finished, and the ticket should say so. If that ticket is one Milo
+    /// handled alone (the agent picked it up from Desk, so no escalation ever ran) and it was never
+    /// raised and is still at the AI-handled priority, the same reopen raises it once — see
+    /// ZohoTicketSyncWorker.PlanReopen.
     ///
     /// Deliberately NOT a re-push of the escalation. That PATCH also sets the escalation priority,
     /// and repeating it on every customer line would undo whatever the agent had set — an Urgent
@@ -1234,8 +1383,8 @@ public class ChatService
                 //
                 // It was unreachable while a session id had to be a GUID we minted. It stops
                 // being unreachable the moment a caller supplies its own conversation id, which
-                // is precisely what ResolveSessionToken now allows: for a relayed conversation
-                // the id is Zoho's, never ours, so EVERY relayed conversation would be rowless.
+                // is precisely what ResolveSessionToken now allows: for such a caller the id is
+                // its own, never ours, so every one of its conversations would be rowless.
                 // Minting the row here is what makes resuming a foreign id a real session.
                 var row = new ChatSession
                 {
@@ -1427,7 +1576,16 @@ public class ChatService
             Console.WriteLine($"⚠️ [CHAT] Config not loaded (DB unavailable), using defaults: {ex.Message}");
         }
 
-        var temperature = (double)(config?.Temperature ?? 0.3m);
+        // Not config?.Temperature any more — see DefaultConversationalTemperature for why the row's
+        // column is ignored. The row itself is still loaded, because MaxTokens (below) still comes
+        // from it. The once-per-process log line exists for whoever edits that column
+        // with SQL and wonders why nothing changed: it prints the value in force next to the one
+        // being ignored.
+        var temperature = _temperature;
+        if (Interlocked.Exchange(ref _temperatureLogged, 1) == 0)
+            _logger.LogInformation(
+                "[CHAT] temperature={Temperature} (Milo:Temperature, code default {Default}); chatbot_config.temperature={DbTemperature} is not used",
+                temperature, DefaultConversationalTemperature, config?.Temperature);
         // Floor, not just a fallback: a "thinking" model (e.g. gemini-2.5-pro) spends part of
         // this budget on invisible reasoning tokens before writing anything visible, so a
         // config row saved back when the default model was a non-thinking one (MaxTokens
@@ -1513,16 +1671,6 @@ public class ChatService
 
         var isInternalAudience = string.Equals(request.Source, "internal", StringComparison.OrdinalIgnoreCase);
 
-        // The chat is being relayed by Zoho SalesIQ rather than rendered by the TAS widget. Three
-        // things in this file are written for a client we control and are wrong through a relay:
-        // the helpdesk ticket (SalesIQ raises its own from the chat, so ours would be a duplicate),
-        // the HTML anchor appended to the reply (SalesIQ shows plain text, so the tag would be
-        // read out as characters), and the button-label budget (SalesIQ silently truncates a
-        // label past 20 characters — and the truncated text is what comes back as the user's next
-        // message). Nothing else changes: Source has never gated anything but "internal", so every
-        // other path behaves exactly as it does for the widget.
-        var isSalesIqRelay = IsRelaySource(request.Source);
-
         string intent, responseText, page;
         List<string> modelOptions;
 
@@ -1537,6 +1685,12 @@ public class ChatService
         // never see this flow, so the shortcut must never fire for them.
         var isStatusListTurn = !isInternalAudience && IsStatusListTurn(historyRows, request.Text);
 
+        // The other turn whose answer is already known: the user pressed "Other" under a
+        // clarifying question. The reply is the fixed invitation to explain in their own words,
+        // so there is nothing for the model to decide. Same audience gate as the clarify flow —
+        // internal staff are never shown the button.
+        var isOtherPick = !isInternalAudience && IsOtherOptionPick(historyRows, request.Text);
+
         // Null unless the small question below decided this really is a status-list turn.
         string? fastIntent = null;
         if (_statusListShortcut && isStatusListTurn)
@@ -1550,7 +1704,18 @@ public class ChatService
                 "[CLARIFY-FAST] session={SessionId} shortcut disabled by Milo:StatusListShortcut — using the full prompt",
                 sessionId);
 
-        if (fastIntent != null)
+        if (isOtherPick)
+        {
+            intent = OtherPickIntent;
+            responseText = OtherOptionReply(OtherReplyIsHebrew(historyRows, request.Text));
+            page = "";
+            modelOptions = new List<string>();
+
+            _logger.LogInformation(
+                "[CLARIFY-OTHER] session={SessionId} user pressed Other — asked for their own words without the model",
+                sessionId);
+        }
+        else if (fastIntent != null)
         {
             intent = fastIntent;
             // Everything else on this path is fixed. "text" is replaced by the status list, the
@@ -1627,13 +1792,22 @@ public class ChatService
         var clarifyRoundNumber = 0;
         if (!isInternalAudience && ClarifyTypeIntents.Contains(intent))
         {
-            clarifyRationale = responseText;
+            // Not on an "Other" pick: its text is the fixed reply, and [CLARIFY-WHY] exists to
+            // record what the MODEL said when it chose to ask.
+            clarifyRationale = intent == OtherPickIntent ? null : responseText;
             var consecutiveClarifications = CountTrailingConsecutiveClarifications(historyRows);
             clarifyRoundNumber = consecutiveClarifications + 1;
             page = null; // none of these ever link to a page — there's nothing to link to yet
             pageDeliberatelyCleared = true;
 
-            if (intent == "clarify_status_trip" || intent == "clarify_status_expense")
+            if (intent == OtherPickIntent)
+            {
+                // The fixed "tell me in your own words" reply, already in responseText. It asks
+                // for free text, so there is nothing to choose between and no options to add —
+                // falling through to the model-authored round below would only log a warning
+                // about options that were never meant to exist.
+            }
+            else if (intent == "clarify_status_trip" || intent == "clarify_status_expense")
             {
                 // Fixed, deterministic status list — shown whenever the user picked "travel &
                 // expense operations" in the first round, instead of whatever the model would
@@ -1732,13 +1906,14 @@ public class ChatService
                 // they are fit to BE buttons — and Paramerter is derived from it. An unfit set
                 // (an over-long label, a comma) is shown as the numbered list and nothing else,
                 // which is what stops a client from rendering it both ways.
-                // A SalesIQ relay draws the choices itself, from ChatResponse.QuickReplies, so it
-                // counts as a client that renders buttons — with its own tighter label budget.
-                var labelBudget = isSalesIqRelay ? SalesIqOptionLabelLength : MaxOptionLabelLength;
-                var clientDrawsButtons = request.IsTasWidgetClient || isSalesIqRelay;
+                // "Other" goes on here, once, rather than in each branch above: every branch that
+                // reaches this point has a real set of at least two choices, and every one of them
+                // should offer a way out of it. Added before the button checks so it is rendered
+                // exactly like the rest — a button with the buttons, a numbered line in the list.
+                clarifyOptions = WithOtherOption(clarifyOptions, OtherLabelIsHebrew(clarifyQuestion, request.Text));
 
-                quickReplies = OptionsCanBeButtons(clarifyOptions, labelBudget) ? clarifyOptions : new List<string>();
-                optionsRenderAsButtons = OptionsRenderAsButtons(quickReplies, clientDrawsButtons, labelBudget);
+                quickReplies = OptionsCanBeButtons(clarifyOptions) ? clarifyOptions : new List<string>();
+                optionsRenderAsButtons = OptionsRenderAsButtons(quickReplies, request.IsTasWidgetClient);
                 responseText = ComposeClarifyText(clarifyQuestion, clarifyOptions, optionsRenderAsButtons);
             }
         }
@@ -1804,19 +1979,7 @@ public class ChatService
                 responseText += $"\n\n{reportSelectText}";
             }
 
-            // A relay that renders plain text would read the tag out as characters, so it gets the
-            // label and the bare URL instead — which every chat client linkifies on its own.
-            //
-            // Deliberately NOT "suppress the anchor and let the client use RedirectPage /
-            // RedirectLabel": those two fields are on the response, but nothing has ever read
-            // them — the live TAS widget contains no occurrence of either, and neither does this
-            // repo outside the line that writes them. Dropping the anchor in favour of them would
-            // leave the user with a reply that names a page and offers no way to open it. The
-            // caption also has to come from `label` here rather than RedirectLabel, because that
-            // field is always the Hebrew Label with no language branch at all.
-            responseText += isSalesIqRelay
-                ? $"\n\n{label}\n{pageUrl}"
-                : $"\n\n<a href=\"{safeUrl}\" target=\"_top\" rel=\"noopener\">{safeLabel}</a>";
+            responseText += $"\n\n<a href=\"{safeUrl}\" target=\"_top\" rel=\"noopener\">{safeLabel}</a>";
         }
 
         var escalated = intent == "escalate";
@@ -1868,8 +2031,11 @@ public class ChatService
                     : $"\n\nYour ticket number: {ticketNumber}";
             }
         }
-        else if (ClarifyTypeIntents.Contains(intent) && !optionsRenderAsButtons)
+        else if (ClarifyTypeIntents.Contains(intent) && !optionsRenderAsButtons && intent != OtherPickIntent)
         {
+            // (Not after an "Other" pick: that reply asks for free text and lists nothing, so
+            // "type the text of the option" would point at options that are not there.)
+            //
             // Escape hatch, for the clients that get the options as a numbered plain-text list
             // because they render no buttons (see OptionsRenderAsButtons): it tells the user the
             // list is answerable by typing, so the turn is survivable no matter how the reply is
@@ -1963,12 +2129,35 @@ public class ChatService
                     // escalation push is recorded as done once it lands, so on its own this turn
                     // would change nothing at Zoho — and an agent who closed the ticket after the
                     // first hand-off would never hear about the second. Tagging the customer's line
-                    // as one a person must see makes the worker reopen a Closed ticket, status only.
+                    // as one a person must see makes the worker reopen a Closed ticket — status only
+                    // here, because the first push already raised the priority and recorded it
+                    // (ZohoTicketSyncWorker.PlanReopen raises only a ticket never raised before).
                     // Deliberately NOT a re-run of the escalation push: that also re-applies the
                     // escalation priority, overwriting whatever the agent had set since. (With the
                     // relay on this is mostly unreachable, since Milo stops answering after the first
                     // hand-off; with it off, Milo keeps answering and can escalate again.)
-                    if (ticket.Escalated) userMessage.Intent = HandoverIntent;
+                    //
+                    // The same holds when a person has already replied in this conversation, even
+                    // if Milo never escalated it: the reopen owed to that reply may have raised the
+                    // ticket and recorded it as synced (PlanReopen), after which this escalation's
+                    // push is skipped as already done — and an agent who closed the ticket again
+                    // would never see it. Only reachable when Milo answers after an agent did (the
+                    // relay rolled back, or the human-involved read failed). Read in its own
+                    // try/catch so a failed read can only lose the tag, never the escalation.
+                    var agentAlreadyReplied = false;
+                    if (!ticket.Escalated)
+                    {
+                        try
+                        {
+                            agentAlreadyReplied = await _db.ChatMessages.AnyAsync(m =>
+                                m.SessionId == sessionId && m.Role == ZohoAgentReplyService.AgentRole);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "[TICKET-ESCALATED] session={SessionId} could not check for an earlier agent reply", sessionId);
+                        }
+                    }
+                    if (ticket.Escalated || agentAlreadyReplied) userMessage.Intent = HandoverIntent;
 
                     ticket.Escalated = true;
                     ticket.EscalatedAt = DateTime.UtcNow;
@@ -1995,9 +2184,7 @@ public class ChatService
         //
         // Skipped for source:"internal" — that is TripEx's own staff chat, and its conversations
         // are not customer support tickets.
-        // Also skipped for a SalesIQ relay: that chat already becomes a Desk ticket on Zoho's own
-        // side, so mirroring it here would put every conversation in the helpdesk twice.
-        if (_zoho.Options.IsConfigured && !isInternalAudience && !isSalesIqRelay)
+        if (_zoho.Options.IsConfigured && !isInternalAudience)
         {
             _zohoQueue.Enqueue(new ZohoSyncRequest(
                 sessionId,
@@ -2016,6 +2203,9 @@ public class ChatService
             RedirectLabel = pageLink?.Label,
             SessionId = sessionId.ToString(),
             Escalated = escalated,
+            // The same predicate that chose the "the agent will answer in this chat" wording above,
+            // so the widget's status line and the reply text can never disagree.
+            AgentWillAnswer = escalated && agentAnswersHere,
             SupportContact = escalated ? _supportContact : null,
             TicketNumber = ticketNumber
         };
@@ -2448,6 +2638,8 @@ public class ChatService
          * A SHORT label each, a few words, under 60 characters. No commas inside a label, and no
            numbering or bullets — the label is sent back verbatim as the user's next message, so
            it must read as something a person would actually say.
+         * Never add an ""other"" / ""none of these"" / ""something else"" entry yourself. An ""Other""
+           button is added in code under every question, so one of your own shows it twice.
          * Keep ""text"" to the QUESTION ALONE. Do not also list the choices inside it: they are
            already shown to the user as buttons, so listing them there shows every choice twice.
          * If you genuinely cannot reduce it to short alternatives, omit ""options"" entirely and

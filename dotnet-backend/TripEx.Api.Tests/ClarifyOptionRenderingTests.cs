@@ -48,7 +48,7 @@ public class ClarifyOptionRenderingTests
         var options = new List<string>
         {
             "Expense Approved",
-            "Other (Matched / Closed / Pending for Cancel / Cancelled)",
+            "Matched / Closed / Pending for Cancel / Cancelled",
             "Draft, revised",
         };
         Assert.False(ChatService.OptionsRenderAsButtons(options, clientRendersParamerter: true));

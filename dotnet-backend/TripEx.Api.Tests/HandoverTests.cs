@@ -49,16 +49,6 @@ public class HandoverTests
     }
 
     [Theory]
-    [InlineData("salesiq")]
-    [InlineData("SalesIQ")]
-    public void A_SalesIQ_relay_never_has_our_agent_answering(string source)
-    {
-        // SalesIQ raises its own ticket and never polls /api/chat/updates, so our relay cannot
-        // reach it. Going silent there would strand the customer.
-        Assert.False(ChatService.AgentAnswersHere(relayConfigured: true, source, isTasWidgetClient: true));
-    }
-
-    [Theory]
     [InlineData("web")]
     [InlineData(null)]
     public void A_client_that_is_not_the_widget_never_has_an_agent_answering(string? source)
@@ -75,8 +65,6 @@ public class HandoverTests
     [InlineData("widget", true)]
     [InlineData("internal", false)]
     [InlineData("INTERNAL", false)]
-    [InlineData("salesiq", false)]
-    [InlineData(" SalesIQ ", false)]
     public void Only_customer_sources_are_mirrored_into_Desk(string? source, bool mirrored)
     {
         // The one definition the enqueue, the recovery sweep and the worker all consult. Before it
@@ -109,7 +97,7 @@ public class HandoverTests
     [Fact]
     public void An_escalation_nobody_can_answer_in_the_window_leaves_Milo_answering()
     {
-        // Relay off, internal or SalesIQ: the customer was given an email address, not told to
+        // Relay off or internal: the customer was given an email address, not told to
         // wait. Going silent would mean every later question in that chat goes unanswered.
         Assert.False(ChatService.IsHandedOver(continuedSession: true, humanInvolved: true, agentAnswersHere: false));
     }
@@ -175,7 +163,7 @@ public class HandoverTests
     [InlineData(false)]
     public void Where_no_agent_can_answer_the_support_offer_still_names_the_email(bool hebrew)
     {
-        // Relay off, internal chat, SalesIQ: offering to "connect" them would be a promise nothing
+        // Relay off or internal chat: offering to "connect" them would be a promise nothing
         // keeps, so the address is still the honest way to a person.
         Assert.Contains("support@tripex.io",
             ChatService.SupportOffer(hebrew, agentAnswersHere: false, "support@tripex.io"));
@@ -246,5 +234,23 @@ public class HandoverTests
         // working the day someone calls "Closed" something else — or fire on a status that only
         // looks closed.
         Assert.Equal(expected, ZohoDeskService.ReadStatusType(body));
+    }
+
+    [Theory]
+    [InlineData(@"{""priority"":""Low"",""statusType"":""Closed""}", "Low")]
+    [InlineData(@"{""priority"":"" High ""}", "High")]
+    [InlineData(@"{""priority"":null}", null)]          // a ticket nobody gave a priority
+    [InlineData(@"{""priority"":""""}", null)]
+    [InlineData(@"{""priority"":3}", null)]             // not a picklist value we could compare
+    [InlineData(@"{""statusType"":""Closed""}", null)]  // field absent: behaves exactly as before
+    [InlineData(@"[]", null)]
+    [InlineData(@"not json", null)]
+    [InlineData(@"", null)]
+    public void The_ticket_priority_is_read_from_the_same_body_as_the_status(string body, string? expected)
+    {
+        // The reopen raises a ticket only while it is still at the AI-handled priority, and it
+        // learns that from the GET it already makes for the status. Anything it cannot read as a
+        // plain value must come back as "unknown", which never raises anything.
+        Assert.Equal(expected, ZohoDeskService.ReadPriority(body));
     }
 }

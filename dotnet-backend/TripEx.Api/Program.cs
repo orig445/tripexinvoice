@@ -195,6 +195,9 @@ builder.Services.AddHostedService<ZohoTicketSyncWorker>();
 // rather than giving them an email address, there is no "next turn" to retry on. This sweeps the
 // database for escalations that never reached the helpdesk and re-queues them.
 builder.Services.AddHostedService<ZohoEscalationRecoveryWorker>();
+// The read-side safety net: relays agent replies whose Ticket_Thread_Add webhook never arrived.
+// Inert unless Zoho:AgentReplyBackfill is LogOnly or On AND the agent relay itself is configured.
+builder.Services.AddHostedService<ZohoAgentReplyBackfillWorker>();
 // Scoped, not singleton like the two above: it holds the request's DbContext. ZohoDeskService is
 // a singleton and safe to take from here — it keeps only the OAuth token, which is shared on
 // purpose.

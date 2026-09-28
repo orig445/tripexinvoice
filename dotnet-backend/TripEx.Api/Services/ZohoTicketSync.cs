@@ -134,9 +134,8 @@ public class ZohoTicketSyncWorker : BackgroundService
 
         // Never mirror a conversation the rest of the system assumes has no ticket. ChatService
         // does not enqueue these, but the recovery sweep enqueues by database state, and one
-        // missed filter there would open an Open/High ticket for TripEx's own staff chat, or a
-        // duplicate of the one SalesIQ already raised. Checked here, at the one place every path
-        // goes through, rather than trusted to each caller.
+        // missed filter there would open an Open/High ticket for TripEx's own staff chat. Checked
+        // here, at the one place every path goes through, rather than trusted to each caller.
         if (session != null && !ChatService.IsMirroredSource(session.Source))
         {
             _logger.LogInformation("[ZOHO-SYNC] session={SessionId} source={Source} is not mirrored — skipped",
@@ -215,7 +214,11 @@ public class ZohoTicketSyncWorker : BackgroundService
         // have no reader unless someone sees them. If the agent had closed the ticket (Desk's "Send
         // and Close" does that in the same click as the reply), put it back to Open first, the way a
         // customer's email reply would. Skipped when the full escalation push below is about to run,
-        // because that reopens the ticket anyway, and for a ticket opened a moment ago.
+        // because that reopens the ticket anyway, and for a ticket opened a moment ago. And when
+        // the ticket is one Milo handled alone — still at the AI-handled priority, and never raised
+        // by us — the same reopen raises it to the escalated priority, once: an agent answering from
+        // Desk hands the conversation over without any escalation, so without this the ticket would
+        // come back Open but still sorted below everything a person is waiting on.
         //
         // BEFORE the transcript, deliberately. A comment is useless on a ticket nobody is looking
         // at, and posting it moves the watermark — after which nothing would remember that the
@@ -225,7 +228,7 @@ public class ZohoTicketSyncWorker : BackgroundService
         if (!createdThisPass
             && !(escalated && !map.EscalationSynced)
             && pending.Any(IsWrittenToTheAgent)
-            && !await ReopenIfClosedAsync(request.SessionId, map.ZohoTicketId))
+            && !await ReopenIfClosedAsync(request.SessionId, map, db))
         {
             _logger.LogWarning("[ZOHO-SYNC] session={SessionId} ticket={TicketId} transcript held until the ticket can be reopened — the recovery sweep retries",
                 request.SessionId, map.ZohoTicketId);
@@ -293,13 +296,65 @@ public class ZohoTicketSyncWorker : BackgroundService
         => string.Equals(message.Role, "user", StringComparison.OrdinalIgnoreCase)
            && string.Equals(message.Intent, ChatService.HandoverIntent, StringComparison.Ordinal);
 
+    /// <summary>What the reopen owed to a customer's line does to the ticket. See PlanReopen.</summary>
+    public enum ReopenAction { LeaveAsIs, ReopenStatusOnly, ReopenAndRaisePriority }
+
+    /// <summary>
+    /// Decides the reopen from what the ticket looks like right now. Split out so it can be tested
+    /// without Desk — and because most of what it encodes is when it must NOT touch something.
+    ///
+    /// A ticket that is not Closed is left exactly as it is: any other state is one the agent put it
+    /// in. A Closed one is reopened, and its priority raised as well only when BOTH hold:
+    ///   * we have never raised it (escalation_synced=0). Once we have, a Low seen afterwards is the
+    ///     agent's own call, and a customer's "any update?" must not overwrite it.
+    ///   * it is still at AiHandledPriority. Urgent, Medium or a custom value was set by a person.
+    /// A priority we could not read (null) is not the AI value — unless the AI value is itself blank,
+    /// in which case tickets are created with no priority and "none" IS the state Milo left it in.
+    /// A blank EscalatedPriority turns the raise off, the same as it does for the escalation push.
+    /// </summary>
+    public static ReopenAction PlanReopen(string? statusType, string? currentPriority, bool escalationSynced,
+        ZohoDeskOptions options)
+    {
+        // The same test ReopenIfClosedAsync always made: the status TYPE, never the portal's name for it.
+        if (!string.Equals(statusType, "Closed", StringComparison.OrdinalIgnoreCase)) return ReopenAction.LeaveAsIs;
+
+        // Raised once already, so anything since is a person's choice.
+        if (escalationSynced) return ReopenAction.ReopenStatusOnly;
+
+        var target = options.EscalatedPriority?.Trim();
+        if (string.IsNullOrEmpty(target)) return ReopenAction.ReopenStatusOnly;
+
+        // Already where the raise would put it — which also covers a config whose two priorities are
+        // the same value. Sending it again would change nothing but the size of the PATCH.
+        var current = currentPriority?.Trim();
+        if (string.Equals(current, target, StringComparison.OrdinalIgnoreCase)) return ReopenAction.ReopenStatusOnly;
+
+        // Both sides trimmed: Desk's picklist values are exact, and a stray space left in the JSON
+        // config must not turn every ticket Milo created into one that "a person must have changed".
+        var ai = options.AiHandledPriority?.Trim();
+        var stillAtAiPriority = string.IsNullOrEmpty(ai)
+            ? string.IsNullOrEmpty(current)
+            : string.Equals(current, ai, StringComparison.OrdinalIgnoreCase);
+
+        return stillAtAiPriority ? ReopenAction.ReopenAndRaisePriority : ReopenAction.ReopenStatusOnly;
+    }
+
     /// <summary>
     /// Puts a Closed ticket back to Open. Returns true to carry on posting the transcript, false to
     /// hold it for a retry.
     ///
-    /// Status only, and only when the ticket is actually Closed. Never the priority, and never a
-    /// ticket the agent has in any other state: those are the agent's decisions — an Urgent they
-    /// raised, a custom "waiting on supplier" — and a customer's "any update?" must not undo them.
+    /// Only when the ticket is actually Closed, and never a ticket the agent has in any other state:
+    /// that is the agent's decision — a custom "waiting on supplier", an On Hold — and a customer's
+    /// "any update?" must not undo it.
+    ///
+    /// Status only, with one exception (PlanReopen): the priority is raised to EscalatedPriority
+    /// while (a) the ticket is Closed, (b) its priority is still AiHandledPriority, and (c) we have
+    /// never raised it (escalation_synced=0). That is a ticket Milo handled alone which an agent then
+    /// picked up from Desk — no escalation ever ran, so nothing else would ever lift it off Low. It
+    /// goes in the SAME PATCH as the reopen, so the raise can never block the reopen (a refused
+    /// priority falls back to the status alone), and escalation_synced is set once it lands, so it
+    /// happens at most once. Any other priority — an Urgent they raised, a Low they chose after our
+    /// raise — is the agent's, and stays.
     ///
     /// Only a temporary failure (Unknown: a 5xx, a timeout) holds the pass back, and only for as
     /// long as the sweep's handover window lasts. A refusal (Rejected: the ticket was deleted or
@@ -307,8 +362,9 @@ public class ZohoTicketSyncWorker : BackgroundService
     /// it would only keep the customer's words off the ticket — they are posted anyway, and the
     /// failure is logged for a person to look at.
     /// </summary>
-    private async Task<bool> ReopenIfClosedAsync(Guid sessionId, string ticketId)
+    private async Task<bool> ReopenIfClosedAsync(Guid sessionId, ChatSessionTicket map, TripExDbContext db)
     {
+        var ticketId = map.ZohoTicketId;
         var status = await _zoho.GetTicketStatusAsync(ticketId, CancellationToken.None);
 
         switch (status.Outcome)
@@ -324,17 +380,45 @@ public class ZohoTicketSyncWorker : BackgroundService
                 return true;
         }
 
-        if (!string.Equals(status.StatusType, "Closed", StringComparison.OrdinalIgnoreCase)) return true;
+        // The priority comes from the same GET as the status, so deciding whether to raise it costs
+        // no extra call.
+        var action = PlanReopen(status.StatusType, status.Priority, map.EscalationSynced, _zoho.Options);
+        if (action == ReopenAction.LeaveAsIs) return true;
 
-        switch (await _zoho.SetStatusAsync(ticketId, _zoho.Options.EscalatedStatus, CancellationToken.None))
+        var outcome = action == ReopenAction.ReopenAndRaisePriority
+            ? await _zoho.SetStatusAndPriorityAsync(ticketId, _zoho.Options.EscalatedStatus,
+                _zoho.Options.EscalatedPriority, CancellationToken.None)
+            : await _zoho.SetStatusAsync(ticketId, _zoho.Options.EscalatedStatus, CancellationToken.None);
+
+        switch (outcome)
         {
             case ZohoDeskService.ZohoCallOutcome.Ok:
+                if (action == ReopenAction.ReopenAndRaisePriority)
+                {
+                    // Logged BEFORE the save, as on create: if writing the flag fails, this line is
+                    // the only trace that the raise already happened.
+                    _logger.LogInformation("[ZOHO-SYNC] session={SessionId} ticket={TicketId} reopened at priority={Priority} — the customer wrote to an agent on a ticket Milo had handled alone",
+                        sessionId, ticketId, _zoho.Options.EscalatedPriority);
+
+                    // The "raised once" memory: from here on PlanReopen treats every priority on this
+                    // ticket as the agent's. Recorded even when Desk took the status but refused the
+                    // priority (SetStatusAndPriorityAsync's fallback, which logs its own warning) —
+                    // a value this portal refused once it will refuse again, exactly as the escalation
+                    // push treats it. CancellationToken.None per the token discipline in SyncOneAsync.
+                    map.EscalationSynced = true;
+                    map.UpdatedAt = DateTime.UtcNow;
+                    await db.SaveChangesAsync(CancellationToken.None);
+                    return true;
+                }
+
                 _logger.LogInformation("[ZOHO-SYNC] session={SessionId} ticket={TicketId} reopened — the customer wrote to the agent after it was closed",
                     sessionId, ticketId);
                 return true;
 
             case ZohoDeskService.ZohoCallOutcome.Unknown:
-                // May even have landed. Setting a status twice is harmless, so the retry is safe.
+                // May even have landed. Setting a status twice is harmless, so the retry is safe —
+                // and so is the priority: the retry's GET sees a ticket that is no longer Closed and
+                // leaves it alone, or one still Closed at the AI-handled priority and raises it again.
                 _logger.LogWarning("[ZOHO-SYNC] session={SessionId} ticket={TicketId} reopen did not confirm — will retry",
                     sessionId, ticketId);
                 return false;

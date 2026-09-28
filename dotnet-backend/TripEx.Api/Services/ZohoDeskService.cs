@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -58,6 +59,11 @@ public class ZohoDeskOptions
     /// of the pair above, and the only thing that separates "Milo answered this" from "a person
     /// is waiting". Raised once and never lowered again: a conversation that needed a human
     /// still needed one even if the turns after it went fine. "" leaves the field untouched.
+    ///
+    /// Also applied, once, when a customer writes to an agent on a ticket Milo handled alone (an
+    /// agent replied from Desk, so no escalation ever ran) and that ticket is still Closed at
+    /// AiHandledPriority — the reopen carries it in the same PATCH. A ticket in any other state, or
+    /// at any other priority, is the agent's and keeps what they gave it. "" turns that raise off too.
     /// </summary>
     public string EscalatedPriority { get; set; } = "High";
     /// <summary>Optional Desk custom-field API name to receive our chat session GUID (e.g.
@@ -123,6 +129,19 @@ public class ZohoDeskOptions
     /// </summary>
     public string WebhookSecret { get; set; } = "";
 
+    /// <summary>
+    /// The safety net under the webhook: "Off" (the default), "LogOnly" or "On". See
+    /// ZohoAgentReplyBackfillWorker for what it does and why it has a stage that shows nothing.
+    ///
+    /// A STRING, not an AgentReplyBackfillMode, and that is the whole point of its type.
+    /// ConfigurationBinder throws on an enum value it does not recognise, and a throw while binding
+    /// lands in ZohoDeskService's constructor catch — which replaces EVERY Zoho option with its
+    /// default. One typo in the newest, least-proven switch ("Logonly ", "yes") would then silently
+    /// stop mirroring every conversation and switch the relay itself off. As a string it cannot fail
+    /// to bind; ParseBackfillMode decides what it means, and anything it does not recognise is Off.
+    /// </summary>
+    public string AgentReplyBackfill { get; set; } = "Off";
+
     /// <summary>Everything that must be present before a single call is worth attempting.</summary>
     public bool IsConfigured =>
         Enabled
@@ -141,7 +160,43 @@ public class ZohoDeskOptions
         IsConfigured
         && AgentRelayEnabled
         && WebhookSecret.Trim().Length >= 24;
+
+    /// <summary>
+    /// What an AgentReplyBackfill value means. Fails closed: only the words themselves turn it on,
+    /// and everything else — absent, blank, "true", a typo — is Off. Trimmed and case-blind because
+    /// a stray space or a capital in a hand-edited JSON file is not a decision to switch it off, but
+    /// deliberately no cleverer than that: guessing at what "enabled" or "1" meant is how a switch
+    /// that puts text in front of customers ends up on without anyone choosing it.
+    /// </summary>
+    public static AgentReplyBackfillMode ParseBackfillMode(string? v)
+    {
+        var s = v?.Trim();
+        if (string.Equals(s, "on", StringComparison.OrdinalIgnoreCase)) return AgentReplyBackfillMode.On;
+        if (string.Equals(s, "logonly", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(s, "log", StringComparison.OrdinalIgnoreCase))
+            return AgentReplyBackfillMode.LogOnly;
+        return AgentReplyBackfillMode.Off;
+    }
+
+    public AgentReplyBackfillMode BackfillMode => ParseBackfillMode(AgentReplyBackfill);
+
+    /// <summary>
+    /// Whether the backfill worker has anything to do. It rides on the relay rather than beside it:
+    /// it recovers replies the relay should have delivered, through the relay's own entry point, so
+    /// with the relay off there is nothing to recover and it must stay idle whatever its own switch
+    /// says — otherwise "AgentRelayEnabled=false" would stop being the instant rollback for putting
+    /// agent text in front of customers.
+    /// </summary>
+    public bool IsBackfillActive => IsRelayConfigured && BackfillMode != AgentReplyBackfillMode.Off;
 }
+
+/// <summary>
+/// The three stages of the agent-reply backfill. LogOnly exists because the fields the backfill
+/// filters on come from a Desk response that could not be inspected when it was written: it runs
+/// the whole sweep and logs what it WOULD relay, so the filters can be checked against real threads
+/// before a single recovered line reaches a customer.
+/// </summary>
+public enum AgentReplyBackfillMode { Off, LogOnly, On }
 
 /// <summary>What a new ticket needs to exist. Assembled by the sync worker from our own records.</summary>
 public record ZohoTicketDraft(
@@ -220,10 +275,14 @@ public class ZohoDeskService
             // answer is to make a customer wait for a reply that never arrives.
             if (Options.IsRelayConfigured)
             {
+                // The backfill mode rides on the same line for the same reason: it is read once,
+                // here, and "Logonly " or a typo quietly means Off — the log is the only place that
+                // says which of the three it actually took.
                 _logger.LogInformation(
                     "[ZOHO] Agent reply relay is ON — an agent's reply on a mirrored ticket will be shown " +
-                    "to the customer. sourceId={SourceIdSet}",
-                    string.IsNullOrWhiteSpace(Options.SourceId) ? "MISSING (echo loop risk)" : "set");
+                    "to the customer. sourceId={SourceIdSet} backfill={BackfillMode}",
+                    string.IsNullOrWhiteSpace(Options.SourceId) ? "MISSING (echo loop risk)" : "set",
+                    Options.BackfillMode);
             }
             else
             {
@@ -419,6 +478,157 @@ public class ZohoDeskService
     }
 
     /// <summary>
+    /// One entry of a ticket's thread list: the fields the backfill filters on, and nothing it could
+    /// show. The list's own text preview ("summary") is deliberately not read — a recovered reply is
+    /// always re-read in full through GetPublicReplyAsync, which applies the same checks and
+    /// TidyReply the webhook path does, so nothing in this record ever reaches a customer or a log.
+    ///
+    /// Every field Desk might omit is nullable, and the two flags are false unless Desk said a
+    /// literal true. The consumer skips a thread whose direction, visibility, author type or time is
+    /// missing (see ZohoAgentReplyBackfillWorker.Classify), so a response shaped differently from
+    /// what was expected recovers nothing rather than something wrong.
+    /// </summary>
+    public readonly record struct ThreadSummary(
+        string Id,
+        string? Direction,
+        string? Visibility,
+        bool IsDescriptionThread,
+        bool IsForward,
+        string? AuthorType,
+        string? Status,
+        string? Channel,
+        DateTime? CreatedTimeUtc);
+
+    /// <summary>
+    /// How many threads one list call asks for. The backfill only looks at threads from the last day
+    /// on conversations a person is already answering, which is a handful, so one page is the whole
+    /// answer for any ordinary ticket. If Desk ever refuses this value (a 4xx on /threads in the
+    /// log), this is the number to lower.
+    /// </summary>
+    public const int ThreadListLimit = 100;
+
+    /// <summary>The outcome of listing a ticket's threads: the list on Ok, null otherwise.</summary>
+    public readonly record struct ThreadListResult(List<ThreadSummary>? Threads, ZohoCallOutcome Outcome);
+
+    /// <summary>
+    /// A ticket's threads, as the metadata the backfill needs to decide which ones to ask for.
+    /// Threads is null when Desk could not be read, and the outcome says why — which the caller
+    /// must tell apart: Unknown ("Desk is down") is a reason to stop sweeping, Rejected is about
+    /// this one ticket (deleted, merged, moved out of reach) and says nothing about the next, and
+    /// an empty list is just a ticket with nothing to recover.
+    ///
+    /// Read-only, and needs the same ticket-read permission as GetPublicReplyAsync and
+    /// GetTicketStatusAsync, which already run in production.
+    /// </summary>
+    public async Task<ThreadListResult> ListThreadsAsync(string ticketId, CancellationToken ct = default)
+    {
+        if (!Options.IsConfigured || string.IsNullOrWhiteSpace(ticketId))
+            return new ThreadListResult(null, ZohoCallOutcome.Rejected);
+
+        var result = await GetAsync(
+            $"api/v1/tickets/{Uri.EscapeDataString(ticketId)}/threads?from=0&limit={ThreadListLimit}", ct);
+        if (result.Outcome != ZohoCallOutcome.Ok) return new ThreadListResult(null, result.Outcome);
+
+        var threads = ParseThreadList(result.Body);
+
+        // A full page means there may be a second one, and nothing here reads it. Said out loud
+        // because the order Desk lists threads in is not something this code could check, so a
+        // reply sitting on the next page would be missed without any other sign.
+        if (threads.Count == ThreadListLimit)
+        {
+            _logger.LogWarning(
+                "[ZOHO] ticket {TicketId} listed {Count} threads, a full page — any on a later page are not " +
+                "checked by the reply backfill", ticketId, threads.Count);
+        }
+
+        return new ThreadListResult(threads, ZohoCallOutcome.Ok);
+    }
+
+    /// <summary>
+    /// Reads a /threads response. Split out so it can be tested without Desk, and written so it
+    /// cannot throw: whatever Desk sends, the answer is a list, at worst an empty one.
+    ///
+    /// An empty body is an empty list and not an error: Desk answers 204 with no body when a list
+    /// has nothing in it, and GetAsync counts a 204 as success. Every field is type-checked before
+    /// it is read, because JsonElement.GetString throws on a number and "the field turned into a
+    /// number one day" must degrade to "skip the thread", not to a sweep that dies every interval.
+    /// </summary>
+    public static List<ThreadSummary> ParseThreadList(string? json)
+    {
+        var threads = new List<ThreadSummary>();
+        if (string.IsNullOrWhiteSpace(json)) return threads;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("data", out var data)
+                || data.ValueKind != JsonValueKind.Array)
+                return threads;
+
+            foreach (var t in data.EnumerateArray())
+            {
+                if (t.ValueKind != JsonValueKind.Object) continue;
+
+                // The same leniency as the webhook's ReadId: Desk sends ids as strings, and a numeric
+                // one should not be lost. A thread without an id cannot be fetched, so it is dropped.
+                var id = t.TryGetProperty("id", out var idProp)
+                    ? idProp.ValueKind switch
+                    {
+                        JsonValueKind.String => idProp.GetString(),
+                        JsonValueKind.Number => idProp.ToString(),
+                        _ => null,
+                    }
+                    : null;
+                if (string.IsNullOrWhiteSpace(id)) continue;
+
+                // author.type is what separates a person from Desk's own auto-acknowledgements and
+                // bots, so it is only believed when author really is an object that says so.
+                var authorType = t.TryGetProperty("author", out var a) && a.ValueKind == JsonValueKind.Object
+                    ? StringField(a, "type")
+                    : null;
+
+                DateTime? created = null;
+                var createdRaw = StringField(t, "createdTime");
+                if (createdRaw != null
+                    && DateTime.TryParse(createdRaw, CultureInfo.InvariantCulture,
+                        DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var d))
+                    created = d;
+
+                threads.Add(new ThreadSummary(
+                    id!,
+                    StringField(t, "direction"),
+                    StringField(t, "visibility"),
+                    // True only for a literal JSON true — the same test the webhook applies to
+                    // isDescriptionThread. These two flags are the one place "unknown" does not mean
+                    // "skip", on purpose: if an absent isForward excluded the thread, a response that
+                    // simply omits it would make the backfill recover nothing at all. The checks that
+                    // actually keep the wrong text out (direction, visibility, author.type) do not
+                    // lean on these, and a string "true" is not Desk's shape, so it is not guessed at.
+                    t.TryGetProperty("isDescriptionThread", out var desc) && desc.ValueKind == JsonValueKind.True,
+                    t.TryGetProperty("isForward", out var fwd) && fwd.ValueKind == JsonValueKind.True,
+                    authorType,
+                    StringField(t, "status"),
+                    StringField(t, "channel"),
+                    created));
+            }
+        }
+        catch (JsonException)
+        {
+            // Truncated or not JSON at all. Whatever was read before the break is dropped with it:
+            // a half-read list is not an answer this code wants to act on.
+            return new List<ThreadSummary>();
+        }
+
+        return threads;
+    }
+
+    /// <summary>A property's value when it is a string, otherwise null — never a throw.</summary>
+    private static string? StringField(JsonElement obj, string name)
+        => obj.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
+    /// <summary>
     /// The ticket's status TYPE — "Open", "On Hold" or "Closed" — with the outcome of reading it.
     ///
     /// The type rather than the status name, because the name is whatever this portal's admin called
@@ -428,6 +638,10 @@ public class ZohoDeskService
     /// Carries the call's outcome alongside, because the caller has to tell "Desk is having a bad
     /// minute, try again" (Unknown) from "Desk refused, and will refuse again" (Rejected — the
     /// ticket was deleted, merged, or is not ours to read). Only the first is worth waiting for.
+    ///
+    /// Also carries the ticket's current priority, read from the same body. The GET already returns
+    /// the whole ticket, and the reopen needs to know whether the ticket is still sitting at the
+    /// AI-handled priority before it decides to raise it — so the answer costs no extra call.
     /// </summary>
     public async Task<TicketStatus> GetTicketStatusAsync(string ticketId, CancellationToken ct = default)
     {
@@ -439,15 +653,18 @@ public class ZohoDeskService
 
         // Read fine but no recognisable type: an answer, just not a useful one. Ok with a null type,
         // so the caller neither reopens on a guess nor waits for a retry that would say the same.
-        return new TicketStatus(ReadStatusType(result.Body), ZohoCallOutcome.Ok);
+        return new TicketStatus(ReadStatusType(result.Body), ZohoCallOutcome.Ok, ReadPriority(result.Body));
     }
 
-    /// <summary>A ticket's status type, and whether reading it worked.</summary>
-    public readonly record struct TicketStatus(string? StatusType, ZohoCallOutcome Outcome);
+    /// <summary>A ticket's status type, whether reading it worked, and its priority when it did.
+    /// Priority defaults to null — "not known" — which never triggers a raise.</summary>
+    public readonly record struct TicketStatus(string? StatusType, ZohoCallOutcome Outcome, string? Priority = null);
 
     /// <summary>
     /// Sets the ticket's status and nothing else — no priority, no assignee. The reopen a customer's
-    /// reply is owed, as distinct from UpdateStatusAndPriorityAsync, which is the escalation itself.
+    /// reply is owed, as distinct from UpdateStatusAndPriorityAsync, which is the escalation itself
+    /// (the reopen uses SetStatusAndPriorityAsync instead only for the one-time raise of a ticket
+    /// still at the AI-handled priority — see ZohoTicketSyncWorker.PlanReopen).
     /// Returns the raw outcome so the caller can retry a timeout but not a refusal.
     /// </summary>
     public async Task<ZohoCallOutcome> SetStatusAsync(string ticketId, string status, CancellationToken ct = default)
@@ -478,6 +695,35 @@ public class ZohoDeskService
             if (root.TryGetProperty("status", out var s) && s.ValueKind == JsonValueKind.String
                 && string.Equals(s.GetString()?.Trim(), "Closed", StringComparison.OrdinalIgnoreCase))
                 return "Closed";
+
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Pulls the priority out of a ticket body. Split out so it can be tested without Desk; unknown
+    /// = null, which never triggers a raise.
+    ///
+    /// Only a non-blank string counts. Desk sends null for a ticket nobody gave a priority, and
+    /// anything else (a number, an empty string) is not a picklist value we could compare against —
+    /// treating it as "Low" would raise a ticket on a guess.
+    /// </summary>
+    public static string? ReadPriority(string? ticketJson)
+    {
+        if (string.IsNullOrWhiteSpace(ticketJson)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(ticketJson);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return null;
+
+            if (root.TryGetProperty("priority", out var p) && p.ValueKind == JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(p.GetString()))
+                return p.GetString()!.Trim();
 
             return null;
         }
@@ -753,11 +999,24 @@ public class ZohoDeskService
     /// purpose: they are the same fact ("a person is needed now") written to two fields, and two
     /// calls could leave the ticket reopened but still sitting at Low, which is exactly the row
     /// an agent scanning by priority would skip. A blank priority sends status alone.
+    ///
+    /// A plain yes/no over SetStatusAndPriorityAsync, which is where the PATCH actually lives: the
+    /// escalation push only needs to know whether it landed, and keeps exactly the answers it had.
     /// </summary>
     public async Task<bool> UpdateStatusAndPriorityAsync(
         string ticketId, string status, string? priority, CancellationToken ct = default)
+        => await SetStatusAndPriorityAsync(ticketId, status, priority, ct) == ZohoCallOutcome.Ok;
+
+    /// <summary>
+    /// The status + priority PATCH itself, returning the raw outcome — the same shape as
+    /// SetStatusAsync, and for the same reason: the reopen owed to a customer writing to an agent
+    /// has to retry a timeout (Unknown) but not a refusal (Rejected), and a bool cannot say which.
+    /// UpdateStatusAndPriorityAsync is this method with the answer folded to "did it land".
+    /// </summary>
+    public async Task<ZohoCallOutcome> SetStatusAndPriorityAsync(
+        string ticketId, string status, string? priority, CancellationToken ct = default)
     {
-        if (!Options.IsConfigured) return false;
+        if (!Options.IsConfigured) return ZohoCallOutcome.Rejected;
 
         var payload = new Dictionary<string, object?> { ["status"] = status };
         priority = priority?.Trim();
@@ -779,7 +1038,7 @@ public class ZohoDeskService
             result = await SendAsync(HttpMethod.Patch, $"api/v1/tickets/{ticketId}", payload, ct);
         }
 
-        return result.Body != null;
+        return result.Outcome;
     }
 
     // ── Plumbing ─────────────────────────────────────────────────────────────────────────────

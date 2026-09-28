@@ -254,6 +254,17 @@ public class ChatResponse
     /// see ChatService.HandoverReceipt.
     /// </summary>
     public bool HandedOver { get; set; }
+
+    /// <summary>
+    /// True only on an escalation turn after which a person will answer in THIS window — the
+    /// same predicate that picks the "stay here, the agent will answer in this chat" wording
+    /// (ChatService.AgentAnswersHere). Escalated alone cannot say that: with the agent relay
+    /// switched off, an escalation sends the customer to the support mailbox and Milo keeps
+    /// answering, so a widget that treated Escalated as "an agent has the chat" would show that
+    /// status for a conversation no agent can reach. Distinct from HandedOver, whose contract is
+    /// "Milo did not answer, draw no bot bubble" — an escalation turn does carry Milo's text.
+    /// </summary>
+    public bool AgentWillAnswer { get; set; }
 }
 
 /// <summary>

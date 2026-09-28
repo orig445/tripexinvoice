@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -33,6 +34,18 @@ public class ChatController : ControllerBase
     /// `since` is the CreatedAtUtc of the last agent message the caller already has; pass it back
     /// unchanged and nothing repeats. Omit it and the whole conversation's agent messages come
     /// back, which is what a reloaded page needs.
+    ///
+    /// Each createdAt is UTC and ends in "Z" (see FormatCursor). `since` accepts that value, the
+    /// older Z-less values that widgets already hold in localStorage from before the Z was added
+    /// (read as the same UTC instant, tick for tick, so nothing repeats or is skipped across the
+    /// deploy), or a value with an explicit offset, which is converted to UTC.
+    ///
+    /// Keep `since` a model-bound DateTime?. ASP.NET's DateTime binder parses with
+    /// AdjustToUniversal, so a "Z" value stays in UTC. DateTime.Parse without styles,
+    /// Convert.ToDateTime or a TypeConverter all move a "Z" value into server-local time instead —
+    /// two or three hours later on a server set to Israel time — and the `CreatedAt > since` filter
+    /// then silently skips every agent reply written in that gap. Nothing errors; the customer just
+    /// never sees them.
     ///
     /// Returns an empty list — never 404 — for a token that resolves to nothing. Whether a given
     /// conversation exists is not something an unrelated caller should be able to find out.
@@ -71,10 +84,35 @@ public class ChatController : ControllerBase
                 // cursor never advances past it: the customer watches the agent's reply reappear
                 // every few seconds forever. "o" keeps all 7 digits, binds back exactly, and is
                 // parsed fine by both the ASP.NET binder and JS Date.
-                createdAt = m.CreatedAtUtc.ToString("o"),
+                //
+                // The value must also carry "Z": EF reads datetime2 back as Kind=Unspecified,
+                // "o" on an Unspecified value writes no designator, and without one the browser
+                // reads the string as local time — the agent's bubble showed 2-3 hours early.
+                createdAt = FormatCursor(m.CreatedAtUtc),
             }),
         });
     }
+
+    /// <summary>
+    /// created_at as the widget receives it: UTC, marked with "Z", all 7 fractional digits.
+    ///
+    /// EF reads datetime2 back as Kind=Unspecified, and "o" on an Unspecified value writes no
+    /// designator, so JS Date read it as local time and the bubble showed 2-3 hours early. The
+    /// column only ever holds DateTime.UtcNow, so SpecifyKind is a relabel, not a conversion: the
+    /// ticks, and therefore the 7 digits, are exactly the ones emitted before the fix, which is
+    /// what lets a widget holding an old Z-less cursor carry on without skipping or repeating a
+    /// reply. A Local value is converted rather than relabelled, because relabelling it would move
+    /// the instant.
+    ///
+    /// Idempotent — a value that is already Utc comes out unchanged — so it is safe whether or not
+    /// the caller has already marked the Kind. Public, not private, because the test project has no
+    /// InternalsVisibleTo and this is the format the whole cursor contract hangs on.
+    /// </summary>
+    public static string FormatCursor(DateTime storedUtc) =>
+        (storedUtc.Kind == DateTimeKind.Local
+            ? storedUtc.ToUniversalTime()
+            : DateTime.SpecifyKind(storedUtc, DateTimeKind.Utc))
+        .ToString("o", CultureInfo.InvariantCulture);
 
     /// <summary>
     /// Main chat endpoint — handles text messages and image scanning

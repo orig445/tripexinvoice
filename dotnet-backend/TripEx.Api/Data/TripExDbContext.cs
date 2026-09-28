@@ -91,7 +91,19 @@ public class ChatSessionTicket
     /// <summary>CreatedAt of the last chat_message already mirrored. Everything later than this
     /// is what the next sync sends — which is what makes a failed sync self-healing.</summary>
     [Column("synced_through")] public DateTime? SyncedThrough { get; set; }
-    /// <summary>Whether the ticket has already been reopened for a human after an escalation.</summary>
+    /// <summary>
+    /// Whether we have already put this ticket into the escalated state (EscalatedStatus +
+    /// EscalatedPriority): by creating it escalated, by the escalation push, or by the reopen owed to
+    /// a customer writing to an agent on a ticket Milo handled alone. Once true, the priority is
+    /// never pushed again — whatever it says afterwards is the agent's.
+    ///
+    /// So it can be true on a row whose chat_sessions.escalated is 0 (the last case: an agent picked
+    /// the conversation up from Desk without Milo ever escalating). Every reader that means "the
+    /// escalation push has landed" ANDs it with chat_sessions.escalated, so that changes none of them.
+    /// The one consequence: if such a conversation later escalates for the first time (only possible
+    /// when Milo answers again after an agent has replied), the push is skipped — the ticket was
+    /// already raised once, and anything since is the agent's.
+    /// </summary>
     [Column("escalation_synced")] public bool EscalationSynced { get; set; }
     [Column("created_at")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     [Column("updated_at")] public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

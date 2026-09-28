@@ -1,4 +1,11 @@
+using System.Globalization;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Abstractions;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using TripEx.Api.Controllers;
 using TripEx.Api.Services;
 using Xunit;
@@ -392,6 +399,49 @@ public class AgentReplyRelayTests
     }
     // ── The poll cursor ──────────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// A row's created_at exactly as EF hands it back: datetime2 carries no zone, so the Kind is
+    /// Unspecified even though the column only ever holds DateTime.UtcNow. Building the test value
+    /// with DateTimeKind.Utc, as these tests once did, is what let the missing "Z" go unnoticed.
+    /// The sub-millisecond ticks are deliberate — see the first test below.
+    /// </summary>
+    private static DateTime StoredAsEfReadsIt() =>
+        new DateTime(2026, 9, 22, 10, 0, 0, DateTimeKind.Unspecified).AddTicks(1234567);
+
+    /// <summary>
+    /// Binds a raw `since` query value through the real ASP.NET model-binding pipeline, the same
+    /// one that fills ChatController.Updates's `[FromQuery] DateTime? since`.
+    ///
+    /// DateTime.Parse is not a stand-in for it. The binder parses with AdjustToUniversal, which is
+    /// what keeps a "Z" cursor in UTC; a plain Parse (or RoundtripKind, or a TypeConverter) behaves
+    /// differently, and a test that parses by hand is testing a pipeline the request never takes.
+    /// Building the pipeline here costs a service provider per call and nothing else.
+    /// </summary>
+    private static DateTime? BindSince(string raw)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddMvcCore();
+        using var sp = services.BuildServiceProvider();
+
+        var md = sp.GetRequiredService<IModelMetadataProvider>().GetMetadataForType(typeof(DateTime?));
+        var binder = sp.GetRequiredService<IModelBinderFactory>()
+            .CreateBinder(new ModelBinderFactoryContext { Metadata = md });
+
+        var http = new DefaultHttpContext { RequestServices = sp };
+        http.Request.QueryString = new QueryString("?since=" + Uri.EscapeDataString(raw));
+
+        var ctx = DefaultModelBindingContext.CreateBindingContext(
+            new ActionContext(http, new RouteData(), new ActionDescriptor()),
+            new QueryStringValueProvider(BindingSource.Query, http.Request.Query, CultureInfo.InvariantCulture),
+            md, bindingInfo: null, modelName: "since");
+
+        binder.BindModelAsync(ctx).GetAwaiter().GetResult();
+
+        Assert.True(ctx.Result.IsModelSet, $"the binder did not accept since={raw}");
+        return (DateTime?)ctx.Result.Model;
+    }
+
     [Fact]
     public void The_cursor_the_widget_gets_back_is_not_earlier_than_the_row_it_marks()
     {
@@ -404,16 +454,108 @@ public class AgentReplyRelayTests
         // next poll, and the cursor never advanced past it. The customer watched the agent's
         // reply reappear every few seconds, forever. It is invisible in any test that uses a
         // whole-millisecond timestamp, which is why this one deliberately does not.
-        var stored = new DateTime(2026, 9, 22, 10, 0, 0, DateTimeKind.Utc).AddTicks(1234567);
+        //
+        // Both ends are the real ones: the value is Unspecified, as EF returns it, and it comes
+        // back through the ASP.NET binder rather than a hand-picked DateTime.Parse overload.
+        var stored = StoredAsEfReadsIt();
 
         Assert.NotEqual(0, stored.Ticks % TimeSpan.TicksPerMillisecond);   // the case that bit us
 
-        var emitted = stored.ToString("o");
-        var roundTripped = DateTime.Parse(emitted, null,
-            System.Globalization.DateTimeStyles.RoundtripKind);
+        var emitted = ChatController.FormatCursor(stored);
+        var roundTripped = BindSince(emitted)!.Value;
 
-        Assert.Equal(stored, roundTripped);
+        Assert.Equal(stored.Ticks, roundTripped.Ticks);
         Assert.False(stored > roundTripped, "the row must not still match its own cursor");
+    }
+
+    [Fact]
+    public void The_cursor_says_UTC_even_though_EF_reads_it_back_Unspecified()
+    {
+        // The bubble-time bug. created_at holds UTC, but EF returns it Unspecified, and "o" on an
+        // Unspecified value writes no designator — so the widget's `new Date(createdAt)` read the
+        // string as local time and an agent's reply at 13:15 Israel time showed as 10:15.
+        var stored = StoredAsEfReadsIt();
+
+        Assert.Equal("2026-09-22T10:00:00.1234567Z", ChatController.FormatCursor(stored));
+
+        // The counter-example, recorded so nobody "simplifies" FormatCursor back to ToString("o").
+        Assert.False(stored.ToString("o").EndsWith("Z"), "plain \"o\" on an EF value carries no Z");
+    }
+
+    [Fact]
+    public void A_cursor_that_is_already_UTC_is_emitted_unchanged()
+    {
+        // ZohoAgentReplyService now marks CreatedAtUtc as Utc itself, so FormatCursor receives
+        // both shapes depending on the caller. Relabelling must not shift anything either way.
+        var unspecified = StoredAsEfReadsIt();
+        var utc = DateTime.SpecifyKind(unspecified, DateTimeKind.Utc);
+
+        Assert.Equal(ChatController.FormatCursor(unspecified), ChatController.FormatCursor(utc));
+    }
+
+    [Fact]
+    public void The_cursor_always_carries_seven_fractional_digits()
+    {
+        // "o" pads to 7 digits even for a whole second. Worth pinning, because a format that
+        // trimmed trailing zeros would still round-trip — until a later change assumed a fixed
+        // width, or went back to a custom format string that did not pad.
+        var wholeSecond = new DateTime(2026, 9, 22, 10, 0, 0, DateTimeKind.Unspecified);
+
+        var emitted = ChatController.FormatCursor(wholeSecond);
+
+        Assert.Equal("2026-09-22T10:00:00.0000000Z", emitted);
+        Assert.Matches(@"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{7}Z$", emitted);
+    }
+
+    [Theory]
+    [InlineData("2026-09-22T10:00:00.1234567")]         // Z-less, in localStorage from before the fix
+    [InlineData("2026-09-22T10:00:00.1234567Z")]        // what the endpoint emits now
+    [InlineData("2026-09-22T13:00:00.1234567+03:00")]   // an explicit offset
+    public void Every_shape_of_cursor_a_widget_may_hold_binds_to_the_same_instant(string raw)
+    {
+        // A widget stores the last createdAt verbatim in localStorage and sends it back as-is, so
+        // after the deploy some widgets hold a Z-less cursor and some a Z one. All of them must
+        // land on exactly the row they mark: no earlier (that row repeats), no later (the next
+        // reply is skipped).
+        var stored = StoredAsEfReadsIt();
+
+        var bound = BindSince(raw)!.Value;
+
+        Assert.Equal(stored.Ticks, bound.Ticks);
+
+        // Local would mean something turned a "Z" into server time. On an Israel machine that
+        // also breaks the ticks assert above; on a UTC CI machine the ticks happen to survive, so
+        // this is the assert that still catches a hand-parse or TypeConverter regression there.
+        Assert.NotEqual(DateTimeKind.Local, bound.Kind);
+
+        Assert.False(stored > bound, "the marked row must not repeat");
+        Assert.True(stored.AddTicks(1) > bound, "a reply one tick later must not be skipped");
+    }
+
+    [Fact]
+    public void Old_and_new_cursors_for_the_same_row_are_interchangeable()
+    {
+        // The deploy case: a widget kept the Z-less cursor it received before the fix and gets
+        // its next reply after it. Both strings must bind to the same instant, so the switch
+        // neither repeats the last reply nor skips the next one.
+        var stored = StoredAsEfReadsIt();
+
+        var before = BindSince(stored.ToString("o"))!.Value;
+        var after = BindSince(ChatController.FormatCursor(stored))!.Value;
+
+        Assert.Equal(before.Ticks, after.Ticks);
+    }
+
+    [Fact]
+    public void A_cursor_parsed_by_hand_is_moved_into_server_local_time()
+    {
+        // Kept as the counter-example, like the millisecond one below: this is why `since` stays
+        // a model-bound DateTime? rather than a string parsed in the controller. DateTime.Parse
+        // without styles converts a "Z" value to server-local time — +2 or +3 hours in Israel —
+        // and `CreatedAt > since` then skips every reply in that gap without any error.
+        var parsed = DateTime.Parse("2026-09-22T10:00:00.1234567Z", CultureInfo.InvariantCulture);
+
+        Assert.Equal(DateTimeKind.Local, parsed.Kind);
     }
 
     [Fact]

@@ -125,10 +125,10 @@ public class ZohoEscalationRecoveryWorker : BackgroundService
     /// watermark and this leg retries the reopen and the comment together.
     ///
     /// Only sources that are mirrored at all (see ChatService.IsMirroredSource). ChatService never
-    /// enqueues "internal" or "salesiq", so they never get a ticket row — and without this filter
-    /// "escalated with no ticket row" matched every one of them, and this sweep would open a Desk
-    /// ticket for TripEx's own staff chat or duplicate the one SalesIQ raised. SQL Server's default
-    /// collation compares case-insensitively, which matches IsMirroredSource.
+    /// enqueues "internal", so it never gets a ticket row — and without this filter "escalated
+    /// with no ticket row" matched every one of those conversations, and this sweep would open a
+    /// Desk ticket for TripEx's own staff chat. SQL Server's default collation compares
+    /// case-insensitively, which matches IsMirroredSource.
     ///
     /// Newest first, so conversations that just failed are recovered before ones that have been
     /// failing for days and may never succeed.
@@ -141,7 +141,7 @@ public class ZohoEscalationRecoveryWorker : BackgroundService
         return
             from s in db.ChatSessions
             where s.UpdatedAt >= cutoff
-                  && s.Source != "internal" && s.Source != "salesiq"
+                  && s.Source != "internal"
             join t in db.ChatSessionTickets on s.Id equals t.SessionId into map
             from t in map.DefaultIfEmpty()
             where (s.Escalated && (t == null || !t.EscalationSynced))

@@ -4,11 +4,10 @@ using Xunit;
 namespace TripEx.Api.Tests;
 
 /// <summary>
-/// Milo's reply path was written for one client: the TAS widget, which we control. Relaying the
-/// same conversation through a third party (Zoho SalesIQ) breaks assumptions that are invisible
-/// from the outside — a rejected conversation id reads as the model forgetting, and a silently
-/// trimmed button label reads as the model misunderstanding. These pin the parts that make a
-/// relay possible without changing anything for the widget.
+/// Conversation-id resolution: a Guid is used as-is, a foreign (non-Guid) id is HMAC-mapped to a
+/// stable session, and no salt means a fresh session rather than a guessable one. A mishandled id
+/// is invisible from the outside — it reads as the model forgetting, not as an error — so every
+/// branch is pinned here, along with the default button-label budget the TAS widget relies on.
 /// </summary>
 public class RelayCompatibilityTests
 {
@@ -68,103 +67,18 @@ public class RelayCompatibilityTests
         Assert.Equal(Guid.Empty, ChatService.ResolveSessionToken(token, Salt));
     }
 
-    // ── Button labels through a relay ────────────────────────────────────────────────────────
+    // ── Button labels ────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void The_widgets_own_label_budget_is_unchanged_by_default()
     {
-        // The new parameter must be invisible to every existing caller. A 28-character label is
-        // a perfectly good button on the TAS widget and has to stay one.
+        // A 28-character label is a perfectly good button on the TAS widget and has to stay one.
         var options = new List<string> { "תפעול שוטף של נסיעות והוצאות", "ניתוח נתונים ודוחות במערכת" };
 
         Assert.True(ChatService.OptionsCanBeButtons(options));
         Assert.True(ChatService.OptionsRenderAsButtons(options, clientRendersParamerter: true));
     }
 
-    [Fact]
-    public void The_same_labels_are_refused_as_buttons_under_the_relays_tighter_cap()
-    {
-        // SalesIQ trims past 20 characters rather than refusing, and the trimmed text is what
-        // returns as the user's next message — so it would no longer match the option it came
-        // from. Refusing here shows them as a numbered list instead, which still answers.
-        var options = new List<string> { "תפעול שוטף של נסיעות והוצאות", "ניתוח נתונים ודוחות במערכת" };
-
-        Assert.False(ChatService.OptionsCanBeButtons(options, ChatService.SalesIqOptionLabelLength));
-        Assert.False(ChatService.OptionsRenderAsButtons(
-            options, clientRendersParamerter: true, ChatService.SalesIqOptionLabelLength));
-    }
-
-    [Fact]
-    public void Short_labels_still_become_buttons_through_the_relay()
-    {
-        // The cap must not disable buttons wholesale — the status list is the common case and
-        // every one of its labels fits.
-        var options = new List<string> { "Draft", "Reservations", "Approved" };
-
-        Assert.True(ChatService.OptionsCanBeButtons(options, ChatService.SalesIqOptionLabelLength));
-    }
-
-    [Fact]
-    public void Every_shipped_status_option_is_checked_against_the_relay_cap()
-    {
-        // Documents, rather than asserts away, which shipping labels a relay cannot render as
-        // buttons. "Other (Matched / Closed / Pending for Cancel / Cancelled)" is 57 characters
-        // and is the only one that fails — if that ever changes, this test says so.
-        var tooLong = ChatService.TripStatusOptionsForTrip
-            .Where(o => o.Length > ChatService.SalesIqOptionLabelLength)
-            .ToList();
-
-        Assert.Single(tooLong);
-        Assert.StartsWith("Other", tooLong[0]);
-
-        Assert.All(ChatService.TripStatusOptionsForExpenseOnly,
-            o => Assert.True(o.Length <= ChatService.SalesIqOptionLabelLength, o));
-    }
-
-    [Fact]
-    public void Every_orientation_option_exceeds_the_relay_cap_today()
-    {
-        // Deliberately pinned as a fact, not a failure: the three area labels are 26-28
-        // characters, so through a relay the opening question falls back to a numbered list.
-        // Shortening them is a user-visible change to the live widget and is Roi's call, not a
-        // side effect of this work — when it happens, this test is the reminder to revisit it.
-        Assert.All(ChatService.OrientationOptionsHe,
-            o => Assert.True(o.Length > ChatService.SalesIqOptionLabelLength, o));
-        Assert.All(ChatService.OrientationOptionsEn,
-            o => Assert.True(o.Length > ChatService.SalesIqOptionLabelLength, o));
-    }
-
-    // ── The gate every relay adaptation hangs off ────────────────────────────────────
-
-    [Theory]
-    [InlineData("salesiq")]
-    [InlineData("SalesIQ")]   // how Zoho spells its own product, so the likeliest hand-configured value
-    [InlineData("SALESIQ")]
-    [InlineData("  salesiq ")]
-    public void The_relay_is_recognised_however_the_caller_spells_it(string source)
-    {
-        // Three behaviours read this one answer — the helpdesk ticket, the reply's link format and
-        // the button-label budget. Two agreeing while the third disagrees is the failure worth
-        // designing out: a relay judged non-relay for the ticket gate alone duplicates every
-        // ticket SalesIQ already raised.
-        Assert.True(ChatService.IsRelaySource(source));
-    }
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("web")]        // the ChatRequest default — every TAS widget call
-    [InlineData("widget")]
-    [InlineData("internal")]
-    [InlineData("mobile")]
-    [InlineData("sales")]      // a prefix is not the value
-    [InlineData("salesiq-x")]
-    public void Every_source_that_exists_today_is_not_a_relay(string? source)
-    {
-        // This is the assertion that keeps the change inert: no caller that exists now can take
-        // any of the three relay branches by accident.
-        Assert.False(ChatService.IsRelaySource(source));
-    }
     // -- The salt: what keeps a foreign id from being guessable ------------------------------
 
     [Fact]

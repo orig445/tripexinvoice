@@ -349,4 +349,72 @@ public class ZohoDeskTests
 
         Assert.True(options.IsConfigured);
     }
+
+    // ── The reopen: raising a ticket Milo handled alone, once, and nothing an agent set ──────
+
+    private static ZohoTicketSyncWorker.ReopenAction Plan(string? statusType, string? priority,
+        bool escalationSynced, ZohoDeskOptions? options = null)
+        => ZohoTicketSyncWorker.PlanReopen(statusType, priority, escalationSynced, options ?? new ZohoDeskOptions());
+
+    [Theory]
+    [InlineData("Closed", "Low", false, ZohoTicketSyncWorker.ReopenAction.ReopenAndRaisePriority)]
+    [InlineData("closed", "low", false, ZohoTicketSyncWorker.ReopenAction.ReopenAndRaisePriority)]
+    [InlineData("Closed", "High", false, ZohoTicketSyncWorker.ReopenAction.ReopenStatusOnly)]   // already there
+    [InlineData("Closed", "Urgent", false, ZohoTicketSyncWorker.ReopenAction.ReopenStatusOnly)] // an agent's
+    [InlineData("Closed", "Medium", false, ZohoTicketSyncWorker.ReopenAction.ReopenStatusOnly)] // an agent's
+    [InlineData("Closed", null, false, ZohoTicketSyncWorker.ReopenAction.ReopenStatusOnly)]     // unreadable
+    [InlineData("Closed", "Low", true, ZohoTicketSyncWorker.ReopenAction.ReopenStatusOnly)]     // Low after our raise
+    [InlineData("Open", "Low", false, ZohoTicketSyncWorker.ReopenAction.LeaveAsIs)]
+    [InlineData("On Hold", "Low", false, ZohoTicketSyncWorker.ReopenAction.LeaveAsIs)]
+    [InlineData(null, "Low", false, ZohoTicketSyncWorker.ReopenAction.LeaveAsIs)]
+    public void A_reopen_raises_only_a_ticket_still_at_the_ai_priority_and_never_raised_before(
+        string? statusType, string? priority, bool escalationSynced, ZohoTicketSyncWorker.ReopenAction expected)
+    {
+        // The gap this closes: an agent answers from Desk on a ticket Milo filed Closed/Low, so no
+        // escalation ever runs, and the customer's reply used to bring it back Open but still Low —
+        // sorted under everything a person is waiting on. The raise is for that ticket alone. A Low
+        // seen after we raised it once, an Urgent, a Medium, a ticket the agent left in any state
+        // other than Closed: those are a person's decisions, and a customer's line must not undo them.
+        Assert.Equal(expected, Plan(statusType, priority, escalationSynced));
+    }
+
+    [Fact]
+    public void A_blank_escalated_priority_never_raises()
+    {
+        // The same off switch the escalation push honours: blank means "leave the field alone".
+        var options = new ZohoDeskOptions { EscalatedPriority = "" };
+
+        Assert.Equal(ZohoTicketSyncWorker.ReopenAction.ReopenStatusOnly, Plan("Closed", "Low", false, options));
+    }
+
+    [Fact]
+    public void A_blank_ai_priority_means_no_priority_is_the_ai_state()
+    {
+        // With AiHandledPriority cleared, Milo's tickets are created with no priority at all — so
+        // "none" is exactly the state Milo left it in, and any value at all was set by a person.
+        var options = new ZohoDeskOptions { AiHandledPriority = "" };
+
+        Assert.Equal(ZohoTicketSyncWorker.ReopenAction.ReopenAndRaisePriority, Plan("Closed", null, false, options));
+        Assert.Equal(ZohoTicketSyncWorker.ReopenAction.ReopenStatusOnly, Plan("Closed", "Medium", false, options));
+    }
+
+    [Fact]
+    public void Config_whitespace_does_not_break_the_match()
+    {
+        // Desk matches picklist values exactly, and CreateTicketAsync trims before sending — so a
+        // stray space in the config is not what the ticket carries, and must not read as a miss.
+        Assert.Equal(ZohoTicketSyncWorker.ReopenAction.ReopenAndRaisePriority,
+            Plan("Closed", "Low", false, new ZohoDeskOptions { AiHandledPriority = " Low " }));
+        Assert.Equal(ZohoTicketSyncWorker.ReopenAction.ReopenStatusOnly,
+            Plan("Closed", "High", false, new ZohoDeskOptions { EscalatedPriority = " High " }));
+    }
+
+    [Fact]
+    public void Identical_ai_and_escalated_priorities_never_patch_priority()
+    {
+        // A config where both are the same value has nothing to raise to.
+        var options = new ZohoDeskOptions { AiHandledPriority = "High", EscalatedPriority = "High" };
+
+        Assert.Equal(ZohoTicketSyncWorker.ReopenAction.ReopenStatusOnly, Plan("Closed", "High", false, options));
+    }
 }

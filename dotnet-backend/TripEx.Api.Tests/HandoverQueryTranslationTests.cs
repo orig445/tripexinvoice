@@ -39,7 +39,6 @@ public class HandoverQueryTranslationTests
 
         // The source filter is the fix for tickets opened for staff chat — it must reach the SQL.
         Assert.Contains("N'internal'", sql);
-        Assert.Contains("N'salesiq'", sql);
         // The handover leg: unsent customer messages written to the agent.
         Assert.Contains("N'handover'", sql);
         Assert.Contains("EXISTS", sql);
