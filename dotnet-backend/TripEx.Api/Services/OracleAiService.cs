@@ -282,7 +282,8 @@ CRITICAL RULES:
         double temperature = 0.3,
         CancellationToken ct = default,
         bool forceJsonOutput = false,
-        bool allowCustomModel = false)
+        bool allowCustomModel = false,
+        Action<OciUsage>? onUsage = null)
     {
         // ── Validate messages ──
         if (messages == null || messages.Count == 0)
@@ -426,6 +427,11 @@ CRITICAL RULES:
 
                 Console.WriteLine($"[OCI] usage prompt={Num("prompt_tokens")} completion={Num("completion_tokens")} " +
                                   $"total={Num("total_tokens")} cached={cached} finish={stopReason}");
+
+                // For the caller that counts what it spends (the Milo chat path, for the /usage
+                // page). A failing counter must never fail the answer it is counting.
+                try { onUsage?.Invoke(new OciUsage(targetModel, Num("prompt_tokens"), Num("completion_tokens"), Num("total_tokens"))); }
+                catch (Exception ex) { Console.WriteLine($"[OCI] usage callback failed: {ex.Message}"); }
             }
             else
             {

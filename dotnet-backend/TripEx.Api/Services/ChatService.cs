@@ -173,6 +173,12 @@ public class ChatService
         return name.All(c => char.IsAsciiLetterOrDigit(c) || c == '-') ? name : null;
     }
 
+    // What each answer cost, for the /usage page: per company (from the TAS address) and per user
+    // (the email TAS sends). Best-effort — see MiloUsage.TryRecordAsync.
+    private Task RecordUsageAsync(Guid sessionId, string kind, OciUsage usage, ChatRequest request)
+        => MiloUsage.TryRecordAsync(_db, _logger, sessionId, kind, usage,
+            CompanyFromHostInstance(request.Widget?.HostInstance), request.Widget?.Email, request.Widget?.CustomerName);
+
     public static string HandoverReceipt(bool hebrew)
         => hebrew ? "✓ ההודעה הועברה לנציג" : "✓ Sent to the agent";
 
@@ -630,7 +636,8 @@ public class ChatService
     /// Both status outcomes still default to the TRIP list on any failure — the longer and more
     /// complete of the two, and the one rule 3b already names "when genuinely unclear which".
     /// </summary>
-    private async Task<string?> ResolveStatusListIntentAsync(string? originalQuestion, CancellationToken ct)
+    private async Task<string?> ResolveStatusListIntentAsync(string? originalQuestion, CancellationToken ct,
+        Action<OciUsage>? onUsage = null)
     {
         const string trip = "clarify_status_trip";
         const string expense = "clarify_status_expense";
@@ -664,7 +671,7 @@ public class ChatService
             // this budget still has to cover the thinking tokens Gemini spends out of the same
             // allowance. If a trivial question somehow exhausts it, the reply comes back empty
             // and the shortcut declines, which is the safe direction.
-            var raw = await _oracle.ChatAsync(messages, maxTokens: 512, temperature: 0, ct);
+            var raw = await _oracle.ChatAsync(messages, maxTokens: 512, temperature: 0, ct, onUsage: onUsage);
 
             // Matched as whole words anywhere in the reply rather than by a prefix test, so a
             // model that wraps its answer in quotes, JSON, or a stray sentence still parses.
@@ -1713,8 +1720,13 @@ public class ChatService
         // Null unless the small question below decided this really is a status-list turn.
         string? fastIntent = null;
         if (_statusListShortcut && isStatusListTurn)
+        {
+            OciUsage? classifierUsage = null;
             fastIntent = await ResolveStatusListIntentAsync(
-                FindQuestionBeforeOrientation(historyRows), CancellationToken.None);
+                FindQuestionBeforeOrientation(historyRows), CancellationToken.None, u => classifierUsage = u);
+            if (classifierUsage is { } cu)
+                await RecordUsageAsync(sessionId, MiloUsage.ClassifierKind, cu, request);
+        }
         else if (isStatusListTurn)
             // Logged only on the exact turn the shortcut would have taken, so switching it off
             // in config produces visible proof that it is off — rather than the absence of a
@@ -1759,8 +1771,12 @@ public class ChatService
             // says "Respond with ONLY a JSON object", which is the wording these modes require.
             // ParseAiResponse is unchanged and still handles a fenced or broken reply, so this
             // only removes failures; it cannot introduce one.
+            OciUsage? answerUsage = null;
             var rawContent = await _oracle.ChatAsync(
-                messages, maxTokens, temperature, forceJsonOutput: true, allowCustomModel: true);
+                messages, maxTokens, temperature, forceJsonOutput: true, allowCustomModel: true,
+                onUsage: u => answerUsage = u);
+            if (answerUsage is { } au)
+                await RecordUsageAsync(sessionId, MiloUsage.AnswerKind, au, request);
             (intent, responseText, page, modelOptions) = ParseAiResponse(rawContent);
         }
 

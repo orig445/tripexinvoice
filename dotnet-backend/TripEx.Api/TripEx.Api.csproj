@@ -35,6 +35,10 @@
     <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
   </Content>
   
+  <!-- The /usage page, served by UsageController from the assembly itself, so nothing extra has
+       to be copied to the server for it to work. -->
+  <EmbeddedResource Include="Data\usage-page.html" />
+
   <Content Update="log4net.config">
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>

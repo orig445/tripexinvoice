@@ -23,6 +23,7 @@ public class TripExDbContext : DbContext
     public DbSet<OcrTrainingSample> OcrTrainingSamples => Set<OcrTrainingSample>();
     public DbSet<OcrTrainingPattern> OcrTrainingPatterns => Set<OcrTrainingPattern>();
     public DbSet<ChatSessionTicket> ChatSessionTickets => Set<ChatSessionTicket>();
+    public DbSet<ChatUsage> ChatUsages => Set<ChatUsage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -75,6 +76,29 @@ public class ChatSession
 /// two quick retries would both miss and both create). Persisting the id we got back, keyed by
 /// session, is the only reliable mechanism.
 /// </summary>
+/// <summary>
+/// One Milo model call: its tokens, and the company and user it was for. Written by
+/// MiloUsage.TryRecordAsync (as its own statement, created by SchemaGuard.EnsureChatUsageAsync),
+/// read by the /usage page.
+/// </summary>
+[Table("chat_usage")]
+public class ChatUsage
+{
+    [Key, Column("id")] public Guid Id { get; set; } = Guid.NewGuid();
+    [Column("session_id")] public Guid? SessionId { get; set; }
+    [Column("created_at")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    [Column("kind")] public string Kind { get; set; } = "";
+    [Column("model")] public string Model { get; set; } = "";
+    [Column("prompt_tokens")] public int PromptTokens { get; set; }
+    [Column("completion_tokens")] public int CompletionTokens { get; set; }
+    [Column("total_tokens")] public int TotalTokens { get; set; }
+    [Column("company")] public string? Company { get; set; }
+    [Column("customer_email")] public string? CustomerEmail { get; set; }
+    [Column("customer_name")] public string? CustomerName { get; set; }
+    /// <summary>"live" when recorded as the call happened, "log" when imported from Milo's log files.</summary>
+    [Column("source")] public string Source { get; set; } = "live";
+}
+
 [Table("chat_session_tickets")]
 public class ChatSessionTicket
 {

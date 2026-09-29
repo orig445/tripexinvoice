@@ -127,6 +127,32 @@ IF COL_LENGTH('dbo.chat_session_tickets', 'zoho_ticket_number') IS NULL
     ALTER TABLE [dbo].[chat_session_tickets] ADD [zoho_ticket_number] NVARCHAR(50) NULL;");
     }
 
+    public static async Task EnsureChatUsageAsync(TripExDbContext db)
+    {
+        // One row per Milo model call: its tokens, and the company and user it was for. Read by
+        // the /usage page (MiloUsageReport). Created here rather than in init-db.sql so that the
+        // first answer after a deploy creates it, with nothing to run by hand.
+        await EnsureAsync(db, "chat_usage", @"
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'chat_usage')
+BEGIN
+CREATE TABLE [dbo].[chat_usage] (
+    [id]                UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    [session_id]        UNIQUEIDENTIFIER NULL,
+    [created_at]        DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
+    [kind]              NVARCHAR(20)   NOT NULL,
+    [model]             NVARCHAR(100)  NOT NULL,
+    [prompt_tokens]     INT            NOT NULL DEFAULT 0,
+    [completion_tokens] INT            NOT NULL DEFAULT 0,
+    [total_tokens]      INT            NOT NULL DEFAULT 0,
+    [company]           NVARCHAR(64)   NULL,
+    [customer_email]    NVARCHAR(256)  NULL,
+    [customer_name]     NVARCHAR(200)  NULL,
+    [source]            NVARCHAR(10)   NOT NULL DEFAULT 'live'
+);
+CREATE INDEX [IX_chat_usage_created_at] ON [dbo].[chat_usage] ([created_at]);
+END");
+    }
+
     private static async Task EnsureAsync(TripExDbContext db, string tableName, string ddl)
     {
         // Fast path — already verified in this process
