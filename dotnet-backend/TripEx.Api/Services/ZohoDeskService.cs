@@ -118,6 +118,20 @@ public class ZohoDeskOptions
     public bool AgentRelayEnabled { get; set; }
 
     /// <summary>
+    /// Whether a new ticket's contact is put under the customer's company (a Desk Account), so
+    /// the company shows in the ticket's Contact Info. The company comes from the TAS address
+    /// the customer works in (ChatService.CompanyFromHostInstance): "Avt_Test" in
+    /// https://taseu.combtas.com/Avt_Test/... is the company Avt. Roi, 2026-09-29.
+    ///
+    /// Only for a contact with the customer's own email, never the fallback contact, and never
+    /// over an account the contact already has. It needs the token to be allowed to search and
+    /// create accounts and to update contacts (Desk.search.READ, Desk.contacts.CREATE,
+    /// Desk.contacts.UPDATE); without those the ticket is created exactly as before and the log
+    /// says which call was refused. False turns it off.
+    /// </summary>
+    public bool LinkContactAccount { get; set; } = true;
+
+    /// <summary>
     /// Shared secret that forms the last segment of the webhook URL we hand Zoho, e.g.
     /// /api/zoho/desk/thread/{this}. Desk supports no auth header at all on a webhook
     /// ("Only open webhooks that are publicly accessible and do not require authentication are
@@ -744,7 +758,7 @@ public class ZohoDeskService
     /// an agent over the phone. Number is nullable because it is a convenience: if Zoho ever omits
     /// it the ticket still exists and still works, the customer simply does not get a reference.
     /// </summary>
-    public readonly record struct CreatedTicket(string Id, string? Number);
+    public readonly record struct CreatedTicket(string Id, string? Number, string? ContactId = null, string? AccountId = null);
 
     private async Task<ZohoCallResult> GetAsync(string path, CancellationToken ct)
     {
@@ -863,6 +877,8 @@ public class ZohoDeskService
         string? id;
         string? number;
         string? assignedTo;
+        string? contactId = null;
+        string? accountId = null;
         try
         {
             using var doc = JsonDocument.Parse(json);
@@ -880,6 +896,8 @@ public class ZohoDeskService
             assignedTo = doc.RootElement.TryGetProperty("assigneeId", out var aProp) && aProp.ValueKind == JsonValueKind.String
                 ? aProp.GetString()
                 : null;
+
+            (contactId, accountId) = ReadCreatedTicketLinks(json);
 
             if (id == null)
                 _logger.LogWarning("[ZOHO] Ticket created but the response carried no id: {Body}", Truncate(json, 300));
@@ -909,7 +927,176 @@ public class ZohoDeskService
                     id, Options.AssigneeId);
         }
 
-        return id == null ? null : new CreatedTicket(id, number);
+        return id == null ? null : new CreatedTicket(id, number, contactId, accountId);
+    }
+
+    /// <summary>
+    /// The contact a created ticket was attached to, and the account the ticket already carries.
+    /// A non-null account means Desk put it there from the contact itself, so the contact is
+    /// already under a company and is left alone. Split out so it can be tested without Desk;
+    /// anything unreadable is null.
+    /// </summary>
+    public static (string? ContactId, string? AccountId) ReadCreatedTicketLinks(string? ticketJson)
+    {
+        if (string.IsNullOrWhiteSpace(ticketJson)) return (null, null);
+        try
+        {
+            using var doc = JsonDocument.Parse(ticketJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return (null, null);
+            return (ReadIdProperty(doc.RootElement, "contactId"), ReadIdProperty(doc.RootElement, "accountId"));
+        }
+        catch (JsonException)
+        {
+            return (null, null);
+        }
+    }
+
+    private static string? ReadIdProperty(JsonElement obj, string name)
+    {
+        if (!obj.TryGetProperty(name, out var p)) return null;
+        var value = p.ValueKind switch
+        {
+            JsonValueKind.String => p.GetString(),
+            JsonValueKind.Number => p.ToString(),
+            _ => null,
+        };
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    // Account ids by company name, for this process. A company's account never changes id, so
+    // one search per company per restart is enough, however many tickets it opens.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _accountIds =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Puts a newly created ticket's contact, and the ticket, under the company's account,
+    /// creating the account the first time that company is seen. Never throws, and never blocks
+    /// the ticket: every failure is logged and left as it is. Returns whether it linked.
+    /// </summary>
+    public async Task<bool> LinkContactToAccountAsync(
+        string ticketId, string contactId, string accountName, CancellationToken ct = default)
+    {
+        if (!Options.IsConfigured || !Options.LinkContactAccount) return false;
+
+        var accountId = await ResolveAccountIdAsync(accountName, ct);
+        if (accountId == null) return false;
+
+        var contact = await SendAsync(HttpMethod.Patch,
+            $"api/v1/contacts/{Uri.EscapeDataString(contactId)}",
+            new Dictionary<string, object?> { ["accountId"] = accountId }, ct);
+        if (contact.Outcome != ZohoCallOutcome.Ok)
+        {
+            _logger.LogWarning(
+                "[ZOHO-ACCOUNT] contact {ContactId} was not put under account '{Account}' — if the line above " +
+                "is a 401/403, the Zoho token needs the Desk.contacts.UPDATE scope", contactId, accountName);
+            return false;
+        }
+
+        // The ticket was created before the contact had an account, so it carries none of its own
+        // yet. Tickets opened later by the same contact get it from the contact.
+        var ticket = await SendAsync(HttpMethod.Patch,
+            $"api/v1/tickets/{Uri.EscapeDataString(ticketId)}",
+            new Dictionary<string, object?> { ["accountId"] = accountId }, ct);
+        if (ticket.Outcome != ZohoCallOutcome.Ok)
+            _logger.LogWarning("[ZOHO-ACCOUNT] ticket {TicketId} kept no account, though its contact now has '{Account}'",
+                ticketId, accountName);
+
+        _logger.LogInformation("[ZOHO-ACCOUNT] ticket={TicketId} contact={ContactId} → account '{Account}' ({AccountId})",
+            ticketId, contactId, accountName, accountId);
+        return true;
+    }
+
+    /// <summary>
+    /// The account for a company name: from the cache, else by search, else newly created. A new
+    /// account is created ONLY after a search that succeeded and found none — a search that
+    /// failed says nothing about whether one exists, and creating on a guess would add a second
+    /// "Avt" for every ticket while the search keeps failing.
+    /// </summary>
+    private async Task<string?> ResolveAccountIdAsync(string accountName, CancellationToken ct)
+    {
+        if (_accountIds.TryGetValue(accountName, out var cached)) return cached;
+
+        var search = await GetAsync(
+            $"api/v1/accounts/search?accountName={Uri.EscapeDataString(accountName)}&limit=10", ct);
+        if (search.Outcome != ZohoCallOutcome.Ok)
+        {
+            _logger.LogWarning(
+                "[ZOHO-ACCOUNT] could not search for account '{Account}' — if the line above is a 401/403, " +
+                "the Zoho token needs the Desk.search.READ scope", accountName);
+            return null;
+        }
+
+        var found = FindAccountId(search.Body, accountName);
+        if (found == null)
+        {
+            var created = await SendAsync(HttpMethod.Post, "api/v1/accounts",
+                new Dictionary<string, object?> { ["accountName"] = accountName }, ct);
+            if (created.Outcome != ZohoCallOutcome.Ok)
+            {
+                _logger.LogWarning(
+                    "[ZOHO-ACCOUNT] could not create account '{Account}' — if the line above is a 401/403, " +
+                    "the Zoho token needs the Desk.contacts.CREATE scope", accountName);
+                return null;
+            }
+
+            found = ReadAccountIdFromBody(created.Body);
+            if (found == null)
+            {
+                _logger.LogWarning("[ZOHO-ACCOUNT] account '{Account}' was created but the response carried no id", accountName);
+                return null;
+            }
+            _logger.LogInformation("[ZOHO-ACCOUNT] created account '{Account}' ({AccountId})", accountName, found);
+        }
+
+        _accountIds[accountName] = found;
+        return found;
+    }
+
+    private static string? ReadAccountIdFromBody(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.ValueKind == JsonValueKind.Object ? ReadIdProperty(doc.RootElement, "id") : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The id of the account whose name is exactly this one (ignoring case and surrounding
+    /// space) in an accounts search response. Search matches loosely — "Avt" also finds
+    /// "Avtech" — so only an exact name counts; anything else means none was found. An empty
+    /// body (Desk answers 204 when nothing matches) is none too. Never throws.
+    /// </summary>
+    public static string? FindAccountId(string? searchJson, string accountName)
+    {
+        if (string.IsNullOrWhiteSpace(searchJson)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(searchJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object
+                || !doc.RootElement.TryGetProperty("data", out var data)
+                || data.ValueKind != JsonValueKind.Array)
+                return null;
+
+            foreach (var a in data.EnumerateArray())
+            {
+                if (a.ValueKind != JsonValueKind.Object) continue;
+                if (!a.TryGetProperty("accountName", out var n) || n.ValueKind != JsonValueKind.String) continue;
+                if (!string.Equals(n.GetString()?.Trim(), accountName.Trim(), StringComparison.OrdinalIgnoreCase)) continue;
+                var id = ReadIdProperty(a, "id");
+                if (id != null) return id;
+            }
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>Moves a ticket to a specific agent. Separate from UpdateStatusAndPriorityAsync so the two

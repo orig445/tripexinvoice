@@ -90,6 +90,8 @@ public class ChatRequest
     /// <summary>The flat-shape twin of WidgetIdentityContext.Email — see there for why it is
     /// bound before the widget sends it.</summary>
     public string? CustomerEmail { get; set; }
+    /// <summary>The flat-shape twin of WidgetIdentityContext.HostInstance.</summary>
+    public string? HostInstance { get; set; }
 
     /// <summary>
     /// True when this request arrived in the TAS widget's own flat shape above — set by
@@ -141,13 +143,13 @@ public class ChatRequest
         // drops one field doesn't silently reclassify it as some other client.
         IsTasWidgetClient = !string.IsNullOrWhiteSpace(FirstNonBlank(
             CustomerName, CompanyName, CustomerId, Role, PageContext, Locale,
-            SentAt, Timezone, SessionId, ConversationId, CustomerEmail));
+            SentAt, Timezone, SessionId, ConversationId, CustomerEmail, HostInstance));
 
         if (string.IsNullOrWhiteSpace(SessionToken))
             SessionToken = FirstNonBlank(SessionId, ConversationId);
 
         if (Widget == null && !string.IsNullOrWhiteSpace(
-                FirstNonBlank(CustomerName, CompanyName, CustomerId, Role, PageContext, Locale, CustomerEmail)))
+                FirstNonBlank(CustomerName, CompanyName, CustomerId, Role, PageContext, Locale, CustomerEmail, HostInstance)))
         {
             Widget = new WidgetIdentityContext
             {
@@ -158,6 +160,7 @@ public class ChatRequest
                 PageContext = PageContext,
                 Locale = Locale,
                 Email = CustomerEmail,
+                HostInstance = HostInstance,
             };
         }
 
@@ -190,6 +193,13 @@ public class WidgetIdentityContext
     /// tickets attach to the real customer with no change on this side.
     /// </summary>
     public string? Email { get; set; }
+    /// <summary>
+    /// The first segment of the TAS page's address, which names the customer's TAS instance —
+    /// "Avt_Test" in https://taseu.combtas.com/Avt_Test/Main_Pagesv2/tasks.aspx. Read by the
+    /// widget from the page that embeds it; TAS itself sends nothing like it. See
+    /// ChatService.CompanyFromHostInstance for how it becomes the company.
+    /// </summary>
+    public string? HostInstance { get; set; }
 }
 
 public class ChatResponse

@@ -6,8 +6,11 @@ using TripEx.Api.Data;
 namespace TripEx.Api.Services;
 
 /// <summary>One conversation's worth of identity, captured at request time so the background
-/// worker does not have to go looking for it (the widget's customer details are not persisted).</summary>
-public record ZohoSyncRequest(Guid SessionId, string? CustomerName, string? CompanyName, string? Email);
+/// worker does not have to go looking for it (the widget's customer details are not persisted).
+/// AccountName is the customer's company as read from the TAS address they work in
+/// (ChatService.CompanyFromHostInstance), for the Desk account the contact is put under.</summary>
+public record ZohoSyncRequest(Guid SessionId, string? CustomerName, string? CompanyName, string? Email,
+    string? AccountName = null);
 
 /// <summary>
 /// Hand-off point between answering the customer and mirroring the conversation into Zoho Desk.
@@ -208,6 +211,20 @@ public class ZohoTicketSyncWorker : BackgroundService
             await db.SaveChangesAsync(CancellationToken.None);
             batches.RemoveAt(0);
             createdThisPass = true;
+
+            // After the save, so the ticket is recorded whatever happens here.
+            if (ShouldLinkContactAccount(request.AccountName, request.Email, created.Value.ContactId, created.Value.AccountId))
+            {
+                try
+                {
+                    await _zoho.LinkContactToAccountAsync(ticketId, created.Value.ContactId!, request.AccountName!.Trim(),
+                        CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[ZOHO-ACCOUNT] session={SessionId} ticket={TicketId} company not set", request.SessionId, ticketId);
+                }
+            }
         }
 
         // The customer wrote to a person after the hand-off, and Milo stayed silent — so these lines
@@ -297,6 +314,20 @@ public class ZohoTicketSyncWorker : BackgroundService
            && string.Equals(message.Intent, ChatService.HandoverIntent, StringComparison.Ordinal);
 
     /// <summary>What the reopen owed to a customer's line does to the ticket. See PlanReopen.</summary>
+    /// <summary>
+    /// Whether a newly created ticket's contact should be put under the customer's company. Only
+    /// when there is a company to name, the contact is the customer's own (their email came from
+    /// TAS — the fallback contact is shared by every conversation without one, and would take the
+    /// company of whoever wrote last), Desk said which contact it used, and the ticket came back
+    /// with no account, meaning the contact is not under any company yet. A contact that already
+    /// has one keeps it: an agent may have put it there. Public so a test can pin it.
+    /// </summary>
+    public static bool ShouldLinkContactAccount(string? accountName, string? customerEmail, string? contactId, string? ticketAccountId)
+        => !string.IsNullOrWhiteSpace(accountName)
+           && !string.IsNullOrWhiteSpace(customerEmail)
+           && !string.IsNullOrWhiteSpace(contactId)
+           && string.IsNullOrWhiteSpace(ticketAccountId);
+
     public enum ReopenAction { LeaveAsIs, ReopenStatusOnly, ReopenAndRaisePriority }
 
     /// <summary>

@@ -158,6 +158,21 @@ public class ChatService
     /// A short receipt is the honest thing to show there — and it means the backend and the widget
     /// can go live in either order.
     /// </summary>
+    /// <summary>
+    /// The customer's company, from the TAS instance in the address they work in: the instance's
+    /// name up to its first underscore. "Avt_Test" (https://taseu.combtas.com/Avt_Test/...) is the
+    /// company Avt, which is Roi's own example (2026-09-29), and QA's "QA_3_70" is QA. Letters,
+    /// digits and hyphens only, so nothing odd from a page address becomes an account name in
+    /// Desk. Null when there is nothing usable.
+    /// </summary>
+    public static string? CompanyFromHostInstance(string? hostInstance)
+    {
+        if (string.IsNullOrWhiteSpace(hostInstance)) return null;
+        var name = hostInstance.Trim().Split('_')[0];
+        if (name.Length == 0 || name.Length > 64) return null;
+        return name.All(c => char.IsAsciiLetterOrDigit(c) || c == '-') ? name : null;
+    }
+
     public static string HandoverReceipt(bool hebrew)
         => hebrew ? "✓ ההודעה הועברה לנציג" : "✓ Sent to the agent";
 
@@ -1240,7 +1255,8 @@ public class ChatService
             sessionId,
             request.Widget?.CustomerName,
             request.Widget?.CompanyName,
-            request.Widget?.Email));
+            request.Widget?.Email,
+            CompanyFromHostInstance(request.Widget?.HostInstance)));
 
         _logger.LogInformation(
             "[HANDOVER] session={SessionId} source={Source} forwarded to the agent, Milo silent\n  Q: {Message}",
@@ -1614,9 +1630,10 @@ public class ChatService
             // is meant to be the single place to confirm, from a real test message, that
             // everything the host page sent actually made it all the way to this backend.
             _logger.LogInformation(
-                "[WIDGET-CONTEXT] hasToken={HasToken} customerId={CustomerId} customerName={CustomerName} company={CompanyName} role={Role} pageContext={PageContext} locale={Locale}",
+                "[WIDGET-CONTEXT] hasToken={HasToken} customerId={CustomerId} customerName={CustomerName} company={CompanyName} role={Role} pageContext={PageContext} locale={Locale} instance={HostInstance}",
                 !string.IsNullOrEmpty(request.Widget.Token), request.Widget.CustomerId, request.Widget.CustomerName,
-                request.Widget.CompanyName, request.Widget.Role, request.Widget.PageContext, request.Widget.Locale);
+                request.Widget.CompanyName, request.Widget.Role, request.Widget.PageContext, request.Widget.Locale,
+                request.Widget.HostInstance);
         }
         var effectiveRole = !string.IsNullOrWhiteSpace(request.Widget?.Role) ? request.Widget!.Role! : userRole;
 
@@ -2192,7 +2209,8 @@ public class ChatService
                 sessionId,
                 request.Widget?.CustomerName,
                 request.Widget?.CompanyName,
-                request.Widget?.Email));
+                request.Widget?.Email,
+                CompanyFromHostInstance(request.Widget?.HostInstance)));
         }
 
         return new ChatResponse
