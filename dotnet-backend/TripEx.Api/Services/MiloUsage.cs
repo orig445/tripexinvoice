@@ -61,6 +61,13 @@ INSERT INTO [dbo].[chat_usage]
 VALUES
     ({Guid.NewGuid()}, {sessionId}, {DateTime.UtcNow}, {kind}, {model}, {prompt}, {completion}, {total},
      {co}, {em}, {nm}, {LiveSource})");
+
+            // One line per recorded call, so a deployment can be checked from the log alone: the
+            // company it was credited to, and whether it has a user. Not the email itself — the log
+            // is kept for 30 days and read by more people than the page is.
+            logger.LogInformation(
+                "[USAGE] session={SessionId} recorded {Kind} model={Model} in={Prompt} out={Out} company={Company} hasEmail={HasEmail}",
+                sessionId, kind, model, prompt, usage.BilledOutputTokens, co ?? "(none)", em != null);
         }
         catch (Exception ex)
         {
