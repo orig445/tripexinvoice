@@ -228,23 +228,25 @@ public class ChatService
     // The sampling temperature of the full-prompt conversational answer — the one model call per
     // turn that writes what the customer reads, model-authored clarify options included.
     //
-    // 0, set here in code, by owner decision on 2026-09-28: the same question should get the
-    // same answer, not a slightly different one each time it is asked. It used to come from
-    // chatbot_config.temperature (0.30 in the seeded row, and 0.3 again whenever the DB could
-    // not be reached). That column is now deliberately NOT read — no .NET endpoint ever wrote
+    // 0.3, set here in code. It is the value Milo has always answered with: it used to come from
+    // chatbot_config.temperature (0.30 in the seeded row, and 0.3 again whenever the DB could not
+    // be reached). 0 was decided on 2026-09-28, so that the same question would always get the
+    // same answer, and taken back the next day before it shipped: Roi likes the answers as they
+    // are, and nothing was wrong at 0.3 for 0 to fix. The column is deliberately NOT read — no .NET endpoint ever wrote
     // it, so it could only be changed with direct SQL, and the one temperature control in the
     // admin UI writes to the Lovable bot's Supabase table, which this service never reads.
     // Leaving the column in charge would have meant a value nobody could see or reason about.
     //
-    // Milo:Temperature overrides it, for the same reason Milo:StatusListShortcut exists: only
-    // real traffic can say whether greedy decoding suits a thinking model (the known failure
-    // is a repeat loop that runs into the token budget and surfaces as "[OCI-PARSE] Truncated
-    // JSON"), so going back must be a config edit and a restart, not a rebuild and a publish.
+    // Milo:Temperature overrides it, for the same reason Milo:StatusListShortcut exists: a
+    // change of tone can only be judged on real traffic, so trying one (0.1 for answers that vary
+    // less, say) and going back must be a config edit and a restart, not a rebuild and a publish.
+    // Going all the way to 0 has one known failure worth watching for: a thinking model can loop,
+    // run into the token budget, and surface as "[OCI-PARSE] Truncated JSON".
     //
     // The status-list classifier in ResolveStatusListIntentAsync is NOT governed by this: it is
     // hard-coded to 0 and stays there even if someone raises the override. Public so a test can
     // pin it.
-    public const double DefaultConversationalTemperature = 0;
+    public const double DefaultConversationalTemperature = 0.3;
 
     /// <summary>
     /// Reads Milo:Temperature. Missing, blank, unparseable, NaN, infinite or outside 0–2 all give
