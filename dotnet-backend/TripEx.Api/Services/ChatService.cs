@@ -173,6 +173,21 @@ public class ChatService
         return name.All(c => char.IsAsciiLetterOrDigit(c) || c == '-') ? name : null;
     }
 
+    /// <summary>
+    /// A customer's or Milo's text as it goes under a log line: every line after the first is
+    /// indented. Only the log's own lines then start at the left edge with a time stamp, so a
+    /// message cannot pass itself off as one (the usage import reads the log back).
+    /// </summary>
+    public static string? LogText(string? text)
+        => text?.Replace("\r\n", "\n").Replace('\r', '\n').Replace("\n", "\n     ");
+
+    /// <summary>
+    /// A short field from the caller or the model (a name, a source, an option list) on one line:
+    /// line breaks become spaces, for the same reason as LogText.
+    /// </summary>
+    public static string? OneLine(string? text)
+        => text?.Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ');
+
     // What each answer cost, for the /usage page: per company (from the TAS address) and per user
     // (the email TAS sends). Best-effort — see MiloUsage.TryRecordAsync.
     private Task RecordUsageAsync(Guid sessionId, string kind, OciUsage usage, ChatRequest request)
@@ -1267,7 +1282,7 @@ public class ChatService
 
         _logger.LogInformation(
             "[HANDOVER] session={SessionId} source={Source} forwarded to the agent, Milo silent\n  Q: {Message}",
-            sessionId, request.Source ?? "-", request.Text);
+            sessionId, OneLine(request.Source ?? "-"), LogText(request.Text));
 
         return new ChatResponse
         {
@@ -1472,7 +1487,7 @@ public class ChatService
         // sending back SessionToken at all (today: true for every non-internal source). No
         // other change in this file can make continued=True for a caller that doesn't send it.
         _logger.LogInformation("[CHAT-CONTINUITY] source={Source} session={SessionId} continued={Continued}",
-            request.Source, sessionId, continuedSession);
+            OneLine(request.Source), sessionId, continuedSession);
 
         // ── Image flow ──
         if (request.Type == "image")
@@ -1638,9 +1653,9 @@ public class ChatService
             // everything the host page sent actually made it all the way to this backend.
             _logger.LogInformation(
                 "[WIDGET-CONTEXT] hasToken={HasToken} customerId={CustomerId} customerName={CustomerName} company={CompanyName} role={Role} pageContext={PageContext} locale={Locale} instance={HostInstance}",
-                !string.IsNullOrEmpty(request.Widget.Token), request.Widget.CustomerId, request.Widget.CustomerName,
-                request.Widget.CompanyName, request.Widget.Role, request.Widget.PageContext, request.Widget.Locale,
-                request.Widget.HostInstance);
+                !string.IsNullOrEmpty(request.Widget.Token), OneLine(request.Widget.CustomerId), OneLine(request.Widget.CustomerName),
+                OneLine(request.Widget.CompanyName), OneLine(request.Widget.Role), OneLine(request.Widget.PageContext),
+                OneLine(request.Widget.Locale), OneLine(request.Widget.HostInstance));
         }
         var effectiveRole = !string.IsNullOrWhiteSpace(request.Widget?.Role) ? request.Widget!.Role! : userRole;
 
@@ -1772,11 +1787,20 @@ public class ChatService
             // ParseAiResponse is unchanged and still handles a fenced or broken reply, so this
             // only removes failures; it cannot introduce one.
             OciUsage? answerUsage = null;
-            var rawContent = await _oracle.ChatAsync(
-                messages, maxTokens, temperature, forceJsonOutput: true, allowCustomModel: true,
-                onUsage: u => answerUsage = u);
-            if (answerUsage is { } au)
-                await RecordUsageAsync(sessionId, MiloUsage.AnswerKind, au, request);
+            string rawContent;
+            try
+            {
+                rawContent = await _oracle.ChatAsync(
+                    messages, maxTokens, temperature, forceJsonOutput: true, allowCustomModel: true,
+                    onUsage: u => answerUsage = u);
+            }
+            finally
+            {
+                // Recorded even when ChatAsync throws after Oracle answered — an empty reply after
+                // the thinking used up the budget. Oracle bills those, and they are the dearest.
+                if (answerUsage is { } au)
+                    await RecordUsageAsync(sessionId, MiloUsage.AnswerKind, au, request);
+            }
             (intent, responseText, page, modelOptions) = ParseAiResponse(rawContent);
         }
 
@@ -1889,7 +1913,7 @@ public class ChatService
                     clarifyQuestion = responseText;
                     _logger.LogInformation(
                         "[CLARIFY-SPECIFIC] session={SessionId} asked its own question instead of the orientation one: {Options}",
-                        sessionId, string.Join(" | ", ownOptions));
+                        sessionId, OneLine(string.Join(" | ", ownOptions)));
                 }
                 else
                 {
@@ -1929,7 +1953,7 @@ public class ChatService
                 else if (modelOptions.Count > 0)
                     _logger.LogWarning(
                         "[CLARIFY-OPTIONS] session={SessionId} discarded {Raw} unusable option(s): {Options}",
-                        sessionId, modelOptions.Count, string.Join(" | ", modelOptions));
+                        sessionId, modelOptions.Count, OneLine(string.Join(" | ", modelOptions)));
             }
 
             // The branches above deliberately set only the question and the options, never the
@@ -2113,13 +2137,13 @@ public class ChatService
         // Full Q&A to the rolling file log (logs/tripex-*.log) — always, even if DB is down.
         _logger.LogInformation(
             "[CHAT] session={SessionId} user={UserId} source={Source} intent={Intent} rag={RagChars}c latency={LatencyMs}ms\n  Q: {Message}\n  A: {Response}",
-            sessionId, userId, request.Source ?? "-", intent, ragChars, latencyMs, request.Text, responseText);
+            sessionId, userId, OneLine(request.Source ?? "-"), intent, ragChars, latencyMs, LogText(request.Text), LogText(responseText));
 
         // Why the model chose to ask instead of answer (its own words, before the fixed question
         // replaced them). Only on clarify turns, so this stays quiet on normal traffic.
         if (!string.IsNullOrWhiteSpace(clarifyRationale))
             _logger.LogInformation("[CLARIFY-WHY] session={SessionId} intent={Intent} model_said={Rationale}",
-                sessionId, intent, clarifyRationale);
+                sessionId, intent, LogText(clarifyRationale));
 
         // ── Persist assistant message + audit log + escalation (best-effort) ──
         // Skipped silently if the DB is unavailable so the answer still returns.
@@ -2201,7 +2225,7 @@ public class ChatService
                     ticket.UpdatedAt = DateTime.UtcNow;
                 }
                 _logger.LogInformation("[TICKET-ESCALATED] session={SessionId} user={UserId} reason={Reason}",
-                    sessionId, userId, request.Text);
+                    sessionId, userId, LogText(request.Text));
             }
 
             await _db.SaveChangesAsync();

@@ -782,7 +782,7 @@ public class ZohoDeskService
                 path, (int)response.StatusCode, Truncate(body, 400));
             return new ZohoCallResult(null, (int)response.StatusCode >= 500
                 ? ZohoCallOutcome.Unknown
-                : ZohoCallOutcome.Rejected);
+                : ZohoCallOutcome.Rejected) { Status = (int)response.StatusCode };
         }
         catch (Exception ex)
         {
@@ -969,6 +969,30 @@ public class ZohoDeskService
         new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
+    /// How long company linking rests after Desk refuses it for lack of permission (401/403). Every
+    /// 401 throws away the shared access token (see GetAsync), and Zoho mints at most ten access
+    /// tokens per refresh token in ten minutes. Trying again on every new ticket could use those
+    /// up and lock out every Zoho call — ticket creation included — so a refusal pauses linking
+    /// instead: at most one refused call an hour, and tickets are created as usual meanwhile.
+    /// </summary>
+    public static readonly TimeSpan AccountLinkPause = TimeSpan.FromHours(1);
+    private DateTime _accountLinkPausedUntilUtc = DateTime.MinValue;
+
+    /// <summary>The clock the pause is measured on. Public so a test can move it; nothing else does.</summary>
+    public Func<DateTime> UtcNow { get; set; } = () => DateTime.UtcNow;
+
+    private bool PausedForPermission(ZohoCallResult result, string scope, string accountName)
+    {
+        if (result.Outcome != ZohoCallOutcome.Rejected || result.Status is not (401 or 403)) return false;
+        _accountLinkPausedUntilUtc = UtcNow() + AccountLinkPause;
+        _logger.LogWarning(
+            "[ZOHO-ACCOUNT] Zoho refused the account call for '{Account}' ({Status}): the Zoho token needs the " +
+            "{Scope} scope. Company linking is paused until {Until:HH:mm} UTC; tickets are created as usual.",
+            accountName, result.Status, scope, _accountLinkPausedUntilUtc);
+        return true;
+    }
+
+    /// <summary>
     /// Puts a newly created ticket's contact, and the ticket, under the company's account,
     /// creating the account the first time that company is seen. Never throws, and never blocks
     /// the ticket: every failure is logged and left as it is. Returns whether it linked.
@@ -977,6 +1001,13 @@ public class ZohoDeskService
         string ticketId, string contactId, string accountName, CancellationToken ct = default)
     {
         if (!Options.IsConfigured || !Options.LinkContactAccount) return false;
+        if (UtcNow() < _accountLinkPausedUntilUtc)
+        {
+            _logger.LogInformation(
+                "[ZOHO-ACCOUNT] ticket={TicketId} company '{Account}' not set: linking is paused until {Until:HH:mm} UTC " +
+                "after Zoho refused it for lack of permission (see the warning before)", ticketId, accountName, _accountLinkPausedUntilUtc);
+            return false;
+        }
 
         var accountId = await ResolveAccountIdAsync(accountName, ct);
         if (accountId == null) return false;
@@ -986,9 +1017,9 @@ public class ZohoDeskService
             new Dictionary<string, object?> { ["accountId"] = accountId }, ct);
         if (contact.Outcome != ZohoCallOutcome.Ok)
         {
-            _logger.LogWarning(
-                "[ZOHO-ACCOUNT] contact {ContactId} was not put under account '{Account}' — if the line above " +
-                "is a 401/403, the Zoho token needs the Desk.contacts.UPDATE scope", contactId, accountName);
+            if (!PausedForPermission(contact, "Desk.contacts.UPDATE", accountName))
+                _logger.LogWarning("[ZOHO-ACCOUNT] contact {ContactId} was not put under account '{Account}'",
+                    contactId, accountName);
             return false;
         }
 
@@ -1020,9 +1051,8 @@ public class ZohoDeskService
             $"api/v1/accounts/search?accountName={Uri.EscapeDataString(accountName)}&limit=10", ct);
         if (search.Outcome != ZohoCallOutcome.Ok)
         {
-            _logger.LogWarning(
-                "[ZOHO-ACCOUNT] could not search for account '{Account}' — if the line above is a 401/403, " +
-                "the Zoho token needs the Desk.search.READ scope", accountName);
+            if (!PausedForPermission(search, "Desk.search.READ", accountName))
+                _logger.LogWarning("[ZOHO-ACCOUNT] could not search for account '{Account}'", accountName);
             return null;
         }
 
@@ -1033,9 +1063,8 @@ public class ZohoDeskService
                 new Dictionary<string, object?> { ["accountName"] = accountName }, ct);
             if (created.Outcome != ZohoCallOutcome.Ok)
             {
-                _logger.LogWarning(
-                    "[ZOHO-ACCOUNT] could not create account '{Account}' — if the line above is a 401/403, " +
-                    "the Zoho token needs the Desk.contacts.CREATE scope", accountName);
+                if (!PausedForPermission(created, "Desk.contacts.CREATE", accountName))
+                    _logger.LogWarning("[ZOHO-ACCOUNT] could not create account '{Account}'", accountName);
                 return null;
             }
 
@@ -1240,7 +1269,11 @@ public class ZohoDeskService
     /// </summary>
     public enum ZohoCallOutcome { Ok, Rejected, Unknown }
 
-    public readonly record struct ZohoCallResult(string? Body, ZohoCallOutcome Outcome);
+    public readonly record struct ZohoCallResult(string? Body, ZohoCallOutcome Outcome)
+    {
+        /// <summary>The HTTP status Desk answered with, when it answered at all.</summary>
+        public int? Status { get; init; }
+    }
 
     private async Task<ZohoCallResult> SendAsync(HttpMethod method, string path,
         Dictionary<string, object?> payload, CancellationToken ct)
@@ -1276,7 +1309,7 @@ public class ZohoDeskService
             // 4xx is a clean refusal and definitely changed nothing.
             return new ZohoCallResult(null, (int)response.StatusCode >= 500
                 ? ZohoCallOutcome.Unknown
-                : ZohoCallOutcome.Rejected);
+                : ZohoCallOutcome.Rejected) { Status = (int)response.StatusCode };
         }
         catch (OperationCanceledException)
         {

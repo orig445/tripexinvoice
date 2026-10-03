@@ -125,10 +125,22 @@
 
 <script>
 (function () {
-  var m = location.pathname.match(/^(.*)\/usage\/([^\/]+)\/?$/);
-  var base = m ? m[1] : "";
-  var key = m ? m[2] : "";
+  // The key is after the # (…/usage#key): a browser never sends that part, so it stays out of
+  // every server log. It goes to the data calls in a header instead.
+  var base = location.pathname.replace(/\/usage\/?$/, "");
+  var readKey = function () { var h = location.hash.replace(/^#/, ""); try { return decodeURIComponent(h).trim(); } catch (e) { return h.trim(); } };
+  var key = readKey();
   var $ = function (id) { return document.getElementById(id); };
+  var call = function (path, opts) {
+    opts = opts || {};
+    opts.cache = "no-store";
+    opts.headers = { "X-Usage-Key": key };
+    return fetch(base + "/api/usage/" + path, opts).then(function (r) {
+      if (r.status === 404) throw new Error("המפתח שבכתובת לא נכון. הכתובת צריכה להיות ⁦…/usage#המפתח⁩, עם המפתח מ-appsettings.Production.json.");
+      return r;
+    });
+  };
+  var fail = function (prefix, e) { $("error").textContent = prefix + e.message; $("error").hidden = false; };
 
   var money = function (v) {
     var digits = v > 0 && v < 10 ? 4 : 2;
@@ -150,15 +162,31 @@
 
   function load() {
     $("error").hidden = true;
-    $("export").href = base + "/api/usage/" + key + "/export?" + query();
-    fetch(base + "/api/usage/" + key + "/summary?" + query(), { cache: "no-store" })
+    if (!key) { fail("", new Error("חסר המפתח בכתובת. הכתובת צריכה להיות ⁦…/usage#המפתח⁩, עם המפתח מ-appsettings.Production.json.")); return; }
+    call("summary?" + query())
       .then(function (r) {
         if (!r.ok) return r.json().catch(function () { return {}; }).then(function (b) { throw new Error(b.error || ("השרת החזיר " + r.status)); });
         return r.json();
       })
       .then(render)
-      .catch(function (e) { $("error").textContent = "לא הצלחתי לטעון את הנתונים: " + e.message; $("error").hidden = false; });
+      .catch(function (e) { fail("לא הצלחתי לטעון את הנתונים: ", e); });
   }
+
+  // A plain link cannot carry the key header, so the file is fetched and handed to the browser.
+  $("export").addEventListener("click", function (ev) {
+    ev.preventDefault();
+    if (!key) return load();
+    call("export?" + query())
+      .then(function (r) { if (!r.ok) throw new Error("השרת החזיר " + r.status); return r.blob(); })
+      .then(function (blob) {
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "milo-usage-" + $("from").value + "-to-" + $("to").value + ".csv";
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 10000);
+      })
+      .catch(function (e) { fail("הייצוא נכשל: ", e); });
+  });
 
   function render(s) {
     var t = s.totals;
@@ -182,7 +210,7 @@
       (prices ? "<span>המחירים שבשימוש: " + prices + "</span>" : "") + unpriced +
       "<span>פלט כולל גם את טוקני החשיבה של המודל, שלא מופיעים בתשובה אבל מחויבים. ימים לפי שעון ישראל.</span>" +
       "<span>זו הערכה. החשבון האמיתי נמצא ב-OCI Console, תחת Billing &amp; Cost Management ← Cost Analysis, בשירות Generative AI.</span>" +
-      "<span>הטוקנים הם המספרים ש-Oracle עצמה מחזירה בכל תשובה. מהעדכון של 29.9.2026 הם נשמרים בזמן אמת, ומה שלפניו מיובא מקובצי הלוג של מיילו, שנשמרים 30 יום. שיחה שבה החברה לא ידועה, כי הווידג'ט עוד לא שלח את כתובת המערכת, מקבלת את החברה של אותו משתמש משיחות אחרות, אם יש לו רק חברה אחת. אחרת היא מופיעה תחת \"לא ידוע\".</span>";
+      "<span>הטוקנים הם המספרים ש-Oracle עצמה מחזירה בכל תשובה. מאז שהדף הזה עלה הם נשמרים בזמן אמת, ומה שלפניו מיובא מקובצי הלוג של מיילו, שנשמרים 30 יום. שיחה שבה החברה לא ידועה, כי הווידג'ט עוד לא שלח אותה, מקבלת את החברה של אותו שם משתמש משיחות אחרות, אם יש לו רק חברה אחת. באותו אופן היא מקבלת את המייל שלו, אם יש לו רק מייל אחד באותה חברה. אחרת היא מופיעה תחת \"לא ידוע\".</span>";
   }
 
   function renderChart(days) {
@@ -224,7 +252,9 @@
       var name = c.company ? esc(c.company) : '<span class="unknown">לא ידוע</span>';
       var users = '<table><thead><tr><th>משתמש</th><th class="num">שיחות</th><th class="num">תשובות</th><th class="num">טוקני קלט</th><th class="num">טוקני פלט</th><th class="num">עלות</th></tr></thead><tbody>' +
         c.users.map(function (u) {
-          var who = u.email ? esc(u.email) + (u.name ? ' <span class="muted">(' + esc(u.name) + ')</span>' : "") : '<span class="unknown">בלי מייל</span>';
+          var who = u.email ? esc(u.email) + (u.name ? ' <span class="muted">(' + esc(u.name) + ')</span>' : "")
+            : u.name ? esc(u.name) + ' <span class="unknown">(בלי מייל)</span>'
+            : '<span class="unknown">לא ידוע</span>';
           return '<tr><td>' + who + '</td><td class="num">' + num(u.conversations) + '</td><td class="num">' + num(u.answers) + '</td><td class="num">' + num(u.inputTokens) + '</td><td class="num">' + num(u.outputTokens) + '</td><td class="num">' + money(u.costUsd) + '</td></tr>';
         }).join("") + '</tbody></table>';
       return '<tr class="company" tabindex="0" aria-expanded="false" data-i="' + i + '"><td>' + name + '</td><td class="num">' + num(c.conversations) + '</td><td class="num">' + num(c.answers) + '</td><td class="num">' + num(c.inputTokens) + '</td><td class="num">' + num(c.outputTokens) + '</td><td class="num"><b>' + money(c.costUsd) + '</b></td><td>' + Math.round(share * 100) + '%<span class="share" style="width:' + Math.max(2, Math.round(share * 90)) + 'px"></span></td></tr>' +
@@ -244,7 +274,8 @@
   $("import").addEventListener("click", function () {
     var btn = $("import"), out = $("import-result");
     btn.disabled = true; btn.textContent = "מייבא…";
-    fetch(base + "/api/usage/" + key + "/import-logs", { method: "POST", cache: "no-store" })
+    if (!key) { btn.disabled = false; btn.textContent = "ייבוא היסטוריה מהלוג"; return load(); }
+    call("import-logs", { method: "POST" })
       .then(function (r) { if (!r.ok) throw new Error("השרת החזיר " + r.status); return r.json(); })
       .then(function (x) {
         out.textContent = "נקראו " + x.files + " קבצי לוג, ונמצאו בהם " + num(x.callsFound) + " קריאות למודל" +
@@ -259,6 +290,7 @@
 
   document.querySelectorAll("[data-preset]").forEach(function (b) { b.addEventListener("click", function () { setPreset(b.dataset.preset); load(); }); });
   $("apply").addEventListener("click", load);
+  window.addEventListener("hashchange", function () { key = readKey(); load(); });
   setPreset("month");
   load();
 })();

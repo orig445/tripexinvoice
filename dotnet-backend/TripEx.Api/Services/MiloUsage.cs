@@ -106,6 +106,23 @@ public record UsagePrice(string Model, decimal InputPerMillion, decimal OutputPe
 public record UsageSummary(string From, string To, string TimeZone, string Currency, UsageTotals Totals,
     List<UsageCompany> Companies, List<UsageDay> Days, List<UsagePrice> Prices, List<string> UnpricedModels);
 
+/// <summary>A name as stored next to a company or an email, the raw material of UsageNameMaps.</summary>
+public record UsageIdentity(string? Name, string? Company, string? Email);
+
+/// <summary>
+/// What a customer's name alone says about them, learned from the calls that carry more. Calls
+/// imported from the log have a name and nothing else; these maps give them the company the same
+/// name has on its live calls when it has exactly one, and then the email that name has AT THAT
+/// company when it has exactly one there — a generic name like "System Administrator" at two
+/// customers must not lend one customer's email to the other. Built from every stored call rather
+/// than the dates on screen, so a call's company does not change with the range picked.
+/// EmailByNameAndCompany is keyed by NameCompanyKey.
+/// </summary>
+public record UsageNameMaps(IReadOnlyDictionary<string, string> CompanyByName, IReadOnlyDictionary<string, string> EmailByNameAndCompany)
+{
+    public static string NameCompanyKey(string name, string? company) => name.Trim() + "\u0001" + (company?.Trim() ?? "");
+}
+
 /// <summary>
 /// Turns stored calls into the report: totals, per company, per user within each company, per
 /// day. Pure, so every number on the page can be pinned by a test.
@@ -171,9 +188,10 @@ public static class MiloUsageReport
     }
 
     public static UsageSummary Summarize(IReadOnlyCollection<UsageRow> rows, IReadOnlyDictionary<string, ModelPrice> prices,
-        DateOnly from, DateOnly to, TimeZoneInfo zone)
+        DateOnly from, DateOnly to, TimeZoneInfo zone, UsageNameMaps? names = null)
     {
-        rows = FillCompanyFromName(rows);
+        names ??= BuildNameMaps(rows.Select(r => new UsageIdentity(r.Name, r.Company, r.Email)));
+        rows = FillFromName(rows, names);
         decimal CostOf(IEnumerable<UsageRow> rs) => rs.Sum(r => Cost(r, prices) ?? 0m);
         int Conversations(IEnumerable<UsageRow> rs) => rs.Where(r => r.SessionId != null).Select(r => r.SessionId).Distinct().Count();
         int Answers(IEnumerable<UsageRow> rs) => rs.Count(r => r.Kind == MiloUsage.AnswerKind);
@@ -215,42 +233,82 @@ public static class MiloUsageReport
             zone.Id, "USD", totals, companies, days, priceList, unpriced);
     }
 
-    // A user is their email when TAS sent one, otherwise their name: calls imported from the log
-    // carry only the name, and the same person must not be split into two rows by that.
+    // A user is their email when TAS sent one, otherwise their name. FillFromName has already given
+    // a name-only call the email its name has elsewhere, so the same person is one row.
     private static string? UserKey(UsageRow r)
         => !string.IsNullOrWhiteSpace(r.Email) ? r.Email!.Trim().ToLowerInvariant()
             : !string.IsNullOrWhiteSpace(r.Name) ? "name:" + r.Name!.Trim().ToLowerInvariant()
             : null;
 
     /// <summary>
-    /// A call with no company takes the company of the same user's other calls, when those name
-    /// exactly one. Calls from before the widget sent the TAS address (and every call imported from
-    /// older logs) have a customer name but no company; once the same name has been seen with a
-    /// company, its history belongs there too. A name seen with two companies is left alone.
+    /// Names that stand for nobody in particular. The widget sends "Guest" when TAS gave no name,
+    /// so a Guest seen at one company says nothing about a Guest anywhere else.
     /// </summary>
-    public static IReadOnlyCollection<UsageRow> FillCompanyFromName(IReadOnlyCollection<UsageRow> rows)
-    {
-        var byName = rows
-            .Where(r => !string.IsNullOrWhiteSpace(r.Company) && !string.IsNullOrWhiteSpace(r.Name))
-            .GroupBy(r => r.Name!.Trim(), StringComparer.OrdinalIgnoreCase)
-            .Select(g => (Name: g.Key, Companies: g.Select(r => r.Company!.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList()))
-            .Where(x => x.Companies.Count == 1)
-            .ToDictionary(x => x.Name, x => x.Companies[0], StringComparer.OrdinalIgnoreCase);
+    public static bool IsPlaceholderName(string? name)
+        => string.IsNullOrWhiteSpace(name) || name.Trim().Equals("Guest", StringComparison.OrdinalIgnoreCase);
 
-        if (byName.Count == 0) return rows;
-        return rows.Select(r => string.IsNullOrWhiteSpace(r.Company) && !string.IsNullOrWhiteSpace(r.Name)
-                                && byName.TryGetValue(r.Name!.Trim(), out var company)
-            ? r with { Company = company }
-            : r).ToList();
+    /// <summary>
+    /// For each real name, the one company and the one email it has been seen with. A name seen
+    /// with two companies (or two emails) is left out of that map: it is two people, or a person who
+    /// moved, and guessing would put calls in the wrong place.
+    /// </summary>
+    public static UsageNameMaps BuildNameMaps(IEnumerable<UsageIdentity> identities)
+    {
+        var known = identities.Where(i => !IsPlaceholderName(i.Name)).ToList();
+
+        static Dictionary<string, string> OnlyOne(IEnumerable<(string Name, string Value)> pairs)
+            => pairs.GroupBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(g => (Name: g.Key, Values: g.Select(p => p.Value).Distinct(StringComparer.OrdinalIgnoreCase).ToList()))
+                .Where(x => x.Values.Count == 1)
+                .ToDictionary(x => x.Name, x => x.Values[0], StringComparer.OrdinalIgnoreCase);
+
+        return new UsageNameMaps(
+            OnlyOne(known.Where(i => !string.IsNullOrWhiteSpace(i.Company)).Select(i => (i.Name!.Trim(), i.Company!.Trim()))),
+            OnlyOne(known.Where(i => !string.IsNullOrWhiteSpace(i.Email))
+                .Select(i => (UsageNameMaps.NameCompanyKey(i.Name!, i.Company), i.Email!.Trim().ToLowerInvariant()))));
     }
 
     /// <summary>
+    /// A call with no company takes the company its customer name has on other calls, when that
+    /// name has exactly one — calls from before the widget sent the TAS address, and every call
+    /// imported from the log, have a name but no company. Then a call with no email takes the one
+    /// email that name has at the call's company, so the history and the live calls of one person
+    /// are one row.
+    /// </summary>
+    public static IReadOnlyCollection<UsageRow> FillFromName(IReadOnlyCollection<UsageRow> rows, UsageNameMaps names)
+    {
+        if (names.CompanyByName.Count == 0 && names.EmailByNameAndCompany.Count == 0) return rows;
+        return rows.Select(r =>
+        {
+            if (IsPlaceholderName(r.Name)) return r;
+            var name = r.Name!.Trim();
+            if (string.IsNullOrWhiteSpace(r.Company) && names.CompanyByName.TryGetValue(name, out var company))
+                r = r with { Company = company };
+            if (string.IsNullOrWhiteSpace(r.Email)
+                && names.EmailByNameAndCompany.TryGetValue(UsageNameMaps.NameCompanyKey(name, r.Company), out var email))
+                r = r with { Email = email };
+            return r;
+        }).ToList();
+    }
+
+    /// <summary>FillFromName with the maps taken from these rows alone.</summary>
+    public static IReadOnlyCollection<UsageRow> FillCompanyFromName(IReadOnlyCollection<UsageRow> rows)
+        => FillFromName(rows, BuildNameMaps(rows.Select(r => new UsageIdentity(r.Name, r.Company, r.Email))));
+
+    /// <summary>
     /// The per-user table as CSV for Excel: a BOM so Hebrew names open correctly, and every field
-    /// quoted so a comma in a name cannot shift the columns.
+    /// quoted so a comma in a name cannot shift the columns. A text field that Excel would run as a
+    /// formula (it starts with = + - @, a tab or a carriage return) gets a leading ' — names and
+    /// emails come from the customer's side, and opening the file must not run them.
     /// </summary>
     public static string ToCsv(UsageSummary s)
     {
-        static string Q(string? v) => "\"" + (v ?? "").Replace("\"", "\"\"") + "\"";
+        static string Q(string? v)
+        {
+            v ??= "";
+            if (v.Length > 0 && "=+-@\t\r".Contains(v[0])) v = "'" + v;
+            return "\"" + v.Replace("\"", "\"\"") + "\"";
+        }
         static string N(decimal v) => v.ToString("0.######", CultureInfo.InvariantCulture);
         var sb = new StringBuilder("﻿");
         sb.AppendLine("Company,User email,User name,Conversations,Answers,Input tokens,Output tokens,Cost (USD)");

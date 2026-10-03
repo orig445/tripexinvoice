@@ -26,7 +26,9 @@ public record LoggedCall(DateTime AtUtc, string Model, int PromptTokens, int Com
 /// The last call before the [CHAT] line is the answer; any earlier one in the same request is the
 /// status-list classifier. Requests that overlap in time can interleave in the log, and then a
 /// call may be credited to the neighbouring conversation — rare at Milo's traffic, and the token
-/// totals stay right either way.
+/// totals stay right either way. The model is kept from the last "Request body" line seen, not
+/// reset per request: it is the same for the whole deployment, and an overlap must not leave a
+/// call with no model (which would price it at nothing).
 /// </summary>
 public static class MiloUsageLogImport
 {
@@ -37,11 +39,17 @@ public static class MiloUsageLogImport
         @"^\[OCI\] usage prompt=(?<p>-?\d+) completion=(?<c>-?\d+) total=(?<t>-?\d+)", RegexOptions.Compiled);
     private static readonly Regex RequestBody = new(@"^\[OCI\] Request body length=\d+, model=(?<m>\S+)", RegexOptions.Compiled);
     private static readonly Regex Chat = new(@"^\[CHAT\] session=(?<s>[0-9a-fA-F-]{36}) ", RegexOptions.Compiled);
+    private static readonly Regex FileDay = new(@"tripex-(?<d>\d{8})", RegexOptions.Compiled);
     private static readonly Regex WidgetContext = new(
         @"^\[WIDGET-CONTEXT\] .*?customerName=(?<n>.*?) (?:company=(?<c>.*?) )?role=.*?(?: instance=(?<i>\S+))?$",
         RegexOptions.Compiled);
 
-    public static List<LoggedCall> Parse(IEnumerable<string> lines)
+    /// <summary>
+    /// The calls in one file's lines. With fileDay (the date in the file's name), a call stamped
+    /// more than a day away from it is dropped: the file holds only that day, so such a line was
+    /// not written by the log itself.
+    /// </summary>
+    public static List<LoggedCall> Parse(IEnumerable<string> lines, DateOnly? fileDay = null)
     {
         var calls = new List<LoggedCall>();
         var pending = new List<(DateTime At, string Model, int P, int C, int T)>();
@@ -69,7 +77,7 @@ public static class MiloUsageLogImport
             {
                 // A new request: nothing from the one before may be credited to it.
                 Flush(null);
-                name = company = model = null;
+                name = company = null;
                 continue;
             }
 
@@ -88,10 +96,14 @@ public static class MiloUsageLogImport
             if (u.Success)
             {
                 if (!TryUtc(m.Groups["ts"].Value, m.Groups["off"].Value, out var at)) continue;
-                pending.Add((at, model ?? "unknown",
-                    int.Parse(u.Groups["p"].Value, CultureInfo.InvariantCulture),
-                    int.Parse(u.Groups["c"].Value, CultureInfo.InvariantCulture),
-                    int.Parse(u.Groups["t"].Value, CultureInfo.InvariantCulture)));
+                if (fileDay is { } day && Math.Abs(DateOnly.FromDateTime(at).DayNumber - day.DayNumber) > 1) continue;
+                // A number too big for an int is not something OCI wrote; one such line must not
+                // stop the whole import.
+                if (!int.TryParse(u.Groups["p"].Value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var prompt)
+                    || !int.TryParse(u.Groups["c"].Value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var completion)
+                    || !int.TryParse(u.Groups["t"].Value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var total))
+                    continue;
+                pending.Add((at, model ?? "unknown", prompt, completion, total));
                 continue;
             }
 
@@ -117,6 +129,24 @@ public static class MiloUsageLogImport
     public record ImportResult(int Files, int CallsFound, int Imported, int AlreadyThere, int AfterLiveRecording,
         string? FirstDay, string? LastDay);
 
+    /// <summary>The date in a log file's name (tripex-yyyyMMdd.log), when it has one.</summary>
+    public static DateOnly? DayOfFile(string file)
+    {
+        var m = FileDay.Match(Path.GetFileName(file));
+        return m.Success && DateOnly.TryParseExact(m.Groups["d"].Value, "yyyyMMdd", CultureInfo.InvariantCulture,
+            DateTimeStyles.None, out var d) ? d : null;
+    }
+
+    /// <summary>
+    /// Whether a call from the log is one already stored live. The very first live calls are in the
+    /// log too, stamped a moment BEFORE live recording began (the log line is written before the
+    /// row, and the first row also waits for the table to be created), so the time cut-off alone
+    /// would count them twice. Same tokens in the same conversation is the same call.
+    /// </summary>
+    public static bool IsLiveCall(LoggedCall c, IEnumerable<(Guid? SessionId, int Prompt, int Total)> live)
+        => live.Any(l => l.Prompt == c.PromptTokens && l.Total == c.TotalTokens
+                         && (c.SessionId == null || l.SessionId == c.SessionId));
+
     /// <summary>
     /// Reads every log file and stores the calls not stored yet. Only calls from before live
     /// recording began: from then on each call is already stored as it happens, and counting it a
@@ -141,13 +171,19 @@ public static class MiloUsageLogImport
             using var reader = new StreamReader(fs, Encoding.UTF8);
             var lines = new List<string>();
             while (await reader.ReadLineAsync(ct) is { } line) lines.Add(line);
-            all.AddRange(Parse(lines));
+            all.AddRange(Parse(lines, DayOfFile(file)));
         }
+
+        var margin = TimeSpan.FromMinutes(10);
+        var liveAtStart = (await db.ChatUsages.Where(u => u.Source == MiloUsage.LiveSource && u.CreatedAt < liveStart + margin)
+                .Select(u => new { u.SessionId, u.PromptTokens, u.TotalTokens }).ToListAsync(ct))
+            .Select(u => (u.SessionId, u.PromptTokens, u.TotalTokens)).ToList();
 
         int imported = 0, existing = 0, afterLive = 0;
         foreach (var c in all)
         {
             if (c.AtUtc >= liveStart) { afterLive++; continue; }
+            if (c.AtUtc >= liveStart - margin && IsLiveCall(c, liveAtStart)) { afterLive++; continue; }
             var id = StableId(c);
             var inserted = await db.Database.ExecuteSqlInterpolatedAsync($@"
 IF NOT EXISTS (SELECT 1 FROM [dbo].[chat_usage] WHERE [id] = {id})

@@ -213,7 +213,8 @@ public class ZohoTicketSyncWorker : BackgroundService
             createdThisPass = true;
 
             // After the save, so the ticket is recorded whatever happens here.
-            if (ShouldLinkContactAccount(request.AccountName, request.Email, created.Value.ContactId, created.Value.AccountId))
+            if (ShouldLinkContactAccount(request.AccountName, request.Email, created.Value.ContactId, created.Value.AccountId,
+                    _zoho.Options.FallbackContactEmail))
             {
                 try
                 {
@@ -322,9 +323,13 @@ public class ZohoTicketSyncWorker : BackgroundService
     /// with no account, meaning the contact is not under any company yet. A contact that already
     /// has one keeps it: an agent may have put it there. Public so a test can pin it.
     /// </summary>
-    public static bool ShouldLinkContactAccount(string? accountName, string? customerEmail, string? contactId, string? ticketAccountId)
+    public static bool ShouldLinkContactAccount(string? accountName, string? customerEmail, string? contactId, string? ticketAccountId,
+        string? fallbackContactEmail)
         => !string.IsNullOrWhiteSpace(accountName)
            && !string.IsNullOrWhiteSpace(customerEmail)
+           // A customer whose email IS the fallback mailbox lands on the shared fallback contact,
+           // and putting that contact under their company would put every email-less ticket there.
+           && !string.Equals(customerEmail.Trim(), fallbackContactEmail?.Trim(), StringComparison.OrdinalIgnoreCase)
            && !string.IsNullOrWhiteSpace(contactId)
            && string.IsNullOrWhiteSpace(ticketAccountId);
 
