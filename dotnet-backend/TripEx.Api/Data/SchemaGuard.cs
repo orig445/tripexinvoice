@@ -127,6 +127,20 @@ IF COL_LENGTH('dbo.chat_session_tickets', 'zoho_ticket_number') IS NULL
     ALTER TABLE [dbo].[chat_session_tickets] ADD [zoho_ticket_number] NVARCHAR(50) NULL;");
     }
 
+    public static async Task EnsureChatSessionOwnersAsync(TripExDbContext db)
+    {
+        // Whose conversation it is (SessionOwner). The email is only ever stored as a hash.
+        await EnsureAsync(db, "chat_session_owners", @"
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'chat_session_owners')
+CREATE TABLE [dbo].[chat_session_owners] (
+    [session_id]  UNIQUEIDENTIFIER PRIMARY KEY,
+    [email_hash]  NVARCHAR(64)  NULL,
+    [customer_id] NVARCHAR(64)  NULL,
+    [instance]    NVARCHAR(64)  NULL,
+    [created_at]  DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME()
+);");
+    }
+
     public static async Task EnsureChatUsageAsync(TripExDbContext db)
     {
         // One row per Milo model call: its tokens, and the company and user it was for. Read by

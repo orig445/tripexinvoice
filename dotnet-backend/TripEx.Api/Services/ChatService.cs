@@ -1458,6 +1458,26 @@ public class ChatService
             ? await CanResumeSessionAsync(resumeId, userId)
             : (CanResume: false, NeedsRow: false);
 
+        // ── Whose conversation is it? ──
+        // Every widget user is the same system user here, and a browser keeps its conversation id
+        // across TAS sign-ins — so without this a second TAS user on the same computer resumed the
+        // first one's conversation: its history, its ticket, its agent. A conversation with a
+        // recorded owner is resumed only by a request that does not contradict it; anyone else
+        // starts a new one, the same as New chat. See SessionOwner for what counts.
+        var owner = SessionOwner.From(request.Widget);
+        SessionOwner? storedOwner = null;
+        if (resume.CanResume && !owner.IsEmpty)
+        {
+            storedOwner = await MiloSessionOwners.ReadAsync(_db, resumeId, _logger);
+            if (storedOwner != null && storedOwner.BelongsToSomeoneElseThan(owner))
+            {
+                _logger.LogInformation(
+                    "[SESSION-OWNER] session={SessionId} belongs to another user — starting a new conversation", resumeId);
+                resume = (false, false);
+                storedOwner = null;
+            }
+        }
+
         if (resume.CanResume)
         {
             sessionId = resumeId;
@@ -1536,6 +1556,11 @@ public class ChatService
                 Console.WriteLine($"⚠️ [CHAT] Session not persisted (DB unavailable): {ex.Message}");
             }
         }
+        // A conversation nobody owns yet — a new one, or one from before owners were recorded —
+        // becomes this user's. One owned already keeps its owner.
+        if (!owner.IsEmpty && storedOwner == null)
+            await MiloSessionOwners.TryClaimAsync(_db, sessionId, owner, _logger);
+
         // Single grep-able line to watch for the caller-side session-continuity fix landing —
         // continued=False on every request for a given source means that caller is still not
         // sending back SessionToken at all (today: true for every non-internal source). No

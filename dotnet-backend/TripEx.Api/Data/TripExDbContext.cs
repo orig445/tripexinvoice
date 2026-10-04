@@ -24,6 +24,7 @@ public class TripExDbContext : DbContext
     public DbSet<OcrTrainingPattern> OcrTrainingPatterns => Set<OcrTrainingPattern>();
     public DbSet<ChatSessionTicket> ChatSessionTickets => Set<ChatSessionTicket>();
     public DbSet<ChatUsage> ChatUsages => Set<ChatUsage>();
+    public DbSet<ChatSessionOwner> ChatSessionOwners => Set<ChatSessionOwner>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -97,6 +98,22 @@ public class ChatUsage
     [Column("customer_name")] public string? CustomerName { get; set; }
     /// <summary>"live" when recorded as the call happened, "log" when imported from Milo's log files.</summary>
     [Column("source")] public string Source { get; set; } = "live";
+}
+
+/// <summary>
+/// Whose conversation it is, as TAS described the user when it started (see SessionOwner).
+/// Written by MiloSessionOwners.TryClaimAsync, created by SchemaGuard.EnsureChatSessionOwnersAsync.
+/// A table of its own rather than columns on chat_sessions, so a database the migration has not
+/// reached yet costs only this check and not every session query.
+/// </summary>
+[Table("chat_session_owners")]
+public class ChatSessionOwner
+{
+    [Key, Column("session_id")] public Guid SessionId { get; set; }
+    [Column("email_hash")] public string? EmailHash { get; set; }
+    [Column("customer_id")] public string? CustomerId { get; set; }
+    [Column("instance")] public string? Instance { get; set; }
+    [Column("created_at")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
 [Table("chat_session_tickets")]
