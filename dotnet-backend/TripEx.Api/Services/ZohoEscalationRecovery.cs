@@ -124,6 +124,10 @@ public class ZohoEscalationRecoveryWorker : BackgroundService
     /// holds the transcript back on a temporary failure, so the message stays behind the
     /// watermark and this leg retries the reopen and the comment together.
     ///
+    /// And a development request whose ticket was never created. The customer was told it reached
+    /// the product team and to start a New chat for anything else, so there may never be a next
+    /// turn in that conversation to retry the create.
+    ///
     /// Only sources that are mirrored at all (see ChatService.IsMirroredSource). ChatService never
     /// enqueues "internal", so it never gets a ticket row — and without this filter "escalated
     /// with no ticket row" matched every one of those conversations, and this sweep would open a
@@ -156,6 +160,13 @@ public class ZohoEscalationRecoveryWorker : BackgroundService
                                                   && m.Role == "user"
                                                   && m.Intent == ChatService.HandoverIntent
                                                   && (t.SyncedThrough == null || m.CreatedAt > t.SyncedThrough)))
+                  // The development-request leg: Milo's receipt is stored, the ticket is not. Creating
+                  // one is exactly what SyncOneAsync does for a conversation with no ticket row, and
+                  // the receipt among its messages is what makes it a development-request ticket.
+                  || (t == null
+                      && db.ChatMessages.Any(m => m.SessionId == s.Id
+                                                  && m.Role == "assistant"
+                                                  && m.Intent == ChatService.DevRequestSubmittedIntent))
             orderby s.UpdatedAt descending
             select s.Id;
     }
@@ -172,6 +183,9 @@ public class ZohoEscalationRecoveryWorker : BackgroundService
     /// The third is a message the customer wrote to the agent after the hand-off that is still
     /// behind the watermark — Milo does not answer those, so without this nothing would send it.
     /// Retried for an hour only (HandoverRetryWindow).
+    ///
+    /// The same sweep also opens the ticket for a development request whose create never landed
+    /// (see StuckQuery), for the whole look-back window, like an escalation.
     /// </summary>
     private async Task SweepAsync(CancellationToken ct)
     {

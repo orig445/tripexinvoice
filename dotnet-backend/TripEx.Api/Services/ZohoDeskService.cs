@@ -66,6 +66,30 @@ public class ZohoDeskOptions
     /// at any other priority, is the agent's and keeps what they gave it. "" turns that raise off too.
     /// </summary>
     public string EscalatedPriority { get; set; } = "High";
+
+    // ── A development request from the widget's opening menu ──
+    // Not a conversation Milo answered but a change the customer wants in the product, so it is
+    // filed as work for the product team: open, classified as a feature, and sorted between the two
+    // priorities above. See ChatService.ClassifyDevRequestTurn.
+    /// <summary>Status a development-request ticket is created with. Blank means EscalatedStatus.</summary>
+    public string DevRequestStatus { get; set; } = "Open";
+    /// <summary>
+    /// Classification for a development-request ticket. If Desk refuses the create — a portal whose
+    /// classification list has no such value — the one retry falls back to Classification, so a
+    /// request the customer was told reached the product team is never lost over a label. Blank
+    /// means Classification.
+    /// </summary>
+    public string DevRequestClassification { get; set; } = "Feature";
+    /// <summary>
+    /// Priority for a development-request ticket; "" leaves the field off, as above. Medium is not
+    /// AiHandledPriority, so a customer writing to an agent on a closed one does not get it raised
+    /// (ZohoTicketSyncWorker.PlanReopen raises only a ticket still at the AI-handled priority).
+    /// </summary>
+    public string DevRequestPriority { get; set; } = "Medium";
+    /// <summary>Goes in front of the request text in the subject, after SubjectPrefix:
+    /// "[Milo] [Development request] …". Blank leaves it out.</summary>
+    public string DevRequestSubjectLabel { get; set; } = "[Development request]";
+
     /// <summary>Optional Desk custom-field API name to receive our chat session GUID (e.g.
     /// "cf_milo_session_id"), so a ticket can be traced back to our own records. Values are
     /// capped at 255 chars by Desk; a GUID is 36. Leave empty to skip.</summary>
@@ -219,7 +243,10 @@ public record ZohoTicketDraft(
     string ContactLastName,
     string ContactEmail,
     Guid SessionId,
-    bool Escalated);
+    bool Escalated,
+    // A development request from the widget's opening menu, filed with the DevRequest* settings
+    // instead of the AI-handled ones. See ZohoTicketSyncWorker.NewTicketDraft.
+    bool DevRequest = false);
 
 /// <summary>
 /// Thin client for the two Zoho Desk endpoints this feature needs, plus token management.
@@ -800,13 +827,23 @@ public class ZohoDeskService
     {
         if (!Options.IsConfigured) return null;
 
+        // A development request is filed with settings of its own (see DevRequestStatus). Should one
+        // ever escalate as well, the escalation decides status and priority: a person waiting
+        // outranks a change to consider.
+        var classification = draft.DevRequest
+            ? ConfiguredOr(Options.DevRequestClassification, Options.Classification)
+            : Options.Classification;
+        var label = draft.DevRequest ? Options.DevRequestSubjectLabel?.Trim() : null;
+
         var payload = new Dictionary<string, object?>
         {
-            ["subject"] = Truncate(Options.SubjectPrefix + draft.Subject, 255),
+            ["subject"] = Truncate(Options.SubjectPrefix + (string.IsNullOrEmpty(label) ? "" : label + " ") + draft.Subject, 255),
             ["departmentId"] = Options.DepartmentId,
             ["description"] = Truncate(draft.Description, MaxCommentLength),
-            ["status"] = draft.Escalated ? Options.EscalatedStatus : Options.AiHandledStatus,
-            ["classification"] = Options.Classification,
+            ["status"] = draft.Escalated ? Options.EscalatedStatus
+                : draft.DevRequest ? ConfiguredOr(Options.DevRequestStatus, Options.EscalatedStatus)
+                : Options.AiHandledStatus,
+            ["classification"] = classification,
             ["channel"] = Options.Channel,
             // Desk needs a contact and will reuse an existing one when the email matches, so this
             // both attaches the ticket and keeps the contact list from growing a row per chat.
@@ -823,7 +860,9 @@ public class ZohoDeskService
         // portal uses a custom priority list — clears the setting instead of inventing a value.
         // Trimmed, not just whitespace-tested: Desk matches a picklist value exactly, so a
         // trailing space someone left in the JSON config would be a value it does not know.
-        var priority = (draft.Escalated ? Options.EscalatedPriority : Options.AiHandledPriority)?.Trim();
+        var priority = (draft.Escalated ? Options.EscalatedPriority
+            : draft.DevRequest ? Options.DevRequestPriority
+            : Options.AiHandledPriority)?.Trim();
         if (!string.IsNullOrEmpty(priority))
             payload["priority"] = priority;
 
@@ -847,13 +886,31 @@ public class ZohoDeskService
         // unrelated failure (a bad orgId, a revoked token — which this also gives a second,
         // freshly-minted-token attempt) is not worth the chance of missing the case this exists
         // for. One extra call on a failing create, never on a succeeding one.
-        if (outcome == ZohoCallOutcome.Rejected && payload.Remove("priority"))
+        //
+        // A development request also goes back to the ordinary classification in that same retry:
+        // its own is a picklist value too, one this portal may not have, and the customer was told
+        // the request reached the product team. Still one retry, never two.
+        var classificationDropped = outcome == ZohoCallOutcome.Rejected && draft.DevRequest
+                                    && !string.Equals(classification, Options.Classification, StringComparison.Ordinal);
+        if (classificationDropped)
+            payload["classification"] = Options.Classification;
+        var priorityDropped = outcome == ZohoCallOutcome.Rejected && payload.Remove("priority");
+
+        if (priorityDropped || classificationDropped)
         {
-            _logger.LogWarning(
-                "[ZOHO] Ticket create for session={SessionId} was refused while sending priority=\"{Priority}\" — " +
-                "retrying WITHOUT it. If this line repeats, that value is not in this portal's priority " +
-                "picklist: correct or clear Zoho:AiHandledPriority / Zoho:EscalatedPriority.",
-                draft.SessionId, priority);
+            if (draft.DevRequest)
+                _logger.LogWarning(
+                    "[ZOHO] Development request ticket create for session={SessionId} was refused while sending " +
+                    "classification=\"{Classification}\" priority=\"{Priority}\" — retrying with classification=\"{Fallback}\" " +
+                    "and no priority. If this line repeats, one of those values is not in this portal's picklists: " +
+                    "correct or clear Zoho:DevRequestClassification / Zoho:DevRequestPriority (and check Zoho:DevRequestStatus).",
+                    draft.SessionId, classification, priority, Options.Classification);
+            else
+                _logger.LogWarning(
+                    "[ZOHO] Ticket create for session={SessionId} was refused while sending priority=\"{Priority}\" — " +
+                    "retrying WITHOUT it. If this line repeats, that value is not in this portal's priority " +
+                    "picklist: correct or clear Zoho:AiHandledPriority / Zoho:EscalatedPriority.",
+                    draft.SessionId, priority);
 
             (json, outcome) = await SendAsync(HttpMethod.Post, "api/v1/tickets", payload, ct);
         }
@@ -1324,6 +1381,10 @@ public class ZohoDeskService
             return new ZohoCallResult(null, ZohoCallOutcome.Unknown);
         }
     }
+
+    /// <summary>A picklist setting, trimmed (Desk matches those values exactly), or the fallback when blank.</summary>
+    private static string ConfiguredOr(string? value, string fallback)
+        => string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
 
     /// <summary>
     /// Truncates to a hard character budget, marking the cut so nobody reads a clipped

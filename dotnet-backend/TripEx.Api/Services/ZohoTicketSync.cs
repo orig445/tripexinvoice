@@ -162,18 +162,7 @@ public class ZohoTicketSyncWorker : BackgroundService
         {
             if (batches.Count == 0) return; // nothing to open a ticket about yet
 
-            var firstQuestion = pending.FirstOrDefault(m =>
-                string.Equals(m.Role, "user", StringComparison.OrdinalIgnoreCase))?.Content;
-
-            var draft = new ZohoTicketDraft(
-                Subject: ZohoDeskService.Truncate(
-                    OneLine(firstQuestion) is { Length: > 0 } s ? s : "Milo conversation", 200),
-                Description: batches[0].Content,
-                ContactLastName: FirstNonBlank(request.CustomerName, request.CompanyName)
-                                 ?? _zoho.Options.FallbackContactLastName,
-                ContactEmail: FirstNonBlank(request.Email) ?? _zoho.Options.FallbackContactEmail,
-                SessionId: request.SessionId,
-                Escalated: escalated);
+            var draft = NewTicketDraft(request, pending, batches[0].Content, escalated, _zoho.Options);
 
             var created = await _zoho.CreateTicketAsync(draft, CancellationToken.None);
             if (created == null)
@@ -205,8 +194,8 @@ public class ZohoTicketSyncWorker : BackgroundService
 
             // Logged BEFORE the save, deliberately: if writing this row fails, this line is the
             // only remaining trace of a ticket that really does exist in Zoho.
-            _logger.LogInformation("[ZOHO-SYNC] session={SessionId} → ticket={TicketId} ({Count} message(s), escalated={Escalated})",
-                request.SessionId, ticketId, pending.Count, escalated);
+            _logger.LogInformation("[ZOHO-SYNC] session={SessionId} → ticket={TicketId} ({Count} message(s), escalated={Escalated}, devRequest={DevRequest})",
+                request.SessionId, ticketId, pending.Count, escalated, draft.DevRequest);
 
             await db.SaveChangesAsync(CancellationToken.None);
             batches.RemoveAt(0);
@@ -304,6 +293,41 @@ public class ZohoTicketSyncWorker : BackgroundService
                     request.SessionId, map.ZohoTicketId);
             }
         }
+    }
+
+    /// <summary>
+    /// The ticket a conversation's first sync opens. Split out so it can be tested without Desk or a
+    /// database.
+    ///
+    /// The subject is the customer's first question — or, for a development request, the request
+    /// itself, the line tagged ChatService.DevRequestIntent (CreateTicketAsync puts the label in front
+    /// of it). A conversation is a development request when Milo's receipt for one is among these
+    /// messages, and on a first sync it always is: the request is the conversation's first message,
+    /// so no ticket can exist before it.
+    /// </summary>
+    public static ZohoTicketDraft NewTicketDraft(ZohoSyncRequest request, IReadOnlyList<TranscriptMessage> pending,
+        string description, bool escalated, ZohoDeskOptions options)
+    {
+        static bool IsUser(TranscriptMessage m) => string.Equals(m.Role, "user", StringComparison.OrdinalIgnoreCase);
+
+        var devRequest = pending.Any(m => string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase)
+                                          && string.Equals(m.Intent, ChatService.DevRequestSubmittedIntent, StringComparison.Ordinal));
+        var question = (devRequest
+                           ? pending.FirstOrDefault(m => IsUser(m)
+                                 && string.Equals(m.Intent, ChatService.DevRequestIntent, StringComparison.Ordinal))?.Content
+                           : null)
+                       ?? pending.FirstOrDefault(IsUser)?.Content;
+
+        return new ZohoTicketDraft(
+            Subject: ZohoDeskService.Truncate(
+                OneLine(question) is { Length: > 0 } s ? s : "Milo conversation", 200),
+            Description: description,
+            ContactLastName: FirstNonBlank(request.CustomerName, request.CompanyName)
+                             ?? options.FallbackContactLastName,
+            ContactEmail: FirstNonBlank(request.Email) ?? options.FallbackContactEmail,
+            SessionId: request.SessionId,
+            Escalated: escalated,
+            DevRequest: devRequest);
     }
 
     /// <summary>

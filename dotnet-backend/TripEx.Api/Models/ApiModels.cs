@@ -96,6 +96,15 @@ public class ChatRequest
     public string? HostOrigin { get; set; }
 
     /// <summary>
+    /// What the customer picked from the widget's opening menu, sent on the ONE message that follows
+    /// the pick. Only "development_request" means anything here (ChatService.DevRequestMenuChoice):
+    /// the other choices are answered inside the widget and never reach this API. A hint from the
+    /// same already-authenticated caller as everything above; whether it applies to this turn is
+    /// ChatService's decision — see ClassifyDevRequestTurn.
+    /// </summary>
+    public string? MenuChoice { get; set; }
+
+    /// <summary>
     /// True when this request arrived in the TAS widget's own flat shape above — set by
     /// NormalizeWidgetShape(), never deserialized from the body.
     ///
@@ -284,6 +293,15 @@ public class ChatResponse
     /// "Milo did not answer, draw no bot bubble" — an escalation turn does carry Milo's text.
     /// </summary>
     public bool AgentWillAnswer { get; set; }
+
+    /// <summary>
+    /// True on both of a development request's fixed replies — the receipt and the "added" line for
+    /// anything said after it (ChatService.DevRequestReplyAsync) — and false on every other reply.
+    /// Both tell the customer to start a New chat for anything else, and the widget shows its New
+    /// chat button only in a long or handed-over chat; this is what makes it show the button for a
+    /// development request too, however short the chat, and keep it through a reload.
+    /// </summary>
+    public bool DevRequest { get; set; }
 }
 
 /// <summary>

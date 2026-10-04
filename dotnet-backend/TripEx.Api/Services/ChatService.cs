@@ -22,6 +22,7 @@ public class ChatService
     private readonly string _supportContact;
     private readonly bool _statusListShortcut;
     private readonly bool _modelAuthoredFirstClarify;
+    private readonly bool _devRequests;
     private readonly double _temperature;
     // Where page links point when the customer's own TAS address is not known: Milo:PageLinksBaseUrl,
     // else the baseUrl in Data/page-links.json. See PageLinkBase.
@@ -515,6 +516,92 @@ public class ChatService
     // run of questions — and with it the every-fourth support offer — counting, and a clarify
     // that follows it is treated as a later round, not a fresh fixed orientation question.
     public const string OtherPickIntent = "clarify_other";
+
+    // ── Development requests, from the widget's opening menu ──
+    // A fresh conversation in the TAS widget opens with a menu (Roi, 2026-10-04): "Development
+    // request", "Problem in the system", "Guidance", "Other". All but the first are answered inside
+    // the widget. "Development request" asks the customer to describe the change in one message, and
+    // that message arrives with menuChoice = DevRequestMenuChoice. It goes to the product team as a
+    // Zoho ticket of its own kind (see ZohoDeskOptions.DevRequestStatus) with a fixed receipt, and
+    // there is nothing for the model to decide: a request for a change is not a question Milo can
+    // answer, and a 20-second model turn that tried would only invent an answer to it.
+
+    /// <summary>The menuChoice value the widget sends with a development request.</summary>
+    public const string DevRequestMenuChoice = "development_request";
+
+    /// <summary>
+    /// The intents a development request leaves on its messages: the customer's request, Milo's
+    /// receipt for it, and Milo's reply to anything the customer adds afterwards. None of them is a
+    /// clarifying type or HandoverIntent, so the clarify count, the "Other" and status-list shortcuts
+    /// and the hand-off all read past them. They are what marks the conversation from then on — the
+    /// request field rides on one message only — for the follow-up reply (IsDevRequestConversation),
+    /// for the ticket the Zoho worker opens (ZohoTicketSyncWorker.NewTicketDraft, which takes the
+    /// subject from the DevRequestIntent line), and for the recovery sweep.
+    /// </summary>
+    public const string DevRequestIntent = "devreq_request";
+    public const string DevRequestSubmittedIntent = "devreq_submitted";
+    public const string DevRequestFollowUpIntent = "devreq_followup";
+
+    public const string DevRequestSubmittedReply =
+        "Thanks! I've passed your development request to our product team for review. This isn't a " +
+        "commitment to build it, and the team may contact you if they need more details. If something " +
+        "is broken or blocking your work, or for anything else, please start a New chat.";
+
+    public const string DevRequestFollowUpReply =
+        "Added to your development request. For anything else, please start a New chat.";
+
+    /// <summary>
+    /// When the receipt could not be saved. Without its devreq_submitted row the worker would file
+    /// the request as an ordinary Closed AI-handled ticket and the recovery sweep could not find it,
+    /// so Milo must not say the product team has it.
+    /// </summary>
+    public const string DevRequestNotRecordedReply =
+        "Sorry, I couldn't send your development request just now. Please start a New chat in a few " +
+        "minutes and choose Development request again.";
+
+    public enum DevRequestTurn { None, Submit, FollowUp }
+
+    /// <summary>
+    /// Whether this turn belongs to a development request, decided before anything expensive runs.
+    ///
+    /// available is what has to hold outside the conversation: Milo:DevRequests is on, Zoho is
+    /// configured and the source is mirrored. The receipt says the request reached the product team,
+    /// and without a ticket that would not be true. (A handed-over conversation never gets this far:
+    /// the hand-off check runs first.)
+    ///
+    /// FollowUp: the conversation already submitted one. Read from the stored intents, never from the
+    /// request, so it holds for every later message whatever the widget sends.
+    ///
+    /// Submit: menuChoice says so AND this is the conversation's first message — the history holds
+    /// nothing but the message being answered. A choice that arrives later is ignored, and so is one
+    /// whose history could not be read: then nobody can say it was the first message, and a message
+    /// that may not have been stored is not one to promise the product team will see.
+    /// </summary>
+    public static DevRequestTurn ClassifyDevRequestTurn(bool available, string? menuChoice,
+        IReadOnlyList<(string Role, string Content, string? Intent)> historyRows, string? userText)
+    {
+        if (!available || historyRows == null) return DevRequestTurn.None;
+        if (IsDevRequestConversation(historyRows)) return DevRequestTurn.FollowUp;
+
+        var isFirstMessage = historyRows.Count == 1
+                             && historyRows[0].Role == "user"
+                             && historyRows[0].Content == userText;
+        return isFirstMessage && IsDevRequestMenuChoice(menuChoice) ? DevRequestTurn.Submit : DevRequestTurn.None;
+    }
+
+    /// <summary>Trimmed and case-blind, like the other values this file reads from a caller.</summary>
+    public static bool IsDevRequestMenuChoice(string? menuChoice)
+        => string.Equals(menuChoice?.Trim(), DevRequestMenuChoice, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Has this conversation submitted a development request? Any assistant turn with one of its
+    /// intents says so — the follow-ups as well as the receipt, so that a conversation long enough
+    /// for the receipt to fall out of the 50-message history window still counts.
+    /// </summary>
+    public static bool IsDevRequestConversation(
+        IReadOnlyList<(string Role, string Content, string? Intent)> historyRows)
+        => historyRows.Any(r => r.Role == "assistant"
+                                && (r.Intent == DevRequestSubmittedIntent || r.Intent == DevRequestFollowUpIntent));
 
     // The three areas offered by the fixed first orientation question, in both languages.
     // Constants rather than literals at the point of use because they are matched BACK on the
@@ -1175,6 +1262,13 @@ public class ChatService
         _modelAuthoredFirstClarify = !string.Equals(
             configuration["Milo:ModelAuthoredFirstClarify"], "false", StringComparison.OrdinalIgnoreCase);
 
+        // Off switch for development requests from the widget's opening menu (see
+        // ClassifyDevRequestTurn). Same rule: only a literal "false" turns it off. Off, a menu choice
+        // is ignored and the message is answered like any other — and so is anything said later in a
+        // conversation that already submitted one.
+        _devRequests = !string.Equals(
+            configuration["Milo:DevRequests"], "false", StringComparison.OrdinalIgnoreCase);
+
         // Rollback override for the conversational temperature (code default 0, see
         // DefaultConversationalTemperature) — same config-edit-plus-restart rule as the two above.
         _temperature = ResolveConversationalTemperature(configuration["Milo:Temperature"]);
@@ -1346,6 +1440,83 @@ public class ChatService
             // Kept on the response so the header badge stays right for a widget that was reloaded
             // after the ticket number arrived.
             TicketNumber = await LookupTicketNumberAsync(sessionId),
+        };
+    }
+
+    /// <summary>
+    /// A turn of a development request: the fixed receipt, or for anything the customer adds later
+    /// the fixed "added" line — stored and mirrored like any answered turn, and nothing else. No model
+    /// call, no knowledge search, no usage row, and none of the answer tail's links, buttons,
+    /// escalation or support offer: there is no answer here for them to shape.
+    ///
+    /// The intents are the record (see DevRequestIntent). On the request itself the customer's line is
+    /// tagged and the receipt saved in the same write, which is what makes the Zoho worker open the
+    /// ticket as a development request, the next turn a follow-up, and the recovery sweep retry a
+    /// request whose ticket was never created. A follow-up's own line stays untagged: it is mirrored
+    /// onto the ticket as a comment like any other, and nothing needs to find it again.
+    /// </summary>
+    private async Task<ChatResponse> DevRequestReplyAsync(ChatRequest request, Guid sessionId,
+        ChatMessage userMessage, DevRequestTurn turn)
+    {
+        var submitted = turn == DevRequestTurn.Submit;
+        var text = submitted ? DevRequestSubmittedReply : DevRequestFollowUpReply;
+
+        try
+        {
+            // The customer's line was saved before the turn could be classified. Tagged here, so the
+            // change rides on the same save as the receipt — the way an escalation tags it.
+            if (submitted) userMessage.Intent = DevRequestIntent;
+
+            _db.ChatMessages.Add(new ChatMessage
+            {
+                SessionId = sessionId,
+                Role = "assistant",
+                Content = text,
+                Intent = submitted ? DevRequestSubmittedIntent : DevRequestFollowUpIntent,
+                Metadata = JsonSerializer.Serialize(new { actions = new List<string>(), page = (string?)null, redirectPage = "" })
+            });
+            await _db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ [CHAT] Development request reply not persisted (DB unavailable): {ex.Message}");
+
+            // No receipt row, so no request: see DevRequestNotRecordedReply. Nothing is queued — the
+            // customer is sent to New chat, and an ordinary ticket for these lines would only be a
+            // copy of the request filed the wrong way. A failed follow-up save needs none of this:
+            // the conversation is already marked, and the customer's line was saved before the turn.
+            if (submitted)
+            {
+                _logger.LogWarning("[DEV-REQUEST] session={SessionId} receipt not saved — the customer was asked to send it again",
+                    sessionId);
+                return new ChatResponse
+                {
+                    Text = DevRequestNotRecordedReply,
+                    SessionId = sessionId.ToString(),
+                    // The reply sends the customer to New chat, so the widget keeps the button up.
+                    DevRequest = true,
+                };
+            }
+        }
+
+        // ClassifyDevRequestTurn answers only when Zoho is configured and the source is mirrored, so
+        // this is the same hand-off every answered turn makes.
+        _zohoQueue.Enqueue(new ZohoSyncRequest(
+            sessionId,
+            request.Widget?.CustomerName,
+            request.Widget?.CompanyName,
+            request.Widget?.Email,
+            CompanyFromHostInstance(request.Widget?.HostInstance)));
+
+        _logger.LogInformation("[DEV-REQUEST] session={SessionId} source={Source} {Stage} — fixed reply, no model call",
+            sessionId, OneLine(request.Source ?? "-"), submitted ? "submitted" : "follow-up");
+
+        return new ChatResponse
+        {
+            Text = text,
+            SessionId = sessionId.ToString(),
+            // Both replies send the customer to New chat; this keeps the widget's button up.
+            DevRequest = true,
         };
     }
 
@@ -1680,6 +1851,26 @@ public class ChatService
             Console.WriteLine($"⚠️ [CHAT] History not loaded (DB unavailable): {ex.Message}");
         }
         var history = historyRows.Select(h => (h.Role, h.Content)).ToList();
+
+        // ── A development request (the widget's opening menu) ──
+        // Before the config, the geolocation, the knowledge search and the prompt: the reply is fixed
+        // and none of them would change it. After the hand-off check, which wins — a person already on
+        // the ticket is who the customer is writing to — and after the history, which is how a
+        // conversation that already submitted a request is recognised. See ClassifyDevRequestTurn.
+        var devRequestsAvailable = _devRequests && _zoho.Options.IsConfigured && IsMirroredSource(request.Source);
+        var devRequestTurn = ClassifyDevRequestTurn(devRequestsAvailable, request.MenuChoice, historyRows, request.Text);
+        if (devRequestTurn != DevRequestTurn.None)
+        {
+            return await DevRequestReplyAsync(request, sessionId, userMessage, devRequestTurn);
+        }
+        if (IsDevRequestMenuChoice(request.MenuChoice))
+        {
+            // A choice that was not acted on looks, from the widget's side, exactly like one that
+            // was — so say which condition stopped it. history=1 is a first message.
+            _logger.LogInformation(
+                "[DEV-REQUEST] session={SessionId} menu choice ignored (switch={Switch} zoho={Zoho} mirrored={Mirrored} history={History}) — answered as a normal turn",
+                sessionId, _devRequests, _zoho.Options.IsConfigured, IsMirroredSource(request.Source), historyRows.Count);
+        }
 
         // ── Load config (best-effort; defaults when DB is unavailable) ──
         ChatbotConfig? config = null;
