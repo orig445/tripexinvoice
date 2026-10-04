@@ -92,6 +92,8 @@ public class ChatRequest
     public string? CustomerEmail { get; set; }
     /// <summary>The flat-shape twin of WidgetIdentityContext.HostInstance.</summary>
     public string? HostInstance { get; set; }
+    /// <summary>The flat-shape twin of WidgetIdentityContext.HostOrigin.</summary>
+    public string? HostOrigin { get; set; }
 
     /// <summary>
     /// True when this request arrived in the TAS widget's own flat shape above — set by
@@ -143,13 +145,13 @@ public class ChatRequest
         // drops one field doesn't silently reclassify it as some other client.
         IsTasWidgetClient = !string.IsNullOrWhiteSpace(FirstNonBlank(
             CustomerName, CompanyName, CustomerId, Role, PageContext, Locale,
-            SentAt, Timezone, SessionId, ConversationId, CustomerEmail, HostInstance));
+            SentAt, Timezone, SessionId, ConversationId, CustomerEmail, HostInstance, HostOrigin));
 
         if (string.IsNullOrWhiteSpace(SessionToken))
             SessionToken = FirstNonBlank(SessionId, ConversationId);
 
         if (Widget == null && !string.IsNullOrWhiteSpace(
-                FirstNonBlank(CustomerName, CompanyName, CustomerId, Role, PageContext, Locale, CustomerEmail, HostInstance)))
+                FirstNonBlank(CustomerName, CompanyName, CustomerId, Role, PageContext, Locale, CustomerEmail, HostInstance, HostOrigin)))
         {
             Widget = new WidgetIdentityContext
             {
@@ -161,6 +163,7 @@ public class ChatRequest
                 Locale = Locale,
                 Email = CustomerEmail,
                 HostInstance = HostInstance,
+                HostOrigin = HostOrigin,
             };
         }
 
@@ -200,6 +203,12 @@ public class WidgetIdentityContext
     /// ChatService.CompanyFromHostInstance for how it becomes the company.
     /// </summary>
     public string? HostInstance { get; set; }
+    /// <summary>
+    /// The site the widget is embedded in, "https://taseu.combtas.com" — the origin of the TAS
+    /// page's context message, which the browser itself vouches for. With HostInstance it is
+    /// where the customer's own page links start; see ChatService.PageLinkBase.
+    /// </summary>
+    public string? HostOrigin { get; set; }
 }
 
 public class ChatResponse

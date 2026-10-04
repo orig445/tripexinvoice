@@ -23,6 +23,10 @@ public class ChatService
     private readonly bool _statusListShortcut;
     private readonly bool _modelAuthoredFirstClarify;
     private readonly double _temperature;
+    // Where page links point when the customer's own TAS address is not known: Milo:PageLinksBaseUrl,
+    // else the baseUrl in Data/page-links.json. See PageLinkBase.
+    private readonly string _defaultPageLinkBase;
+    private readonly string[] _pageLinkHosts;
     // 0 = the "which temperature is in force" line has not been logged in this process yet.
     // Static because ChatService is scoped (a new instance per request, see Program.cs), and the
     // line is meant to appear once after a restart, not on every turn.
@@ -171,6 +175,50 @@ public class ChatService
         var name = hostInstance.Trim().Split('_')[0];
         if (name.Length == 0 || name.Length > 64) return null;
         return name.All(c => char.IsAsciiLetterOrDigit(c) || c == '-') ? name : null;
+    }
+
+    /// <summary>Milo:PageLinksBaseUrl when it is set, else the baseUrl in Data/page-links.json.</summary>
+    public static string DefaultPageLinkBase(string? configured, string fileBase)
+        => string.IsNullOrWhiteSpace(configured) ? fileBase : configured.Trim().TrimEnd('/');
+
+    /// <summary>Hosts a page link may point at, unless Milo:PageLinkHosts says otherwise.</summary>
+    public const string DefaultPageLinkHosts = "combtas.com";
+
+    /// <summary>
+    /// Where this answer's page link starts: the customer's own TAS — the site the widget is
+    /// embedded in, plus its instance, https://taseu.combtas.com/Avt_Test — when both are known
+    /// and the site is an https address under one of the allowed hosts. Otherwise the server's
+    /// default (Roi, 2026-10-04: the links all pointed at deveu/QA_3_70, whoever asked).
+    ///
+    /// The link opens in the customer's whole TAS window (target="_top"), so only an allowed
+    /// host can come back from here: whatever the request says, the link cannot lead anywhere
+    /// else. Both values are needed because a TAS site holds many instances, and the widget —
+    /// served from another site — cannot read either from the page itself.
+    /// </summary>
+    public static string PageLinkBase(string? hostOrigin, string? hostInstance, string fallbackBase,
+        IReadOnlyCollection<string> allowedHosts)
+    {
+        var instance = hostInstance?.Trim();
+        if (string.IsNullOrEmpty(instance) || instance.Length > 64
+            || !instance.All(c => char.IsAsciiLetterOrDigit(c) || c == '-' || c == '_'))
+            return fallbackBase;
+
+        if (!Uri.TryCreate(hostOrigin?.Trim(), UriKind.Absolute, out var origin)
+            || origin.Scheme != Uri.UriSchemeHttps
+            || !origin.IsDefaultPort
+            || !string.IsNullOrEmpty(origin.UserInfo)
+            || origin.AbsolutePath != "/"
+            || !string.IsNullOrEmpty(origin.Query)
+            || !string.IsNullOrEmpty(origin.Fragment))
+            return fallbackBase;
+
+        var host = origin.IdnHost.ToLowerInvariant();
+        var allowed = allowedHosts.Any(a =>
+        {
+            var h = a.Trim().TrimStart('.').ToLowerInvariant();
+            return h.Length > 0 && (host == h || host.EndsWith("." + h, StringComparison.Ordinal));
+        });
+        return allowed ? $"https://{host}/{instance}" : fallbackBase;
     }
 
     /// <summary>
@@ -1131,6 +1179,12 @@ public class ChatService
         // DefaultConversationalTemperature) — same config-edit-plus-restart rule as the two above.
         _temperature = ResolveConversationalTemperature(configuration["Milo:Temperature"]);
 
+        // Each Milo server can say where its links go without editing Data/page-links.json, whose
+        // baseUrl is one QA instance (deveu/QA_3_70). Read once, like the settings above.
+        _defaultPageLinkBase = DefaultPageLinkBase(configuration["Milo:PageLinksBaseUrl"], _pageLinksBaseUrl);
+        _pageLinkHosts = (configuration["Milo:PageLinkHosts"] ?? DefaultPageLinkHosts)
+            .Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
         // The key that makes a foreign conversation id unguessable (see ResolveSessionToken).
         // Jwt:Secret rather than a new setting: it is already required in production, already at
         // least 32 characters, and already the one value nobody is tempted to put in a document.
@@ -1652,10 +1706,11 @@ public class ChatService
             // is meant to be the single place to confirm, from a real test message, that
             // everything the host page sent actually made it all the way to this backend.
             _logger.LogInformation(
-                "[WIDGET-CONTEXT] hasToken={HasToken} customerId={CustomerId} customerName={CustomerName} company={CompanyName} role={Role} pageContext={PageContext} locale={Locale} instance={HostInstance}",
+                // instance stays the LAST field: the usage import reads it from the end of the line.
+                "[WIDGET-CONTEXT] hasToken={HasToken} customerId={CustomerId} customerName={CustomerName} company={CompanyName} role={Role} pageContext={PageContext} locale={Locale} origin={HostOrigin} instance={HostInstance}",
                 !string.IsNullOrEmpty(request.Widget.Token), OneLine(request.Widget.CustomerId), OneLine(request.Widget.CustomerName),
                 OneLine(request.Widget.CompanyName), OneLine(request.Widget.Role), OneLine(request.Widget.PageContext),
-                OneLine(request.Widget.Locale), OneLine(request.Widget.HostInstance));
+                OneLine(request.Widget.Locale), OneLine(request.Widget.HostOrigin), OneLine(request.Widget.HostInstance));
         }
         var effectiveRole = !string.IsNullOrWhiteSpace(request.Widget?.Role) ? request.Widget!.Role! : userRole;
 
@@ -1997,8 +2052,11 @@ public class ChatService
         var pageLink = !string.IsNullOrEmpty(page) && _pageLinks.TryGetValue(page, out var pl) ? pl : null;
 
         // pageLink.Url is only the relative path (e.g. "/Master_Pages/x.aspx") — prepend the
-        // per-environment host once here so every consumer below gets the full, real URL.
-        var pageUrl = pageLink != null ? _pageLinksBaseUrl + pageLink.Url : "";
+        // customer's own TAS (or the server's default) once here so every consumer below gets the
+        // full, real URL.
+        var pageUrl = pageLink != null
+            ? PageLinkBase(request.Widget?.HostOrigin, request.Widget?.HostInstance, _defaultPageLinkBase, _pageLinkHosts) + pageLink.Url
+            : "";
 
         // The widget renders "text" as raw HTML (innerHTML), so a plain <a> tag with
         // target="_top" becomes a real clickable link that breaks out of the chat
