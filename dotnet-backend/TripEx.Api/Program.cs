@@ -375,6 +375,34 @@ _ = Task.Run(async () =>
 });
 
 // ── Middleware ──
+
+// One line per request — what Microsoft.AspNetCore.Hosting.Diagnostics' "Request finished" line
+// gave (method, path, status, elapsed), without what it also gave: the full URL with its query
+// string. That logger is now WARN in log4net.config; see RequestLog for why. Registered first so
+// the status is the one the client finally got, including the bodies the middleware below writes.
+app.Use(async (context, next) =>
+{
+    var sw = System.Diagnostics.Stopwatch.StartNew();
+    var threw = false;
+    try
+    {
+        await next();
+    }
+    catch
+    {
+        threw = true;
+        throw;
+    }
+    finally
+    {
+        app.Logger.LogInformation("[HTTP] {Method} {Path} {Status} {ElapsedMs}ms",
+            context.Request.Method,
+            RequestLog.SafePath((context.Request.PathBase + context.Request.Path).Value),
+            threw ? 500 : context.Response.StatusCode,
+            sw.ElapsedMilliseconds);
+    }
+});
+
 // if (app.Environment.IsDevelopment())
 // {
      app.UseSwagger();
@@ -415,7 +443,7 @@ app.Use(async (context, next) =>
         // Deliberately not rethrown: the JSON body below is about to be written, and rethrowing
         // after a write aborts the connection. The exception is logged here with its stack so
         // nothing is lost. Non-/api paths are excluded by the filter above and still propagate.
-        app.Logger.LogError(ex, "[API-500] {Method} {Path} threw", context.Request.Method, context.Request.Path);
+        app.Logger.LogError(ex, "[API-500] {Method} {Path} threw", context.Request.Method, RequestLog.SafePath(context.Request.Path.Value));
         if (context.Response.HasStarted) throw;
         context.Response.Clear(); // drop any Content-Length a downstream set before throwing
         context.Response.StatusCode = 500;
@@ -427,8 +455,9 @@ app.Use(async (context, next) =>
     if (!isApi) return;
 
     var status = context.Response.StatusCode;
+    // SafePath: a webhook call with a wrong or rotated secret comes back 404 and lands here.
     app.Logger.LogWarning("[API-{Status}] {Method} {Path} returned {Status} with an empty body",
-        status, context.Request.Method, context.Request.Path, status);
+        status, context.Request.Method, RequestLog.SafePath(context.Request.Path.Value), status);
 
     var reason = status switch
     {

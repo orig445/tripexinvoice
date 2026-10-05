@@ -360,7 +360,7 @@ public class DevRequestTests
     {
         var h = new Harness
         {
-            DevRequestsSwitch = why == Ignored.SwitchedOff ? "false" : null,
+            DevRequestsSwitch = why == Ignored.SwitchedOff ? "false" : "true",
             ZohoEnabled = why != Ignored.ZohoNotConfigured,
         };
         if (why == Ignored.NotTheFirstMessage)
@@ -377,6 +377,25 @@ public class DevRequestTests
         Assert.Contains(h.Http.Calls, c => c.StartsWith("POST https://oci.example.test/"));
         Assert.DoesNotContain(h.Attempted(), m => m.Intent is ChatService.DevRequestIntent
             or ChatService.DevRequestSubmittedIntent or ChatService.DevRequestFollowUpIntent);
+    }
+
+    [Theory]
+    [InlineData(null, false)]      // a server that never mentions it: off
+    [InlineData("", false)]
+    [InlineData("false", false)]
+    [InlineData("1", false)]
+    [InlineData("on", false)]
+    [InlineData("true", true)]
+    [InlineData("TRUE", true)]
+    public async Task Off_unless_milo_dev_requests_is_true(string? setting, bool on)
+    {
+        // The opening menu was dropped (Roi, 2026-10-05): the code stays, inert unless switched on.
+        var h = new Harness { DevRequestsSwitch = setting, History = { User(Request) } };
+
+        var response = await h.Service.ProcessAsync(h.WidgetRequest(Request, ChatService.DevRequestMenuChoice), UserId, "203.0.113.7");
+
+        Assert.Equal(on, response.DevRequest);
+        Assert.Equal(on ? ChatService.DevRequestSubmittedReply : StubHttp.ModelAnswer, response.Text);
     }
 
     [Fact]
@@ -773,7 +792,9 @@ public class DevRequestTests
     /// <summary>A real ChatService with a scripted database, stubbed HTTP and an in-memory Zoho queue.</summary>
     private sealed class Harness
     {
-        public string? DevRequestsSwitch;
+        // On in these tests: the feature is off by default (the menu was dropped) and only a literal
+        // "true" turns it on — see Off_unless_milo_dev_requests_is_true.
+        public string? DevRequestsSwitch = "true";
         public bool ZohoEnabled = true;
         public bool RelayOn;
         public bool HumanInvolved;

@@ -8,9 +8,17 @@ using TripEx.Api.Services;
 
 namespace TripEx.Api.Controllers;
 
+/// <summary>
+/// The knowledge base Milo answers every customer from. Admin only (Roi, 2026-10-05): a plain
+/// [Authorize] let in anyone the API authenticates — every TAS widget session (ApiKeyAuthentication
+/// accepts any well-formed GUID) and anyone who self-registers at /api/auth/register — and all of
+/// them could list, upload, retag and delete what Milo tells customers. The role comes from the
+/// JWT /api/auth/login issues (user_roles), the same check as ChatController.ListTickets; the
+/// API-key principal carries no role, so it is refused.
+/// </summary>
 [ApiController]
 [Route("api/knowledge")]
-[Authorize]
+[Authorize(Roles = "admin")]
 public class KnowledgeController : ControllerBase
 {
     private readonly KnowledgeService _knowledgeService;

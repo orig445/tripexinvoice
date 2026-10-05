@@ -12,6 +12,12 @@ namespace TripEx.Api.Controllers;
 [Authorize]
 public class ChatController : ControllerBase
 {
+    // The identity GET /updates is checked against. Shared with the widget — the names are the
+    // contract, so they are spelled out once here.
+    public const string EmailHeader = "X-Milo-Email";
+    public const string CustomerIdHeader = "X-Milo-Customer-Id";
+    public const string InstanceHeader = "X-Milo-Instance";
+
     private readonly ChatService _chatService;
     private readonly ZohoAgentReplyService _agentReplies;
 
@@ -49,6 +55,11 @@ public class ChatController : ControllerBase
     ///
     /// Returns an empty list — never 404 — for a token that resolves to nothing. Whether a given
     /// conversation exists is not something an unrelated caller should be able to find out.
+    ///
+    /// The same empty answer goes to a caller the conversation's owner rule says is someone else.
+    /// Who is asking comes from the X-Milo-Email / X-Milo-Customer-Id / X-Milo-Instance headers (a
+    /// GET has no body to carry the identity a message carries); see
+    /// ChatService.ResolveOwnedSessionAsync for what happens when they are missing.
     /// </summary>
     [HttpGet("updates")]
     public async Task<ActionResult> Updates(
@@ -57,7 +68,11 @@ public class ChatController : ControllerBase
         var userId = GetUserId();
         if (userId == null) return Unauthorized();
 
-        var sessionId = await _chatService.ResolveOwnedSessionAsync(sessionToken, userId.Value);
+        var caller = SessionOwner.FromHeaders(
+            Request.Headers[EmailHeader].FirstOrDefault(),
+            Request.Headers[CustomerIdHeader].FirstOrDefault(),
+            Request.Headers[InstanceHeader].FirstOrDefault());
+        var sessionId = await _chatService.ResolveOwnedSessionAsync(sessionToken, userId.Value, caller);
         if (sessionId == Guid.Empty) return Ok(new { messages = Array.Empty<object>() });
 
         var messages = await _agentReplies.GetAgentMessagesSinceAsync(sessionId, since, HttpContext.RequestAborted);

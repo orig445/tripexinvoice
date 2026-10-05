@@ -23,6 +23,7 @@ public class ChatService
     private readonly bool _statusListShortcut;
     private readonly bool _modelAuthoredFirstClarify;
     private readonly bool _devRequests;
+    private readonly bool _updatesRequireOwner;
     private readonly double _temperature;
     // Where page links point when the customer's own TAS address is not known: Milo:PageLinksBaseUrl,
     // else the baseUrl in Data/page-links.json. See PageLinkBase.
@@ -525,6 +526,9 @@ public class ChatService
     // Zoho ticket of its own kind (see ZohoDeskOptions.DevRequestStatus) with a fixed receipt, and
     // there is nothing for the model to decide: a request for a change is not a question Milo can
     // answer, and a 20-second model turn that tried would only invent an answer to it.
+    //
+    // The menu was dropped (Roi, 2026-10-05). The code stays, but it does nothing unless
+    // Milo:DevRequests is explicitly "true" — see the constructor.
 
     /// <summary>The menuChoice value the widget sends with a development request.</summary>
     public const string DevRequestMenuChoice = "development_request";
@@ -564,7 +568,7 @@ public class ChatService
     /// <summary>
     /// Whether this turn belongs to a development request, decided before anything expensive runs.
     ///
-    /// available is what has to hold outside the conversation: Milo:DevRequests is on, Zoho is
+    /// available is what has to hold outside the conversation: Milo:DevRequests is "true", Zoho is
     /// configured and the source is mirrored. The receipt says the request reached the product team,
     /// and without a ticket that would not be true. (A handed-over conversation never gets this far:
     /// the hand-off check runs first.)
@@ -1262,12 +1266,20 @@ public class ChatService
         _modelAuthoredFirstClarify = !string.Equals(
             configuration["Milo:ModelAuthoredFirstClarify"], "false", StringComparison.OrdinalIgnoreCase);
 
-        // Off switch for development requests from the widget's opening menu (see
-        // ClassifyDevRequestTurn). Same rule: only a literal "false" turns it off. Off, a menu choice
-        // is ignored and the message is answered like any other — and so is anything said later in a
-        // conversation that already submitted one.
-        _devRequests = !string.Equals(
-            configuration["Milo:DevRequests"], "false", StringComparison.OrdinalIgnoreCase);
+        // ON switch for development requests from the widget's opening menu (see
+        // ClassifyDevRequestTurn). The opposite rule to the two above: the menu was dropped
+        // (Roi, 2026-10-05), so the feature is off unless Milo:DevRequests is a literal "true". Off, a
+        // menu choice is ignored and the message is answered like any other — and so is anything said
+        // later in a conversation that already submitted one.
+        _devRequests = string.Equals(
+            configuration["Milo:DevRequests"], "true", StringComparison.OrdinalIgnoreCase);
+
+        // Whether GET /api/chat/updates also refuses a caller that sends no X-Milo-* identity
+        // headers for a conversation that has an owner (see ResolveOwnedSessionAsync). Off unless a
+        // literal "true": the live widget does not send the headers yet, and switching this on before
+        // it does would stop every agent reply from reaching the customer.
+        _updatesRequireOwner = string.Equals(
+            configuration["Milo:UpdatesRequireOwner"], "true", StringComparison.OrdinalIgnoreCase);
 
         // Rollback override for the conversational temperature (code default 0, see
         // DefaultConversationalTemperature) — same config-edit-plus-restart rule as the two above.
@@ -1568,8 +1580,14 @@ public class ChatService
     ///
     /// Note what this deliberately does NOT do: it never mints a session row. A caller polling
     /// for updates on a conversation that does not exist should learn nothing and create nothing.
+    ///
+    /// caller is who the widget says is asking (the X-Milo-* headers, see ChatController.Updates),
+    /// held to the same owner rule as a message (SessionOwner.BelongsToSomeoneElseThan). A caller
+    /// that sends none keeps the old answer — the live widget sends none yet — unless
+    /// Milo:UpdatesRequireOwner is "true"; then it is an empty identity, which never matches a
+    /// conversation that has an owner. A conversation with no owner answers whoever may resume it.
     /// </summary>
-    public async Task<Guid> ResolveOwnedSessionAsync(string? sessionToken, Guid userId)
+    public async Task<Guid> ResolveOwnedSessionAsync(string? sessionToken, Guid userId, SessionOwner? caller = null)
     {
         var sessionId = ResolveSessionToken(sessionToken, _sessionTokenSalt);
         if (sessionId == Guid.Empty) return Guid.Empty;
@@ -1577,7 +1595,21 @@ public class ChatService
         var resume = await CanResumeSessionAsync(sessionId, userId);
 
         // NeedsRow means no row exists — there is no conversation here to read, whoever asked.
-        return resume is { CanResume: true, NeedsRow: false } ? sessionId : Guid.Empty;
+        if (resume is not { CanResume: true, NeedsRow: false }) return Guid.Empty;
+
+        var current = caller ?? SessionOwner.None;
+        if (current.IsEmpty && !_updatesRequireOwner) return sessionId;
+
+        // Fail closed, as for a message: an owner that could not be read may be someone else's.
+        var stored = await MiloSessionOwners.ReadAsync(_db, sessionId, _logger);
+        if (!stored.Known) return Guid.Empty;
+        if (stored.Owner != null && stored.Owner.BelongsToSomeoneElseThan(current))
+        {
+            _logger.LogInformation(
+                "[SESSION-OWNER] updates for session={SessionId} asked by another user — no messages returned", sessionId);
+            return Guid.Empty;
+        }
+        return sessionId;
     }
 
     private async Task<(bool CanResume, bool NeedsRow)> CanResumeSessionAsync(Guid sessionId, Guid userId)
@@ -1601,12 +1633,47 @@ public class ChatService
         }
         catch (Exception ex)
         {
-            // DB unavailable: honour the token. Dropping a user's history because we could not
-            // verify ownership would be a worse failure than the one this guards against.
-            // NeedsRow stays false — we already know a write would fail, so there is no point
-            // making the caller attempt one just to catch the same exception again.
-            Console.WriteLine($"⚠️ [CHAT] Session ownership not verified (DB unavailable): {ex.Message}");
-            return (true, NeedsRow: false);
+            // DB unavailable: fail closed (Roi, 2026-10-05). This used to honour the token, on the
+            // reasoning that losing a user's history was worse than the risk — but a conversation
+            // nobody could check may be someone else's, and while the database is down its history
+            // cannot be read anyway. The caller starts a new conversation instead.
+            Console.WriteLine($"⚠️ [CHAT] Session ownership not verified (DB unavailable) — not resuming: {ex.Message}");
+            return (false, NeedsRow: false);
+        }
+    }
+
+    /// <summary>
+    /// Why this request may NOT continue the conversation, or null when it may — plus the owner
+    /// recorded for it, when there is one and it is this request's. The owner rule itself is
+    /// SessionOwner.BelongsToSomeoneElseThan; this adds the two cases it leaves to the caller.
+    ///
+    /// An owner that could not be read refuses (fail closed). A conversation with no owner carries
+    /// on for a request that says nothing about who it is, as it always did — but an identity that
+    /// arrives later does not adopt it if it already has messages, because nothing says whose they
+    /// are. One with none yet (the welcome turn the widget can send before TAS's context arrives)
+    /// has nothing in it to read, and becomes this user's.
+    /// </summary>
+    private async Task<(string? Refusal, SessionOwner? Stored)> CheckSessionOwnerAsync(Guid sessionId, SessionOwner current)
+    {
+        var stored = await MiloSessionOwners.ReadAsync(_db, sessionId, _logger);
+        if (!stored.Known) return ("its owner could not be read", null);
+
+        if (stored.Owner != null)
+            return stored.Owner.BelongsToSomeoneElseThan(current)
+                ? ("it belongs to another user", null)
+                : (null, stored.Owner);
+
+        if (current.IsEmpty) return (null, null);
+
+        try
+        {
+            var hasMessages = await _db.ChatMessages.AnyAsync(m => m.SessionId == sessionId);
+            return hasMessages ? ("it has no owner and already has messages", null) : (null, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("[SESSION-OWNER] session={SessionId} messages not checked: {Message}", sessionId, ex.Message);
+            return ("its messages could not be checked", null);
         }
     }
 
@@ -1633,20 +1700,21 @@ public class ChatService
         // Every widget user is the same system user here, and a browser keeps its conversation id
         // across TAS sign-ins — so without this a second TAS user on the same computer resumed the
         // first one's conversation: its history, its ticket, its agent. A conversation with a
-        // recorded owner is resumed only by a request that does not contradict it; anyone else
-        // starts a new one, the same as New chat. See SessionOwner for what counts.
+        // recorded owner is resumed only by a request from the same user; anyone else — including a
+        // request that says nothing about who it is — starts a new one, the same as New chat. See
+        // SessionOwner for what counts and CheckSessionOwnerAsync for the rest.
         var owner = SessionOwner.From(request.Widget);
         SessionOwner? storedOwner = null;
-        if (resume.CanResume && !owner.IsEmpty)
+        if (resume.CanResume)
         {
-            storedOwner = await MiloSessionOwners.ReadAsync(_db, resumeId, _logger);
-            if (storedOwner != null && storedOwner.BelongsToSomeoneElseThan(owner))
+            var (refusal, stored) = await CheckSessionOwnerAsync(resumeId, owner);
+            if (refusal != null)
             {
                 _logger.LogInformation(
-                    "[SESSION-OWNER] session={SessionId} belongs to another user — starting a new conversation", resumeId);
+                    "[SESSION-OWNER] session={SessionId} not resumed ({Reason}) — starting a new conversation", resumeId, refusal);
                 resume = (false, false);
-                storedOwner = null;
             }
+            storedOwner = stored;
         }
 
         if (resume.CanResume)
@@ -1727,10 +1795,16 @@ public class ChatService
                 Console.WriteLine($"⚠️ [CHAT] Session not persisted (DB unavailable): {ex.Message}");
             }
         }
-        // A conversation nobody owns yet — a new one, or one from before owners were recorded —
-        // becomes this user's. One owned already keeps its owner.
-        if (!owner.IsEmpty && storedOwner == null)
-            await MiloSessionOwners.TryClaimAsync(_db, sessionId, owner, _logger);
+        // A conversation nobody owns yet — a new one, or an empty one CheckSessionOwnerAsync let
+        // this request adopt — becomes this user's. One owned already keeps its owner, and only
+        // gains the fields it was missing: never a value it already has (see TryFillInAsync).
+        if (!owner.IsEmpty)
+        {
+            if (storedOwner == null)
+                await MiloSessionOwners.TryClaimAsync(_db, sessionId, owner, _logger);
+            else
+                await MiloSessionOwners.TryFillInAsync(_db, sessionId, storedOwner, owner, _logger);
+        }
 
         // Single grep-able line to watch for the caller-side session-continuity fix landing —
         // continued=False on every request for a given source means that caller is still not
@@ -2666,10 +2740,14 @@ public class ChatService
         // load) — it must be INSIDE the try, not before it, or RAG failures crash the
         // whole chat request with a 500 instead of just returning no knowledge context.
         DbConnection? connection = null;
+        KnowledgeCompanies? companies = null;
         try
         {
             connection = _db.Database.GetDbConnection();
             await connection.OpenAsync();
+
+            // First, so that if the companies cannot be read no snippet goes out without them.
+            companies = await LoadKnowledgeCompanies(connection);
 
             // Full query search
             await RunKnowledgeQuery(connection, queryText, 5, audience, chunks);
@@ -2691,15 +2769,54 @@ public class ChatService
                 await connection.CloseAsync();
         }
 
-        if (chunks.Count == 0) return "";
+        if (chunks.Count == 0 || companies == null) return "";
 
         var topChunks = chunks.Take(5);
         return "\n\n## Knowledge Base Context (use this to answer the user):\n" +
                "Each snippet is tagged with its domain/type and an optional hint — prefer snippets whose tags match the user's question.\n" +
-               string.Join("\n\n", topChunks.Select(FormatChunk));
+               "Personal details in the snippets were replaced with [email], [phone], [number] and [company]; never present those placeholders as real values.\n" +
+               string.Join("\n\n", topChunks.Select(c =>
+                   FormatKnowledgeChunk(c.FileName, c.Content, c.Domain, c.DocType, c.Description, _supportContact, companies)));
     }
 
     private readonly record struct KbChunk(string FileName, string Content, string? Domain, string? DocType, string? Description);
+
+    // Every company the knowledge base's support conversations are about (KnowledgePrivacy.Companies),
+    // so that a snippet masks all of them and not only the one its file is named after. Read from
+    // the knowledge base itself and kept for ten minutes, so a transcript uploaded later is covered
+    // soon after. Fixed command text, like KnowledgeSearchSql.
+    private sealed record KnowledgeCompaniesRead(KnowledgeCompanies Companies, DateTime AtUtc);
+    private static KnowledgeCompaniesRead? _knowledgeCompanies;
+    private static readonly TimeSpan KnowledgeCompaniesLifetime = TimeSpan.FromMinutes(10);
+
+    private const string KnowledgeCompaniesSql =
+        "SELECT kd.file_name, kc.content FROM dbo.knowledge_documents kd " +
+        "LEFT JOIN dbo.knowledge_chunks kc ON kc.document_id = kd.id " +
+        "AND (kc.content LIKE N'%Tags%' OR kc.content LIKE N'%תיוגים%') " +
+        "WHERE kd.file_name LIKE N'Glassix[_]%'";
+
+    private static async Task<KnowledgeCompanies> LoadKnowledgeCompanies(DbConnection connection)
+    {
+        var read = Volatile.Read(ref _knowledgeCompanies);
+        if (read != null && DateTime.UtcNow - read.AtUtc < KnowledgeCompaniesLifetime) return read.Companies;
+
+        var fileNames = new HashSet<string>(StringComparer.Ordinal);
+        var tagText = new List<string>();
+        using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = KnowledgeCompaniesSql;
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                fileNames.Add(reader.GetString(0));
+                if (!reader.IsDBNull(1)) tagText.Add(reader.GetString(1));
+            }
+        }
+
+        var companies = KnowledgePrivacy.Companies(fileNames, tagText);
+        Volatile.Write(ref _knowledgeCompanies, new KnowledgeCompaniesRead(companies, DateTime.UtcNow));
+        return companies;
+    }
 
     // Fixed, fully-parameterized query. It is a compile-time constant, so no
     // user-controlled string can ever reach the command text — the values are
@@ -2743,14 +2860,27 @@ public class ChatService
         await reader.CloseAsync();
     }
 
-    private static string FormatChunk(KbChunk c)
+    /// <summary>
+    /// One snippet as it goes into the prompt. Every part of it — the source, the tags, the hint and
+    /// the text — goes through KnowledgePrivacy first: most snippets are other customers' support
+    /// conversations, and whatever is here reaches every customer who asks something similar.
+    /// keepEmail is Support:Contact, the one address that stays readable besides tripex.io ones;
+    /// companies is every company the knowledge base knows of, all masked in every snippet.
+    /// Public and static so the tests check what the prompt really gets.
+    /// </summary>
+    public static string FormatKnowledgeChunk(string fileName, string content, string? domain, string? docType,
+        string? description, string? keepEmail, KnowledgeCompanies? companies = null)
     {
-        var tags = new List<string> { c.FileName };
-        if (!string.IsNullOrWhiteSpace(c.Domain)) tags.Add($"domain: {c.Domain}");
-        if (!string.IsNullOrWhiteSpace(c.DocType)) tags.Add($"type: {c.DocType}");
+        var (source, company) = KnowledgePrivacy.DescribeSource(fileName, keepEmail, companies);
+        string Clean(string? value) => KnowledgePrivacy.Mask(value, company, keepEmail, companies);
+
+        var tags = new List<string> { source };
+        if (!string.IsNullOrWhiteSpace(domain)) tags.Add($"domain: {Clean(domain)}");
+        if (!string.IsNullOrWhiteSpace(docType)) tags.Add($"type: {Clean(docType)}");
         var header = $"[{string.Join(" | ", tags)}]";
-        if (!string.IsNullOrWhiteSpace(c.Description)) header += $" (hint: {c.Description})";
-        return $"{header}: {c.Content}";
+        if (!string.IsNullOrWhiteSpace(description)) header += $" (hint: {Clean(description)})";
+        // The text also from where the chunk before it cut an address (KnowledgePrivacy.MaskContent).
+        return $"{header}: {KnowledgePrivacy.MaskContent(content, company, keepEmail, companies)}";
     }
 
     // Public + static for the same reason ResolvePageOverride is: the tests exercise the real

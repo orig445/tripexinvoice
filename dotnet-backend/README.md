@@ -61,7 +61,7 @@ CREATE INDEX idx_user_credentials_user_id ON user_credentials(user_id);
 | `POST` | `/api/auth/login` | None | Login, returns JWT |
 | `POST` | `/api/chat` | JWT | Chat + Image scanning |
 | `POST` | `/api/invoice/analyze` | JWT | Direct invoice OCR |
-| `POST` | `/api/knowledge/process` | JWT | Process knowledge document |
+| `POST` | `/api/knowledge/process` | JWT, admin role | Process knowledge document (every `/api/knowledge/*` endpoint is admin only) |
 | `GET` | `/api/health` | None | Health check |
 
 ## Authentication
