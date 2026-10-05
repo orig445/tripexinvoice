@@ -149,8 +149,8 @@ public class ZohoDeskOptions
     ///
     /// Only for a contact with the customer's own email, never the fallback contact, and never
     /// over an account the contact already has. It needs the token to be allowed to search and
-    /// create accounts and to update contacts (Desk.search.READ, Desk.contacts.CREATE,
-    /// Desk.contacts.UPDATE); without those the ticket is created exactly as before and the log
+    /// create accounts and to update contacts (Desk.search.READ together with Desk.contacts.READ
+    /// for the search, Desk.contacts.CREATE, Desk.contacts.UPDATE); without those the ticket is created exactly as before and the log
     /// says which call was refused. False turns it off.
     /// </summary>
     public bool LinkContactAccount { get; set; } = true;
@@ -1115,7 +1115,7 @@ public class ZohoDeskService
             $"api/v1/accounts/search?accountName={Uri.EscapeDataString(term)}&limit={AccountSearchLimit}", ct);
         if (search.Outcome != ZohoCallOutcome.Ok)
         {
-            if (!PausedForPermission(search, "Desk.search.READ", accountName))
+            if (!PausedForPermission(search, "Desk.search.READ and Desk.contacts.READ", accountName))
                 _logger.LogWarning("[ZOHO-ACCOUNT] could not search for account '{Account}'", accountName);
             return null;
         }
