@@ -1104,8 +1104,15 @@ public class ZohoDeskService
     {
         if (_accountIds.TryGetValue(accountName, out var cached)) return cached;
 
+        // Desk refuses to search for fewer than three characters (422 for "QA", 2026-10-05), so a
+        // shorter name is searched as a prefix, "QA*", and FindAccountId still takes only the exact
+        // name. Such a name is linked to an account that exists and never created: whether Desk
+        // reads the * as a wildcard cannot be checked from here, and a search that did not really
+        // look would create another "QA" after every restart.
+        var shortName = IsTooShortToSearch(accountName);
+        var term = shortName ? accountName.Trim() + "*" : accountName;
         var search = await GetAsync(
-            $"api/v1/accounts/search?accountName={Uri.EscapeDataString(accountName)}&limit=10", ct);
+            $"api/v1/accounts/search?accountName={Uri.EscapeDataString(term)}&limit={AccountSearchLimit}", ct);
         if (search.Outcome != ZohoCallOutcome.Ok)
         {
             if (!PausedForPermission(search, "Desk.search.READ", accountName))
@@ -1114,6 +1121,22 @@ public class ZohoDeskService
         }
 
         var found = FindAccountId(search.Body, accountName);
+        if (found == null && shortName)
+        {
+            _logger.LogWarning(
+                "[ZOHO-ACCOUNT] no account named '{Account}' found in Zoho. A name under {Min} characters is not " +
+                "created automatically: create the account '{Account}' in Zoho once, and later tickets are linked to it.",
+                accountName, MinAccountSearchLength, accountName);
+            return null;
+        }
+        if (found == null && CountAccounts(search.Body) >= AccountSearchLimit)
+        {
+            // A full page with no exact match may only mean the exact one is on the next page.
+            _logger.LogWarning(
+                "[ZOHO-ACCOUNT] the search for '{Account}' filled a page without an exact match — not creating one, " +
+                "since it may already exist further down", accountName);
+            return null;
+        }
         if (found == null)
         {
             var created = await SendAsync(HttpMethod.Post, "api/v1/accounts",
@@ -1136,6 +1159,31 @@ public class ZohoDeskService
 
         _accountIds[accountName] = found;
         return found;
+    }
+
+    /// <summary>The shortest value Desk's accounts search accepts (its 422 says "minimum length of '3'").</summary>
+    public const int MinAccountSearchLength = 3;
+    public const int AccountSearchLimit = 10;
+
+    public static bool IsTooShortToSearch(string accountName) => accountName.Trim().Length < MinAccountSearchLength;
+
+    /// <summary>How many accounts a search response holds. 0 for an empty or unreadable body. Never throws.</summary>
+    public static int CountAccounts(string? searchJson)
+    {
+        if (string.IsNullOrWhiteSpace(searchJson)) return 0;
+        try
+        {
+            using var doc = JsonDocument.Parse(searchJson);
+            return doc.RootElement.ValueKind == JsonValueKind.Object
+                   && doc.RootElement.TryGetProperty("data", out var data)
+                   && data.ValueKind == JsonValueKind.Array
+                ? data.GetArrayLength()
+                : 0;
+        }
+        catch (JsonException)
+        {
+            return 0;
+        }
     }
 
     private static string? ReadAccountIdFromBody(string? json)

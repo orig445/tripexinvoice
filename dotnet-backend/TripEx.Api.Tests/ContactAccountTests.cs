@@ -155,18 +155,27 @@ public class ContactAccountTests
     {
         public readonly List<string> Calls = new();
         public HttpStatusCode Search = HttpStatusCode.OK;
+        public string SearchBody = "{\"data\":[{\"id\":\"77\",\"accountName\":\"QA\"}]}";
         public HttpStatusCode ContactPatch = HttpStatusCode.OK;
+        /// <summary>The accountName each search asked for, unescaped.</summary>
+        public readonly List<string> SearchedFor = new();
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             var path = request.RequestUri!.AbsolutePath;
             Calls.Add($"{request.Method} {path}");
+            if (path == "/api/v1/accounts/search")
+            {
+                var query = Uri.UnescapeDataString(request.RequestUri.Query.TrimStart('?'));
+                SearchedFor.Add(query.Split('&').First(p => p.StartsWith("accountName=")).Substring("accountName=".Length));
+            }
             var (status, body) = path switch
             {
                 "/oauth/v2/token" => (HttpStatusCode.OK, "{\"access_token\":\"test-token\",\"expires_in\":3600}"),
                 "/api/v1/accounts/search" => (Search, Search == HttpStatusCode.OK
-                    ? "{\"data\":[{\"id\":\"77\",\"accountName\":\"QA\"}]}"
+                    ? SearchBody
                     : "{\"errorCode\":\"SCOPE_MISMATCH\"}"),
+                "/api/v1/accounts" => (HttpStatusCode.OK, "{\"id\":\"88\",\"accountName\":\"new\"}"),
                 _ when path.StartsWith("/api/v1/contacts/") => (ContactPatch, "{}"),
                 _ => (HttpStatusCode.OK, "{}"),
             };
@@ -259,4 +268,82 @@ public class ContactAccountTests
         Assert.Contains("PATCH /api/v1/contacts/c2", stub.Calls);
         Assert.Contains("PATCH /api/v1/tickets/t2", stub.Calls);
     }
+
+    // ── Names Desk's search will not take ──
+    // Desk answers 422 "less than the specified minimum length of '3'" to accountName=QA (seen in
+    // the log on 2026-10-05, the first day TAS sent the instance), so QA_3_70 never got its company.
+
+    [Fact]
+    public async Task A_name_under_three_characters_is_searched_as_a_prefix_and_linked_to_the_exact_account()
+    {
+        var stub = new StubDesk();
+        var desk = Desk(stub);
+
+        Assert.True(await desk.LinkContactToAccountAsync("t1", "c1", "QA"));
+
+        Assert.Equal(new[] { "QA*" }, stub.SearchedFor);
+        Assert.Contains("PATCH /api/v1/contacts/c1", stub.Calls);
+    }
+
+    [Fact]
+    public async Task A_name_of_three_characters_or_more_is_searched_as_it_is()
+    {
+        var stub = new StubDesk { SearchBody = "{\"data\":[{\"id\":\"5\",\"accountName\":\"Avt\"}]}" };
+        var desk = Desk(stub);
+
+        Assert.True(await desk.LinkContactToAccountAsync("t1", "c1", "Avt"));
+
+        Assert.Equal(new[] { "Avt" }, stub.SearchedFor);
+    }
+
+    [Fact]
+    public async Task A_short_name_with_no_exact_account_is_never_created()
+    {
+        // The prefix search found only longer names — or Desk took the * literally and found nothing.
+        // Either way creating "QA" could make a second one, so nothing is created.
+        foreach (var body in new[] { "{\"data\":[{\"id\":\"5\",\"accountName\":\"QA Team\"}]}", "" })
+        {
+            var stub = new StubDesk { SearchBody = body };
+            var desk = Desk(stub);
+
+            Assert.False(await desk.LinkContactToAccountAsync("t1", "c1", "QA"));
+
+            Assert.DoesNotContain("POST /api/v1/accounts", stub.Calls);
+            Assert.DoesNotContain(stub.Calls, c => c.StartsWith("PATCH "));
+        }
+    }
+
+    [Fact]
+    public async Task A_full_page_without_the_exact_name_creates_nothing()
+    {
+        // Ten "Avtech…" accounts: the exact "Avt" may be on the next page.
+        var page = string.Join(",", Enumerable.Range(1, ZohoDeskService.AccountSearchLimit)
+            .Select(i => $"{{\"id\":\"{i}\",\"accountName\":\"Avtech {i}\"}}"));
+        var stub = new StubDesk { SearchBody = $"{{\"data\":[{page}]}}" };
+        var desk = Desk(stub);
+
+        Assert.False(await desk.LinkContactToAccountAsync("t1", "c1", "Avt"));
+
+        Assert.DoesNotContain("POST /api/v1/accounts", stub.Calls);
+    }
+
+    [Fact]
+    public async Task A_name_not_found_on_a_partial_page_is_created_and_linked()
+    {
+        var stub = new StubDesk { SearchBody = "{\"data\":[{\"id\":\"5\",\"accountName\":\"Avtech\"}]}" };
+        var desk = Desk(stub);
+
+        Assert.True(await desk.LinkContactToAccountAsync("t1", "c1", "Avt"));
+
+        Assert.Contains("POST /api/v1/accounts", stub.Calls);
+        Assert.Contains("PATCH /api/v1/contacts/c1", stub.Calls);
+    }
+
+    [Theory]
+    [InlineData("QA", true)]
+    [InlineData(" Q ", true)]
+    [InlineData("Avt", false)]
+    [InlineData("Bezeq", false)]
+    public void Under_three_characters_is_too_short_for_Desks_search(string name, bool tooShort)
+        => Assert.Equal(tooShort, ZohoDeskService.IsTooShortToSearch(name));
 }
