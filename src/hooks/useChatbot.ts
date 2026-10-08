@@ -142,8 +142,12 @@ export function useChatbot(options?: { audience?: KnowledgeAudience; source?: st
         const userLocalTime = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
         const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+        // The internal assistant never scans invoices: attached pictures are
+        // always context for the employee's question.
+        const attachmentIntent: AttachmentIntent | undefined =
+          audience === "internal" ? "ask" : options?.attachmentIntent;
         const { data, error } = await sendChatMessage({
-          text, images, attachmentIntent: options?.attachmentIntent, source,
+          text, images, attachmentIntent, source,
           sessionToken: sessionIdRef.current, userDate: userLocalDate, userTime: userLocalTime, userTimezone: timezone, audience,
         });
 
@@ -177,12 +181,14 @@ export function useChatbot(options?: { audience?: KnowledgeAudience; source?: st
         setIsLoading(false);
       }
     },
-    [user, sessionId]
+    [user, sessionId, audience, source]
   );
 
   const sendImage = useCallback(
     async (base64: string) => {
       if (!user) return;
+      // Internal chat: a photo is part of the prompt, not an invoice to OCR.
+      if (audience === "internal") return sendMessage("", { images: [base64], attachmentIntent: "ask" });
       setIsLoading(true);
 
       const tempMsg: ChatMessage = {
@@ -227,7 +233,7 @@ export function useChatbot(options?: { audience?: KnowledgeAudience; source?: st
         setIsLoading(false);
       }
     },
-    [user, sessionId]
+    [user, sessionId, audience, source, sendMessage]
   );
 
   const loadSessions = useCallback(async () => {
