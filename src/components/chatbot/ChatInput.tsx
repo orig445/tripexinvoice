@@ -183,9 +183,11 @@ export function ChatInput({ onSend, onImageCapture, isLoading, attachOnly = fals
 
   /** Pick the files out of the event, capped and with the input reset so the same file can be picked twice. */
   const takeFiles = (e: React.ChangeEvent<HTMLInputElement>, room: number): File[] => {
-    const filesList = e.target.files;
+    // Copy BEFORE clearing the input: FileList is live, and resetting the value empties it —
+    // which silently dropped every picked file.
+    const filesList = Array.from(e.target.files || []);
     e.target.value = "";
-    if (!filesList || filesList.length === 0) return [];
+    if (filesList.length === 0) return [];
     if (filesList.length > room) {
       toast({
         title: `Maximum ${MAX_FILES} files`,
@@ -194,7 +196,7 @@ export function ChatInput({ onSend, onImageCapture, isLoading, attachOnly = fals
           : "Send the ones you've attached first.",
       });
     }
-    return Array.from(filesList).slice(0, room);
+    return filesList.slice(0, room);
   };
 
   /** Camera: scan each receipt straight away, one request per file — unchanged behaviour. */
