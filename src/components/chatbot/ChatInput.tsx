@@ -24,9 +24,14 @@ interface ChatInputProps {
   /** The camera button's path: scan this receipt, no questions asked. */
   onImageCapture: (base64: string) => void;
   isLoading: boolean;
+  /**
+   * Internal chat: pictures are always part of the prompt. The camera attaches instead of
+   * scanning, and the hint no longer mentions scanning.
+   */
+  attachOnly?: boolean;
 }
 
-export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps) {
+export function ChatInput({ onSend, onImageCapture, isLoading, attachOnly = false }: ChatInputProps) {
   const [value, setValue] = useState("");
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [isRecording, setIsRecording] = useState(false);
@@ -125,7 +130,9 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
     if ((!value.trim() && attachments.length === 0) || isLoading) return;
     onSend(
       value.trim(),
-      attachments.length > 0 ? { images: attachments.map((a) => a.base64) } : undefined,
+      attachments.length > 0
+        ? { images: attachments.map((a) => a.base64), ...(attachOnly ? { attachmentIntent: "ask" as const } : {}) }
+        : undefined,
     );
     setValue("");
     setAttachments([]);
@@ -176,9 +183,11 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
 
   /** Pick the files out of the event, capped and with the input reset so the same file can be picked twice. */
   const takeFiles = (e: React.ChangeEvent<HTMLInputElement>, room: number): File[] => {
-    const filesList = e.target.files;
+    // Copy BEFORE clearing the input: FileList is live, and resetting the value empties it —
+    // which silently dropped every picked file.
+    const filesList = Array.from(e.target.files || []);
     e.target.value = "";
-    if (!filesList || filesList.length === 0) return [];
+    if (filesList.length === 0) return [];
     if (filesList.length > room) {
       toast({
         title: `Maximum ${MAX_FILES} files`,
@@ -187,7 +196,7 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
           : "Send the ones you've attached first.",
       });
     }
-    return Array.from(filesList).slice(0, room);
+    return filesList.slice(0, room);
   };
 
   /** Camera: scan each receipt straight away, one request per file — unchanged behaviour. */
@@ -209,7 +218,40 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
    * scan or something to look at while answering.
    */
   const handleAttachFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    for (const file of takeFiles(e, MAX_FILES - attachments.length)) {
+    await attachFiles(takeFiles(e, MAX_FILES - attachments.length));
+  };
+
+  /** Pasted or dropped files — screenshots pasted with Cmd/Ctrl+V are the common case. */
+  const attachDropped = async (list: FileList | File[] | null | undefined) => {
+    const files = Array.from(list || []).filter(
+      (f) => f.type.startsWith("image/") || f.type === "application/pdf",
+    );
+    if (files.length === 0) return false;
+    const room = MAX_FILES - attachments.length;
+    if (files.length > room) toast({ title: `Maximum ${MAX_FILES} files`, description: "Only the first ones will be used." });
+    await attachFiles(files.slice(0, Math.max(0, room)));
+    return true;
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const files = Array.from(e.clipboardData?.items || [])
+      .filter((i) => i.kind === "file")
+      .map((i) => i.getAsFile())
+      .filter((f): f is File => !!f);
+    if (files.length === 0) return;
+    e.preventDefault();
+    await attachDropped(files);
+  };
+
+  const [isDragging, setIsDragging] = useState(false);
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    await attachDropped(e.dataTransfer?.files);
+  };
+
+  const attachFiles = async (files: File[]) => {
+    for (const file of files) {
       try {
         const base64 = await toBase64(file);
         if (!base64) continue;
@@ -226,11 +268,19 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
     inputRef.current?.focus();
   };
 
+  const handleCameraChange = (e: React.ChangeEvent<HTMLInputElement>) =>
+    attachOnly ? handleAttachFiles(e) : handleScanFiles(e);
+
   const removeAttachment = (id: string) =>
     setAttachments((prev) => prev.filter((a) => a.id !== id));
 
   return (
-    <div className="border-t bg-background">
+    <div
+      className={`border-t bg-background ${isDragging ? "ring-2 ring-primary ring-inset" : ""}`}
+      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+      onDragLeave={() => setIsDragging(false)}
+      onDrop={handleDrop}
+    >
       {/* Files waiting to go with the message being typed. */}
       {attachments.length > 0 && (
         <div className="flex flex-wrap gap-1.5 px-3 pt-3">
@@ -239,7 +289,11 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
               key={a.id}
               className="inline-flex max-w-[200px] items-center gap-1.5 rounded-lg border bg-muted/60 px-2 py-1 text-xs"
             >
-              <FileText className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+              {a.isPdf ? (
+                <FileText className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+              ) : (
+                <img src={`data:image/jpeg;base64,${a.base64}`} alt="" className="h-8 w-8 flex-shrink-0 rounded object-cover" />
+              )}
               <span className="truncate" title={a.name}>{a.name || (a.isPdf ? "document.pdf" : "image")}</span>
               <button
                 type="button"
@@ -253,7 +307,9 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
             </span>
           ))}
           <span className="self-center text-xs text-muted-foreground">
-            Ask a question about {attachments.length === 1 ? "it" : "them"}, or send as is to scan.
+            {attachOnly
+              ? `Ask a question about ${attachments.length === 1 ? "it" : "them"}.`
+              : `Ask a question about ${attachments.length === 1 ? "it" : "them"}, or send as is to scan.`}
           </span>
         </div>
       )}
@@ -266,7 +322,7 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
         className="h-9 w-9 flex-shrink-0 text-muted-foreground hover:text-primary"
         onClick={() => cameraRef.current?.click()}
         disabled={isLoading}
-        title="Scan an invoice"
+        title={attachOnly ? "Take a photo to attach" : "Scan an invoice"}
       >
         <Camera className="h-4 w-4" />
       </Button>
@@ -277,7 +333,7 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
         capture="environment"
         multiple
         className="hidden"
-        onChange={handleScanFiles}
+        onChange={handleCameraChange}
       />
 
       <Button
@@ -323,6 +379,7 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
         placeholder={
           isRecording
             ? "Listening..."

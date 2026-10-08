@@ -273,6 +273,8 @@ serve(async (req) => {
     // Which knowledge base this request may read. Defaults to the customer-facing
     // ("external") base so the public widget can NEVER retrieve internal docs.
     const kbAudience = audience === "internal" ? "internal" : "external";
+    // The internal assistant never runs OCR: every picture is context for the question.
+    if (kbAudience === "internal") requestedIntent = "ask";
 
     // ── IP-based Geolocation ──
     let userLocation = "";
