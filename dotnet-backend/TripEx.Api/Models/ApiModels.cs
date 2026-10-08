@@ -105,6 +105,41 @@ public class ChatRequest
     public string? MenuChoice { get; set; }
 
     /// <summary>
+    /// What the user attached to THIS turn — each entry a base64 image or PDF payload, with or
+    /// without a "data:...;base64," prefix. Up to <see cref="MaxAttachments"/> are kept.
+    ///
+    /// A field of its own, rather than the old shape (Type="image" with the payload in Text), for
+    /// two reasons. An attachment used to arrive INSTEAD of the question, so a client had no way
+    /// to send a picture and words together — and sending both is the entire point of
+    /// AttachmentIntents.Ask. And Text is capped at <see cref="MaxTextLength"/> and silently
+    /// truncated above it, which quietly destroyed every real image sent to this endpoint: the
+    /// smallest usable receipt runs to tens of thousands of base64 characters, so what reached
+    /// the scanner was the first 8,000 of them followed by a truncation marker.
+    ///
+    /// NormalizeWidgetShape folds the old shape into this list before the truncation runs, so
+    /// every existing client keeps the behaviour it has today without changing a line.
+    /// </summary>
+    public List<string>? Images { get; set; }
+
+    /// <summary>
+    /// What the attachments are for — "scan", "ask" or "auto". See
+    /// <see cref="AttachmentIntents"/>; absent or unrecognised means "auto", and
+    /// <see cref="AttachmentRouting"/> decides.
+    /// </summary>
+    public string? AttachmentIntent { get; set; }
+
+    /// <summary>
+    /// How many attachments one turn may carry. The client already offers at most five files at a
+    /// time; the cap is here so a different caller cannot put an unbounded number of megabyte
+    /// payloads through the model, the database and the ticket transcript.
+    /// </summary>
+    public const int MaxAttachments = 5;
+
+    /// <summary>Did this turn arrive with anything attached?</summary>
+    [JsonIgnore]
+    public bool HasAttachments => Images is { Count: > 0 };
+
+    /// <summary>
     /// True when this request arrived in the TAS widget's own flat shape above — set by
     /// NormalizeWidgetShape(), never deserialized from the body.
     ///
@@ -141,6 +176,36 @@ public class ChatRequest
 
     public void NormalizeWidgetShape()
     {
+        // ── The old single-attachment shape: Type="image", payload in Text ──
+        // Moved into Images BEFORE the truncation below, which is what used to eat it (see
+        // Images for why that mattered), and marked "scan" because that is the only thing
+        // Type="image" has ever meant — so the TAS widget and every other caller we do not
+        // control keep behaving exactly as they do today. A caller that sends Images itself is
+        // speaking the new shape and is left alone.
+        if (string.Equals(Type, "image", StringComparison.OrdinalIgnoreCase)
+            && !HasAttachments
+            && !string.IsNullOrWhiteSpace(Text))
+        {
+            Images = new List<string> { Text };
+            Text = "";
+            if (string.IsNullOrWhiteSpace(AttachmentIntent))
+                AttachmentIntent = AttachmentIntents.Scan;
+        }
+
+        // Blank entries dropped and the count capped — a caller that sends six files gets the
+        // first five answered rather than an error about the sixth.
+        if (Images != null)
+        {
+            Images = Images
+                .Where(i => !string.IsNullOrWhiteSpace(i))
+                .Take(MaxAttachments)
+                .ToList();
+        }
+
+        // Type is left as the caller sent it on purpose: nothing downstream branches on it any
+        // more (the attachment route does — see AttachmentRouting), and rewriting it would only
+        // make a request log disagree with the request that produced it.
+
         // Trimmed rather than rejected: the first 8,000 characters of an over-long paste still
         // contain the question, so the customer gets an answer instead of an error about their
         // own message. The marker is deliberately visible to the model — an answer based on a

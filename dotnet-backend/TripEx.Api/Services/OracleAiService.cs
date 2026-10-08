@@ -274,6 +274,125 @@ CRITICAL RULES:
     }
 
     /// <summary>
+    /// Turns an attachment payload into the data: URL an image_url content part expects.
+    ///
+    /// Same preparation the invoice scanner does on its way in — strip any data: prefix, detect
+    /// the real type from the payload's own magic bytes rather than trusting what the prefix
+    /// claimed, and shrink an oversized image — so a picture the conversation looks at costs the
+    /// same as one the scanner reads. The size guards are the scanner's too, and deliberately:
+    /// an attachment the scanner would refuse is not one the chat path should quietly accept.
+    /// </summary>
+    public static string PrepareImageDataUrl(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+            throw new ArgumentException("Attachment payload cannot be empty");
+
+        var base64Part = payload.Contains(",")
+            ? payload[(payload.IndexOf(',') + 1)..].Trim()
+            : payload.Trim();
+
+        if (base64Part.Length < MinImageBase64Length)
+            throw new ArgumentException("Image data is too small or empty — likely corrupted");
+        if (base64Part.Length > MaxImageBase64Length)
+            throw new ArgumentException(
+                $"Image too large ({base64Part.Length / 1_000_000}MB base64). Max ~10MB. Please compress on the client side.");
+
+        var mime = DetectMimeFromBase64Prefix(base64Part);
+
+        // PDFs are passed through whole — ResizeIfTooLarge is an image codec and would only
+        // throw on one. Same split as CallGeminiFlashAsync.
+        if (mime != "application/pdf")
+        {
+            try
+            {
+                base64Part = ResizeIfTooLarge(base64Part, out var resizedMime);
+                if (resizedMime != null) mime = resizedMime;
+            }
+            catch (Exception ex) when (ex is FileNotFoundException or FileLoadException or TypeLoadException or BadImageFormatException)
+            {
+                // ImageSharp missing on this server — send it at full size rather than not at all.
+                Console.WriteLine($"[ATTACHMENT] ImageSharp assembly not available, skipping resize: {ex.Message}");
+            }
+        }
+
+        return $"data:{mime};base64,{base64Part}";
+    }
+
+    /// <summary>
+    /// Is this attachment a receipt to scan, or something the user wants looked at while their
+    /// question is answered? Returns "scan", "ask", or null when it could not tell — the caller
+    /// decides what an unanswered question means (see AttachmentRouting.Decide).
+    ///
+    /// Its own tiny call rather than a question folded into the main turn, for the same reason
+    /// the status-shape classifier is one: the answer picks which of two completely different
+    /// code paths runs, and it has to be known before either of them starts. Always on the
+    /// default model — the fine-tuned one cannot see images at all (allowCustomModel is left
+    /// false, exactly as on the OCR call sites).
+    /// </summary>
+    public async Task<string?> ClassifyAttachmentAsync(
+        string imageDataUrl,
+        string? userText,
+        CancellationToken ct = default,
+        Action<OciUsage>? onUsage = null)
+    {
+        var said = string.IsNullOrWhiteSpace(userText)
+            ? "(the user sent the file with no message of their own)"
+            : userText!.Trim();
+
+        var messages = new List<OracleMessage>
+        {
+            new()
+            {
+                Role = "system",
+                Content =
+                    "Reply with ONE word and nothing else: SCAN or ASK.\n" +
+                    "A user of a business travel & expense system attached a file to a chat message. " +
+                    "Decide what they want done with it.\n" +
+                    "Reply SCAN only if BOTH hold: the file is a purchase document — an invoice, a " +
+                    "receipt, a tax invoice, a credit-card slip, a hotel or airline bill — AND nothing " +
+                    "in their message asks a question about it. Submitting it as an expense is what " +
+                    "SCAN means, so an empty message with a receipt is SCAN.\n" +
+                    "Reply ASK for everything else: a screenshot of the system, an error message, a " +
+                    "form, a table, a chart, a photo, a policy page, a document that is not a purchase " +
+                    "— and ALSO for a genuine invoice when the message asks something about it " +
+                    "(\"is this claimable?\", \"why was this rejected?\", \"what does this line mean?\").\n" +
+                    "When in doubt, reply ASK — a wrong SCAN answers a question nobody asked.",
+            },
+            new()
+            {
+                Role = "user",
+                Content = new object[]
+                {
+                    new { type = "image_url", image_url = new { url = imageDataUrl } },
+                    new { type = "text", text = $"Their message: {said}" },
+                },
+            },
+        };
+
+        try
+        {
+            // 512 like the status-shape classifier: the answer is one word, and this budget also
+            // has to cover the thinking tokens the model spends out of the same allowance. An
+            // exhausted budget comes back empty, which declines — the safe direction.
+            var raw = await ChatAsync(messages, maxTokens: 512, temperature: 0, ct, onUsage: onUsage);
+
+            // Whole-word match anywhere in the reply, so quotes, JSON or a stray sentence around
+            // the answer still parse.
+            var match = Regex.Match(raw ?? "", @"\b(SCAN|ASK)\b", RegexOptions.IgnoreCase);
+            if (!match.Success) return null;
+
+            return match.Groups[1].Value.Equals("SCAN", StringComparison.OrdinalIgnoreCase)
+                ? TripEx.Api.Models.AttachmentIntents.Scan
+                : TripEx.Api.Models.AttachmentIntents.Ask;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ATTACHMENT] classification failed ({ex.Message}) — the caller decides without it");
+            return null;
+        }
+    }
+
+    /// <summary>
     /// General-purpose chat (used by ChatService and others)
     /// </summary>
     public async Task<string> ChatAsync(

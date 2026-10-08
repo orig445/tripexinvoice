@@ -34,6 +34,175 @@ async function submitExpense(_data: Record<string, unknown>) {
   return { placeholder: true, message: "Expense submission not yet connected" };
 }
 
+
+// ── Attachments ──
+// What a file sent with a chat message is for. An attachment used to mean exactly one thing —
+// type:"image" with the base64 in `text`, scanned as a receipt — so a screenshot sent to ask
+// about it came back as a list of merchant/VAT/total fields, and the question had nowhere to go.
+// Mirrors TripEx.Api's AttachmentIntents/AttachmentRouting so both backends behave the same.
+const MAX_ATTACHMENTS = 5;
+
+/**
+ * Is a model call needed to decide? Only for an "auto" intent — an explicit one is already the
+ * answer, so nobody is billed for a verdict that would be discarded.
+ */
+function shouldClassifyAttachment(requestedIntent: string): boolean {
+  const intent = (requestedIntent || "").trim().toLowerCase();
+  return intent !== "scan" && intent !== "ask";
+}
+
+/** Decide the route. `verdict` is null when the classifier was skipped or could not answer. */
+function decideAttachmentRoute(
+  requestedIntent: string,
+  hasQuestionText: boolean,
+  verdict: string | null,
+): "scan" | "ask" {
+  const intent = (requestedIntent || "").trim().toLowerCase();
+  // An explicit intent is the client reporting what the user pressed — the camera button is
+  // "scan this receipt" and must not depend on a model's opinion.
+  if (intent === "scan") return "scan";
+  if (intent === "ask") return "ask";
+
+  const answer = (verdict || "").trim().toLowerCase();
+  if (answer === "scan") return "scan";
+  if (answer === "ask") return "ask";
+
+  // No verdict: fall back on the one signal that needs no model. With a question, answering it
+  // is the useful failure; without one, a bare attachment has always meant "scan this".
+  return hasQuestionText ? "ask" : "scan";
+}
+
+/** Is this a receipt to scan, or context for the question? Returns "scan", "ask", or null. */
+async function classifyAttachment(
+  apiKey: string,
+  modelName: string,
+  dataUrl: string,
+  userText: string,
+): Promise<string | null> {
+  const said = userText.trim() || "(the user sent the file with no message of their own)";
+  try {
+    const res = await fetch(
+      "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions/v1/chat/completions",
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: modelName,
+          max_tokens: 512,
+          temperature: 0,
+          messages: [
+            {
+              role: "system",
+              content:
+                "Reply with ONE word and nothing else: SCAN or ASK.\n" +
+                "A user of a business travel & expense system attached a file to a chat message. " +
+                "Decide what they want done with it.\n" +
+                "Reply SCAN only if BOTH hold: the file is a purchase document — an invoice, a receipt, " +
+                "a tax invoice, a credit-card slip, a hotel or airline bill — AND nothing in their message " +
+                "asks a question about it. An empty message with a receipt is SCAN.\n" +
+                "Reply ASK for everything else: a screenshot of the system, an error message, a form, a " +
+                "table, a chart, a photo, a document that is not a purchase — and ALSO for a genuine " +
+                "invoice when the message asks something about it.\n" +
+                "When in doubt, reply ASK — a wrong SCAN answers a question nobody asked.",
+            },
+            {
+              role: "user",
+              content: [
+                { type: "image_url", image_url: { url: dataUrl } },
+                { type: "text", text: `Their message: ${said}` },
+              ],
+            },
+          ],
+        }),
+      },
+    );
+    if (!res.ok) {
+      console.error("Attachment classification failed:", res.status, await res.text());
+      return null;
+    }
+    const body = await res.json();
+    const raw = String(body?.choices?.[0]?.message?.content ?? "");
+    // Whole-word match, so quotes, JSON or a stray sentence around the answer still parse.
+    const m = raw.match(/\b(SCAN|ASK)\b/i);
+    return m ? m[1].toLowerCase() : null;
+  } catch (err) {
+    console.error("Attachment classification error:", err);
+    return null;
+  }
+}
+
+/** A base64 payload as the data: URL an image_url content part expects. */
+function toDataUrl(payload: string): string {
+  return payload.startsWith("data:") ? payload : `data:image/jpeg;base64,${payload}`;
+}
+
+/** What records, in the conversation's own text, that a file came with this turn. */
+function attachmentNote(count: number): string {
+  return count === 1 ? "[1 file attached]" : `[${count} files attached]`;
+}
+
+/**
+ * The human-readable scan result for one file. Lifted out of the OCR flow unchanged when that
+ * flow learned to handle a turn carrying several files.
+ */
+function buildOcrSummary(d: Record<string, any>): string {
+  const lines: string[] = ["✅ Invoice scanned successfully! Here are the details:"];
+  if (d.document_type) lines.push(`📄 Type: ${d.document_type.replace(/_/g, " ")}`);
+  if (d.merchant?.name) lines.push(`🏪 Merchant: ${d.merchant.name}`);
+  if (d.merchant?.tin) lines.push(`🆔 TIN: ${d.merchant.tin}`);
+  if (d.merchant?.address) lines.push(`📍 Address: ${d.merchant.address}`);
+  if (d.merchant?.city) lines.push(`🌆 City: ${d.merchant.city}`);
+  if (d.invoice_number) lines.push(`🔢 Invoice #: ${d.invoice_number}`);
+  if (d.invoice_date) lines.push(`📅 Date: ${d.invoice_date}`);
+  const cur = d.currency || "";
+  if (d.amounts?.vatable_sales_amount != null)
+    lines.push(`💵 VATable Sales: ${d.amounts.vatable_sales_amount} ${cur}`);
+  if (d.amounts?.non_vatable_sales_amount != null && d.amounts.non_vatable_sales_amount > 0)
+    lines.push(`💵 Non-VAT Sales: ${d.amounts.non_vatable_sales_amount} ${cur}`);
+  if (d.amounts?.service_charge_amount != null && d.amounts.service_charge_amount > 0)
+    lines.push(`💵 Service Charge: ${d.amounts.service_charge_amount} ${cur}`);
+  if (d.amounts?.tax_amount != null) lines.push(`🧾 VAT/Tax: ${d.amounts.tax_amount} ${cur}`);
+  if (d.payment?.method) lines.push(`💳 Payment: ${d.payment.method}`);
+  // Form of payment details with fallback inference from payment.method
+  const paymentText = `${d.payment?.form_of_payment ?? ""} ${d.payment?.method ?? ""}`.toLowerCase();
+  const inferredFop =
+    paymentText.includes("credit") ||
+    paymentText.includes("debit") ||
+    paymentText.includes("card") ||
+    paymentText.includes("visa") ||
+    paymentText.includes("master") ||
+    paymentText.includes("amex") ||
+    paymentText.includes("diners") ||
+    paymentText.includes("isracard") ||
+    paymentText.includes("ישראכרט") ||
+    paymentText.includes("אשראי") ||
+    paymentText.includes("כרטיס") ||
+    paymentText.includes("סליקה") ||
+    paymentText.includes("סליקת") ||
+    paymentText.includes("emv") ||
+    paymentText.includes("contactless")
+      ? "credit"
+      : paymentText.includes("bank") || paymentText.includes("transfer") || paymentText.includes("העברה")
+        ? "bank"
+        : paymentText.includes("cash") || paymentText.includes("מזומן")
+          ? "cash"
+          : "cash";
+  if (inferredFop === "credit") {
+    let creditInfo = "💳 Form of Payment: Credit Card";
+    if (d.payment?.card_type)
+      creditInfo += ` (${d.payment.card_type.charAt(0).toUpperCase() + d.payment.card_type.slice(1)})`;
+    if (d.payment?.card_last4) creditInfo += ` ****${d.payment.card_last4}`;
+    lines.push(creditInfo);
+  } else if (inferredFop === "bank") {
+    lines.push("🏦 Form of Payment: Bank Transfer");
+  } else {
+    lines.push("💵 Form of Payment: Cash");
+  }
+  if (d.payment?.amount_paid != null) lines.push(`💰 Paid: ${d.payment.amount_paid} ${cur}`);
+  lines.push("\nIs the data correct? If something is wrong, let me know and I'll update it.");
+  return lines.join("\n");
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -72,14 +241,34 @@ serve(async (req) => {
       source = "web",
       scope = "",
       trid = "",
-      text = "",
+      text: rawText = "",
       type = "text",
+      images: rawImages = [],
+      attachmentIntent = "auto",
       sessionToken = "",
       userDate = "",
       userTime = "",
       userTimezone = "",
       audience = "external",
     } = await req.json();
+
+    // ── Attachments ──
+    // `let`, because the old single-attachment shape carried the payload in `text` itself and
+    // has to be folded out of it before anything downstream reads the user's words.
+    let text: string = typeof rawText === "string" ? rawText : "";
+    let attachments: string[] = (Array.isArray(rawImages) ? rawImages : [])
+      .filter((i: unknown): i is string => typeof i === "string" && i.trim().length > 0)
+      .slice(0, MAX_ATTACHMENTS);
+    let requestedIntent: string = typeof attachmentIntent === "string" ? attachmentIntent : "auto";
+
+    // type:"image" means the payload is in `text` — the only shape this endpoint used to accept,
+    // and the only thing it ever meant was "scan this receipt". Kept working, and kept meaning
+    // that, so every caller still on it is unaffected.
+    if (type === "image" && attachments.length === 0 && text.trim()) {
+      attachments = [text];
+      requestedIntent = "scan";
+      text = "";
+    }
 
     // Which knowledge base this request may read. Defaults to the customer-facing
     // ("external") base so the public widget can NEVER retrieve internal docs.
@@ -140,30 +329,83 @@ serve(async (req) => {
       sessionId = newSession.id;
     }
 
-    // ── OCR flow (type === "image") ──
-    if (type === "image") {
+    // ── Load chatbot config ──
+    // Loaded before the attachment route is decided: the classifier below needs the model
+    // name and the API key, and the text flow further down reads the same values.
+    const { data: config } = await supabase.from("chatbot_config").select("*").eq("is_active", true).limit(1).single();
+
+    const temperature = config?.temperature || 0.3;
+    const maxTokens = config?.max_tokens || 2048;
+    const modelName = config?.model_name || "meta.llama-4-maverick-17b-128e-instruct-fp8";
+
+    const ORACLE_API_KEY = Deno.env.get("oracleapikey")
+      || Deno.env.get("oracleapikey_2")
+      || Deno.env.get("invoice");
+    if (!ORACLE_API_KEY) {
+      throw new Error("Oracle API key is not configured");
+    }
+
+
+    // ── Which way do this turn's attachments go? ──
+    // Every attachment used to be scanned, because an attachment could only mean "scan this
+    // receipt". Now only a purchase document is, and anything else is handed to the model as
+    // context for the message it came with. See decideAttachmentRoute.
+    let attachmentRoute: "scan" | "ask" = "scan";
+    if (attachments.length > 0) {
+      let verdict: string | null = null;
+      // Only an "auto" intent is worth a model call — an explicit one is already the answer.
+      // The first file decides for the turn: five photos of one expense, or five screenshots of
+      // one problem, are a single act, and one verdict keeps five files costing what one does.
+      if (shouldClassifyAttachment(requestedIntent)) {
+        verdict = await classifyAttachment(ORACLE_API_KEY, modelName, toDataUrl(attachments[0]), text);
+      }
+      attachmentRoute = decideAttachmentRoute(requestedIntent, !!text.trim(), verdict);
+      console.log(
+        `[ATTACHMENT] files=${attachments.length} intent=${requestedIntent} ` +
+        `hasQuestion=${!!text.trim()} classifier=${verdict ?? "-"} route=${attachmentRoute}`,
+      );
+    }
+
+    // ── Scan flow: the attachments are receipts ──
+    if (attachmentRoute === "scan" && attachments.length > 0) {
       try {
-        const ocrResponse = await fetch(`${supabaseUrl}/functions/v1/analyze-invoice`, {
-          method: "POST",
-          headers: {
-            Authorization: authHeader,
-            "Content-Type": "application/json",
-            apikey: supabaseKey,
-          },
-          body: JSON.stringify({ imageBase64: text }),
-        });
+        // Every attachment on the turn, not only the first: a request used to carry exactly one
+        // file (the client sent a separate request per file) and one turn can now carry up to
+        // MAX_ATTACHMENTS, so reading attachments[0] alone would silently drop the rest.
+        const summaries: string[] = [];
+        const scans: Record<string, any>[] = [];
+        for (const payload of attachments) {
+          const ocrResponse = await fetch(`${supabaseUrl}/functions/v1/analyze-invoice`, {
+            method: "POST",
+            headers: {
+              Authorization: authHeader,
+              "Content-Type": "application/json",
+              apikey: supabaseKey,
+            },
+            body: JSON.stringify({ imageBase64: payload }),
+          });
 
-        const ocrData = await ocrResponse.json();
+          const ocrData = await ocrResponse.json();
 
-        // Log OCR request
-        await supabase.from("chatbot_logs").insert({
-          session_id: sessionId,
-          user_id: user.id,
-          event_type: "ocr_request",
-          details: { success: ocrData.success, source },
-        });
+          // Log OCR request
+          await supabase.from("chatbot_logs").insert({
+            session_id: sessionId,
+            user_id: user.id,
+            event_type: "ocr_request",
+            details: { success: ocrData.success, source },
+          });
 
-        if (!ocrData.success) {
+          if (!ocrData.success) {
+            // Named per file, so three receipts and one blurry photo report the blurry one
+            // instead of failing the whole turn.
+            summaries.push("Failed to scan receipt. Please try again.");
+            continue;
+          }
+          summaries.push(buildOcrSummary(ocrData.data || {}));
+          scans.push(ocrData.data);
+        }
+
+        if (scans.length === 0) {
           return new Response(
             JSON.stringify({
               actions: [],
@@ -179,78 +421,25 @@ serve(async (req) => {
           );
         }
 
-        // Build a summary of the scanned data using new structured format
-        const d = ocrData.data || {};
-        const lines: string[] = ["✅ Invoice scanned successfully! Here are the details:"];
-        if (d.document_type) lines.push(`📄 Type: ${d.document_type.replace(/_/g, " ")}`);
-        if (d.merchant?.name) lines.push(`🏪 Merchant: ${d.merchant.name}`);
-        if (d.merchant?.tin) lines.push(`🆔 TIN: ${d.merchant.tin}`);
-        if (d.merchant?.address) lines.push(`📍 Address: ${d.merchant.address}`);
-        if (d.merchant?.city) lines.push(`🌆 City: ${d.merchant.city}`);
-        if (d.invoice_number) lines.push(`🔢 Invoice #: ${d.invoice_number}`);
-        if (d.invoice_date) lines.push(`📅 Date: ${d.invoice_date}`);
-        const cur = d.currency || "";
-        if (d.amounts?.vatable_sales_amount != null)
-          lines.push(`💵 VATable Sales: ${d.amounts.vatable_sales_amount} ${cur}`);
-        if (d.amounts?.non_vatable_sales_amount != null && d.amounts.non_vatable_sales_amount > 0)
-          lines.push(`💵 Non-VAT Sales: ${d.amounts.non_vatable_sales_amount} ${cur}`);
-        if (d.amounts?.service_charge_amount != null && d.amounts.service_charge_amount > 0)
-          lines.push(`💵 Service Charge: ${d.amounts.service_charge_amount} ${cur}`);
-        if (d.amounts?.tax_amount != null) lines.push(`🧾 VAT/Tax: ${d.amounts.tax_amount} ${cur}`);
-        if (d.payment?.method) lines.push(`💳 Payment: ${d.payment.method}`);
-        // Form of payment details with fallback inference from payment.method
-        const paymentText = `${d.payment?.form_of_payment ?? ""} ${d.payment?.method ?? ""}`.toLowerCase();
-        const inferredFop =
-          paymentText.includes("credit") ||
-          paymentText.includes("debit") ||
-          paymentText.includes("card") ||
-          paymentText.includes("visa") ||
-          paymentText.includes("master") ||
-          paymentText.includes("amex") ||
-          paymentText.includes("diners") ||
-          paymentText.includes("isracard") ||
-          paymentText.includes("ישראכרט") ||
-          paymentText.includes("אשראי") ||
-          paymentText.includes("כרטיס") ||
-          paymentText.includes("סליקה") ||
-          paymentText.includes("סליקת") ||
-          paymentText.includes("emv") ||
-          paymentText.includes("contactless")
-            ? "credit"
-            : paymentText.includes("bank") || paymentText.includes("transfer") || paymentText.includes("העברה")
-              ? "bank"
-              : paymentText.includes("cash") || paymentText.includes("מזומן")
-                ? "cash"
-                : "cash";
-        if (inferredFop === "credit") {
-          let creditInfo = "💳 Form of Payment: Credit Card";
-          if (d.payment?.card_type)
-            creditInfo += ` (${d.payment.card_type.charAt(0).toUpperCase() + d.payment.card_type.slice(1)})`;
-          if (d.payment?.card_last4) creditInfo += ` ****${d.payment.card_last4}`;
-          lines.push(creditInfo);
-        } else if (inferredFop === "bank") {
-          lines.push("🏦 Form of Payment: Bank Transfer");
-        } else {
-          lines.push("💵 Form of Payment: Cash");
-        }
-        if (d.payment?.amount_paid != null) lines.push(`💰 Paid: ${d.payment.amount_paid} ${cur}`);
-        lines.push("\nIs the data correct? If something is wrong, let me know and I'll update it.");
-
-        const ocrSummary = lines.join("\n");
+        const ocrSummary = summaries.join("\n\n");
 
         // Save user message (image scan) and assistant response to chat history
         // so the AI has context for follow-up corrections
         await supabase.from("chat_messages").insert({
           session_id: sessionId,
           role: "user",
-          content: "[User scanned an invoice/receipt]",
+          content: attachments.length === 1
+            ? "[User scanned an invoice/receipt]"
+            : `[User scanned ${attachments.length} invoices/receipts]`,
         });
         await supabase.from("chat_messages").insert({
           session_id: sessionId,
           role: "assistant",
           content: ocrSummary,
           intent: "scan",
-          metadata: { actions: [], scanned_data: ocrData.data },
+          // scanned_data keeps carrying the first scan's fields, unchanged, so the correction
+          // flow below (which looks for it) is unaffected; scanned_files carries them all.
+          metadata: { actions: [], scanned_data: scans[0], scanned_files: scans },
         });
 
         return new Response(
@@ -258,7 +447,9 @@ serve(async (req) => {
             actions: [],
             text: ocrSummary,
             redirectPage: "",
-            data: ocrData.data,
+            // The first scan's fields stay at the top level — the shape every client reads
+            // today — with the full set beside them when the turn carried more than one file.
+            data: scans.length > 1 ? { ...scans[0], scans } : scans[0],
             session_id: sessionId,
           }),
           {
@@ -291,7 +482,11 @@ serve(async (req) => {
     }
 
     // ── Text flow ──
-    if (!text.trim()) {
+    // An attachment with no words is not an empty turn: the user sent something to be looked
+    // at, and greeting them while ignoring it would be the same silent discard this whole
+    // change is about. Those turns carry on below with the attachment note standing in for the
+    // question they didn't type.
+    if (!text.trim() && attachments.length === 0) {
       return new Response(
         JSON.stringify({
           actions: [],
@@ -305,6 +500,15 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         },
       );
+    }
+
+    // The attachment note goes into the text itself, so the one string that is saved to
+    // chat_messages, replayed as history and searched against the knowledge base all say the
+    // same thing. The images last this request only — chat_messages stores text — so without
+    // the note a later turn would see "why is this empty?" with nothing it could refer to.
+    if (attachments.length > 0) {
+      const note = attachmentNote(attachments.length);
+      text = text.trim() ? `${text.trim()}\n${note}` : note;
     }
 
     // Save user message
@@ -323,21 +527,6 @@ serve(async (req) => {
       .order("created_at", { ascending: false })
       .limit(50);
     const history = (historyDesc || []).slice().reverse();
-
-    // ── Load chatbot config ──
-    const { data: config } = await supabase.from("chatbot_config").select("*").eq("is_active", true).limit(1).single();
-
-    const temperature = config?.temperature || 0.3;
-    const maxTokens = config?.max_tokens || 2048;
-    const modelName = config?.model_name || "meta.llama-4-maverick-17b-128e-instruct-fp8";
-
-    const ORACLE_API_KEY = Deno.env.get("oracleapikey")
-      || Deno.env.get("oracleapikey_2")
-      || Deno.env.get("invoice");
-    if (!ORACLE_API_KEY) {
-      throw new Error("Oracle API key is not configured");
-    }
-
 
     // ── RAG: Search knowledge base ──
     let knowledgeContext = "";
@@ -627,6 +816,41 @@ Current context: source=${source}, scope=${scope}${trid ? `, trid=${trid}` : ""}
       },
       ...historyTurns,
     ];
+
+    // ── The attachments the model is meant to look at ──
+    // Only the "ask" route gets here — the scan route returned long before this. They go onto
+    // the CURRENT user message, so the model sees them as part of what the user just said.
+    if (attachmentRoute === "ask" && attachments.length > 0) {
+      const parts: Record<string, any>[] = attachments.map((payload) => ({
+        type: "image_url",
+        image_url: { url: toDataUrl(payload) },
+      }));
+      const last = messages[messages.length - 1];
+      if (last?.role === "user") {
+        parts.push({ type: "text", text: String(last.content) });
+        (last as Record<string, any>).content = parts;
+      } else {
+        // History didn't come back (best-effort reads) — send the question with the files
+        // rather than send the files with no question.
+        parts.push({ type: "text", text });
+        messages.push({ role: "user", content: parts } as unknown as typeof messages[number]);
+      }
+
+      // Appended to the system prompt, to stop the two failures available here: reading the
+      // picture out loud instead of using it (the scanner's job, and the thing being fixed),
+      // and answering about an attachment it could not make out rather than saying so.
+      messages[0].content +=
+        `\n\n## THE USER ATTACHED ${attachments.length === 1 ? "A FILE" : `${attachments.length} FILES`} TO THIS MESSAGE\n` +
+        "It is in this message, and you can see it. It is CONTEXT for what they are asking — not a " +
+        "receipt to process. Someone else already decided it is not an expense document.\n" +
+        "- Use it to understand the question: a screenshot of the screen they are stuck on, an " +
+        "error, a form, a table, a document.\n" +
+        "- Do NOT transcribe it, and do NOT list fields out of it. Nobody asked for its contents.\n" +
+        "- If they attached it without a question, say what you can see and ask what they need " +
+        "done with it — in their own language.\n" +
+        "- If you cannot make it out, say so plainly and ask for a clearer one. Never guess at " +
+        "what it might have shown.\n";
+    }
 
     // ── Call Oracle AI ──
     const aiResponse = await fetch(

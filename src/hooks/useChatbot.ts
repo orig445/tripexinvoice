@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { sendChatMessage, sendImageForScan, type KnowledgeAudience } from "@/lib/api-service";
+import { sendChatMessage, sendImageForScan, type AttachmentIntent, type KnowledgeAudience } from "@/lib/api-service";
 
 export interface ChatMessage {
   id: string;
@@ -105,16 +105,33 @@ export function useChatbot(options?: { audience?: KnowledgeAudience; source?: st
   }, [sessionId]);
 
 
+  /**
+   * Send a turn: the user's words, the files they attached, or both.
+   *
+   * Attachments used to go down a separate path that always meant "scan this receipt",
+   * so there was no way to send a picture together with a question — and a screenshot
+   * sent to ask about it came back as a list of invoice fields. With `attachmentIntent`
+   * left at "auto" the server scans only genuine purchase documents and hands anything
+   * else to the model as context for the message.
+   */
   const sendMessage = useCallback(
-    async (text: string) => {
-      if (!user || !text.trim()) return;
+    async (text: string, options?: { images?: string[]; attachmentIntent?: AttachmentIntent }) => {
+      const images = options?.images?.filter(Boolean) ?? [];
+      // An empty message is still a turn when something is attached to it.
+      if (!user || (!text.trim() && images.length === 0)) return;
       setIsLoading(true);
 
       const tempId = crypto.randomUUID();
       const tempMsg: ChatMessage = {
         id: tempId,
         role: "user",
-        content: text,
+        // Mirrors the note the server records for an attachment (ChatService.AttachmentNote),
+        // so the bubble on screen and the stored transcript say the same thing.
+        content: images.length === 0
+          ? text
+          : [text.trim(), images.length === 1 ? "📎 [1 file attached]" : `📎 [${images.length} files attached]`]
+              .filter(Boolean)
+              .join("\n"),
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, tempMsg]);
@@ -126,7 +143,8 @@ export function useChatbot(options?: { audience?: KnowledgeAudience; source?: st
         const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
         const { data, error } = await sendChatMessage({
-          text, source, sessionToken: sessionIdRef.current, userDate: userLocalDate, userTime: userLocalTime, userTimezone: timezone, audience,
+          text, images, attachmentIntent: options?.attachmentIntent, source,
+          sessionToken: sessionIdRef.current, userDate: userLocalDate, userTime: userLocalTime, userTimezone: timezone, audience,
         });
 
         if (error) throw error;

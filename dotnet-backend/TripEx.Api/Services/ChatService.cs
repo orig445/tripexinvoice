@@ -24,6 +24,7 @@ public class ChatService
     private readonly bool _modelAuthoredFirstClarify;
     private readonly bool _devRequests;
     private readonly bool _updatesRequireOwner;
+    private readonly bool _imageAutoRoute;
     private readonly double _temperature;
     // Where page links point when the customer's own TAS address is not known: Milo:PageLinksBaseUrl,
     // else the baseUrl in Data/page-links.json. See PageLinkBase.
@@ -851,6 +852,96 @@ public class ChatService
         }
     }
 
+    /// <summary>
+    /// Which way this turn's attachments go — see AttachmentRouting.Decide for the rules. The
+    /// only part that lives here is the model call, and only when the decision actually needs
+    /// one: an explicit "scan" from the camera button, or Milo:ImageAutoRoute switched off,
+    /// settles it without spending a token.
+    ///
+    /// Classifies the FIRST attachment only. A turn's files are one act — five photos of the
+    /// same expense, or five screenshots of one problem — so one verdict for the turn matches
+    /// what the user did, and it keeps the cost of attaching five files the same as one.
+    /// </summary>
+    private async Task<AttachmentRoute> ResolveAttachmentRouteAsync(ChatRequest request, Guid sessionId)
+    {
+        var hasQuestion = !string.IsNullOrWhiteSpace(request.Text);
+        string? verdict = null;
+
+        if (AttachmentRouting.ShouldClassify(request.AttachmentIntent, _imageAutoRoute))
+        {
+            string? dataUrl = null;
+            try
+            {
+                dataUrl = OracleAiService.PrepareImageDataUrl(request.Images![0]);
+            }
+            catch (ArgumentException ex)
+            {
+                // An unusable payload is not a receipt. Decide without it: with a question, the
+                // turn still gets answered (and the model is told the file was unreadable where
+                // the messages are built); without one, the scanner reports the problem in the
+                // words it already has for it.
+                _logger.LogWarning("[ATTACHMENT] session={SessionId} not classified: {Message}", sessionId, ex.Message);
+            }
+
+            if (dataUrl != null)
+            {
+                OciUsage? usage = null;
+                verdict = await _oracle.ClassifyAttachmentAsync(dataUrl, request.Text, CancellationToken.None, u => usage = u);
+                if (usage is { } u2)
+                    await RecordUsageAsync(sessionId, MiloUsage.ClassifierKind, u2, request);
+            }
+        }
+
+        var route = AttachmentRouting.Decide(request.AttachmentIntent, _imageAutoRoute, hasQuestion, verdict);
+
+        _logger.LogInformation(
+            "[ATTACHMENT] session={SessionId} files={Files} intent={Intent} autoRoute={AutoRoute} hasQuestion={HasQuestion} classifier={Verdict} route={Route}",
+            sessionId, request.Images?.Count ?? 0, AttachmentIntents.Normalize(request.AttachmentIntent),
+            _imageAutoRoute, hasQuestion, verdict ?? "-", route);
+
+        return route;
+    }
+
+    /// <summary>
+    /// What records, in the conversation's own text, that a file came with this turn.
+    ///
+    /// It has to be in the text and not only in the model's message parts, because the parts
+    /// last one request while the text is what gets saved to chat_messages, replayed as history
+    /// and mirrored onto the Zoho ticket. Without it, a question like "why is this empty?" is
+    /// stored with nothing it could possibly refer to — so the next turn, and the support agent
+    /// reading the transcript, would both see a question about nothing.
+    /// </summary>
+    public static string AttachmentNote(int count)
+        => count == 1 ? "[1 file attached]" : $"[{count} files attached]";
+
+    /// <summary>
+    /// The user's words with the attachment note after them, or the note alone when they sent
+    /// the file without typing anything.
+    /// </summary>
+    public static string WithAttachmentNote(string? text, int count)
+        => string.IsNullOrWhiteSpace(text)
+            ? AttachmentNote(count)
+            : text!.TrimEnd() + "\n" + AttachmentNote(count);
+
+    /// <summary>
+    /// Appended to the system prompt on a turn whose images the model can actually see. Its job
+    /// is to stop the two failures that are available here: reading the picture out loud instead
+    /// of using it (the scanner's job, and the thing the user complained about), and answering
+    /// about an attachment it could not make out rather than saying so.
+    /// </summary>
+    private static string AttachmentContextPrompt(int count) =>
+        "\n\n## THE USER ATTACHED " + (count == 1 ? "A FILE" : $"{count} FILES") + " TO THIS MESSAGE\n" +
+        "It is in this message, and you can see it. It is CONTEXT for what they are asking — not a " +
+        "receipt to process. Someone else already decided it is not an expense document.\n" +
+        "- Use it to understand the question: a screenshot of the screen they are stuck on, an error, " +
+        "a form, a table, a document.\n" +
+        "- Do NOT transcribe it, and do NOT list fields out of it. Nobody asked for its contents.\n" +
+        "- If they attached it without a question, say what you can see and ask what they need done " +
+        "with it — in their own language.\n" +
+        "- If you cannot make it out, say so plainly and ask for a clearer one. Never guess at what it " +
+        "might have shown.\n" +
+        "The output rules above still hold exactly as written: reply with ONLY the JSON object.\n";
+
     // Mirrors the top-level shape of page-links.json: { "baseUrl": "...", "pages": [...] }.
     private class PageLinksFile
     {
@@ -922,6 +1013,12 @@ public class ChatService
     // reply; counting which script actually dominates avoids misreading that as Hebrew.
     private static bool IsHebrewDominant(string text)
     {
+        // Markers this backend appends in square brackets are excluded from the count. They are
+        // ours, not the user's, and they are all Latin: "[1 file attached]" is 13 Latin letters
+        // and "[… message truncated]" is 19, which is enough to outvote a short Hebrew question
+        // ("למה זה ריק?" has 8 Hebrew letters) and answer a Hebrew user in English.
+        text = Regex.Replace(text, @"\[[^\]]*\]", "");
+
         int hebrew = 0, latin = 0;
         foreach (var ch in text)
         {
@@ -1280,6 +1377,14 @@ public class ChatService
         // it does would stop every agent reply from reaching the customer.
         _updatesRequireOwner = string.Equals(
             configuration["Milo:UpdatesRequireOwner"], "true", StringComparison.OrdinalIgnoreCase);
+
+        // Off switch for deciding per attachment whether it is a receipt to scan or something to
+        // look at while answering (see AttachmentRouting). Same rule as the two shortcuts above:
+        // only a literal "false" turns it off, and off means what this endpoint did before —
+        // every attachment goes to the invoice scanner. An explicit AttachmentIntent from a
+        // client still wins either way; this only governs the "auto" default.
+        _imageAutoRoute = !string.Equals(
+            configuration["Milo:ImageAutoRoute"], "false", StringComparison.OrdinalIgnoreCase);
 
         // Rollback override for the conversational temperature (code default 0, see
         // DefaultConversationalTemperature) — same config-edit-plus-restart rule as the two above.
@@ -1813,10 +1918,27 @@ public class ChatService
         _logger.LogInformation("[CHAT-CONTINUITY] source={Source} session={SessionId} continued={Continued}",
             OneLine(request.Source), sessionId, continuedSession);
 
-        // ── Image flow ──
-        if (request.Type == "image")
+        // ── Attachments: scan it, or look at it while answering ──
+        // Every attachment used to go straight to the invoice scanner, because an attachment
+        // could only ever mean "scan this receipt" — there was no field for anything else and no
+        // way to send a picture together with a question. So a screenshot of a TAS screen, sent
+        // to ask why it was empty, came back as a list of merchant/VAT/total fields read off a
+        // page that has none. Now only a purchase document is scanned; anything else rides along
+        // with the turn as something the model can see while it answers. See AttachmentRouting
+        // for the decision and Milo:ImageAutoRoute for the way back.
+        var attachmentRoute = AttachmentRoute.Scan;
+        if (request.HasAttachments)
         {
-            return await HandleImageAsync(request, sessionId, userId);
+            attachmentRoute = await ResolveAttachmentRouteAsync(request, sessionId);
+            if (attachmentRoute == AttachmentRoute.Scan)
+                return await HandleImageAsync(request, sessionId, userId);
+
+            // Ask: fall through into the ordinary conversational turn, which picks the
+            // attachments back up where it builds the messages for the model. The note goes
+            // into request.Text itself, so the one string that is saved to chat_messages,
+            // replayed as history, mirrored onto the Zoho ticket and compared against the
+            // model's messages all say the same thing. See AttachmentNote.
+            request.Text = WithAttachmentNote(request.Text, request.Images!.Count);
         }
 
         // ── Empty text ──
@@ -1825,7 +1947,12 @@ public class ChatService
         // hardcoded English line, ignoring both the welcome message configured in
         // ChatbotConfig and the customer's own locale, which is why a Hebrew user opening the
         // chat got greeted in English.
-        if (string.IsNullOrWhiteSpace(request.Text))
+        //
+        // An attachment with no words is NOT that case: the user sent something to be looked at,
+        // and greeting them while ignoring it would be the same silent discard this whole change
+        // is about. Those turns carry on below, with the attachment note (added just above)
+        // standing in for the question they didn't type.
+        if (string.IsNullOrWhiteSpace(request.Text) && !request.HasAttachments)
         {
             string? configuredWelcome = null;
             try
@@ -2048,6 +2175,54 @@ public class ChatService
         if (!lastIsCurrentUserMessage)
             messages.Add(new OracleMessage { Role = "user", Content = request.Text });
 
+        // ── The attachments the model is meant to look at ──
+        // Only on the Ask route — the Scan route returned long before this. The images go onto
+        // the CURRENT user message, which is messages[^1] either way after the block above, so
+        // the model sees them as part of what the user just said rather than as loose context.
+        //
+        // This turn only: chat_messages stores text, so a later turn has the note the attachment
+        // left behind (AttachmentNote) and not the picture. That is the honest limit of this
+        // change — a follow-up question about the same image needs the image sent again.
+        var turnHasImages = false;
+        if (attachmentRoute == AttachmentRoute.Ask && request.HasAttachments)
+        {
+            var parts = new List<object>();
+            foreach (var payload in request.Images!)
+            {
+                try
+                {
+                    parts.Add(new { type = "image_url", image_url = new { url = OracleAiService.PrepareImageDataUrl(payload) } });
+                }
+                catch (ArgumentException ex)
+                {
+                    // Empty, corrupt or oversized — the same guards the scanner applies. One bad
+                    // file does not cost the user their question.
+                    _logger.LogWarning("[ATTACHMENT] session={SessionId} attachment skipped: {Message}", sessionId, ex.Message);
+                }
+            }
+
+            var questionText = messages[^1].Content as string ?? request.Text;
+            if (parts.Count > 0)
+            {
+                parts.Add(new { type = "text", text = questionText });
+                messages[^1].Content = parts.ToArray();
+                turnHasImages = true;
+                systemPrompt += AttachmentContextPrompt(parts.Count - 1);
+                messages[0].Content = systemPrompt;
+            }
+            else
+            {
+                // Nothing survived preparation. Say so in the turn rather than answering a
+                // question about a file as if no file had been mentioned — the user is owed the
+                // reason, and the model cannot invent one it was never told.
+                messages[^1].Content = questionText + "\n[the attached file could not be read]";
+            }
+
+            _logger.LogInformation(
+                "[ATTACHMENT] session={SessionId} route=ask sent={Sent}/{Total} source={Source}",
+                sessionId, parts.Count > 0 ? parts.Count - 1 : 0, request.Images!.Count, OneLine(request.Source));
+        }
+
         // ── Call Oracle AI ──
         // allowCustomModel: true opts the Milo conversational path into the fine-tuned
         // custom model IF Oracle:UseCustomModel is also enabled in config (see
@@ -2135,8 +2310,12 @@ public class ChatService
             string rawContent;
             try
             {
+                // allowCustomModel is false for a turn carrying images, and must be: the
+                // fine-tuned model is text-only (see CustomModelRoutingTests — the OCR call
+                // sites avoid it for exactly this reason), so routing an image turn to it
+                // would either error or, worse, answer about an image it never received.
                 rawContent = await _oracle.ChatAsync(
-                    messages, maxTokens, temperature, forceJsonOutput: true, allowCustomModel: true,
+                    messages, maxTokens, temperature, forceJsonOutput: true, allowCustomModel: !turnHasImages,
                     onUsage: u => answerUsage = u);
             }
             finally
@@ -2648,33 +2827,106 @@ public class ChatService
         return tickets.Cast<object>().ToList();
     }
 
+    // What the user is told when nothing could be read off the attachment. Was inline; a constant
+    // now because the multi-file loop below needs the same sentence per file and once overall.
+    private const string ScanFailedMessage = "Failed to scan receipt. Please try again.";
+
     private async Task<ChatResponse> HandleImageAsync(ChatRequest request, Guid sessionId, Guid userId)
     {
+        // Every attachment on the turn, not only the first. A request used to carry exactly one
+        // image — the client sent a separate request per file — and the new shape lets one turn
+        // carry up to ChatRequest.MaxAttachments, so reading Images[0] alone would silently
+        // throw the rest away.
+        var payloads = request.Images ?? new List<string>();
+
         // Log OCR request
         _db.ChatbotLogs.Add(new ChatbotLog
         {
             SessionId = sessionId,
             UserId = userId,
             EventType = "ocr_request",
-            Details = JsonSerializer.Serialize(new { source = request.Source })
+            Details = JsonSerializer.Serialize(new { source = request.Source, files = payloads.Count })
         });
 
         // Extract country from request scope or default
         var country = request.Scope; // client can pass country in Scope field
-        var result = await _invoiceService.AnalyzeAsync(request.Text, null, country);
 
-        if (!result.Success)
+        var summaries = new List<string>();
+        var scanned = new List<InvoiceFields>();
+        foreach (var payload in payloads)
+        {
+            var one = await _invoiceService.AnalyzeAsync(payload, null, country);
+            if (!one.Success)
+            {
+                // Named per file, so three receipts and one blurry photo report the blurry one
+                // instead of failing the whole turn.
+                summaries.Add(ScanFailedMessage);
+                continue;
+            }
+            summaries.Add(BuildScanSummary(one.Fields));
+            if (one.Fields != null) scanned.Add(one.Fields);
+        }
+
+        if (scanned.Count == 0)
         {
             await _db.SaveChangesAsync();
             return new ChatResponse
             {
-                Text = "Failed to scan receipt. Please try again.",
+                Text = ScanFailedMessage,
                 SessionId = sessionId.ToString()
             };
         }
 
-        // Build summary from AlgoText-compatible fields
-        var f = result.Fields;
+        var summary = string.Join("\n\n", summaries);
+
+        // Save messages
+        _db.ChatMessages.Add(new ChatMessage
+        {
+            SessionId = sessionId,
+            Role = "user",
+            Content = payloads.Count == 1
+                ? "[User scanned an invoice/receipt]"
+                : $"[User scanned {payloads.Count} invoices/receipts]"
+        });
+        _db.ChatMessages.Add(new ChatMessage
+        {
+            SessionId = sessionId,
+            Role = "assistant",
+            Content = summary,
+            Intent = "scan",
+            // scanned_fields keeps carrying the first scan's fields, unchanged, so anything
+            // already reading it is unaffected; scanned_files carries them all.
+            Metadata = JsonSerializer.Serialize(new
+            {
+                actions = Array.Empty<string>(),
+                scanned_fields = scanned[0],
+                scanned_files = scanned,
+            })
+        });
+        await _db.SaveChangesAsync();
+
+        // Convert Fields to dictionary for response. The first scan's fields stay at the top
+        // level — that is the shape every client reads today — with the full set beside them
+        // for a turn that carried more than one file.
+        var dataDict = JsonSerializer.Deserialize<Dictionary<string, object?>>(
+            JsonSerializer.Serialize(scanned[0])) ?? new();
+        if (scanned.Count > 1)
+            dataDict["scans"] = scanned;
+
+        return new ChatResponse
+        {
+            Text = summary,
+            Data = dataDict,
+            SessionId = sessionId.ToString()
+        };
+    }
+
+    /// <summary>
+    /// The human-readable scan result for one attachment. Lifted out of HandleImageAsync
+    /// unchanged when that method learned to handle a turn carrying several files.
+    /// </summary>
+    private static string BuildScanSummary(InvoiceFields? f)
+    {
         var lines = new List<string> { "✅ Invoice scanned successfully! Here are the details:" };
         if (f?.Type != null) lines.Add($"📄 Type: {f.Type.Replace("_", " ")}");
         if (f?.MerchantName != null) lines.Add($"🏪 Merchant: {f.MerchantName}");
@@ -2702,30 +2954,7 @@ public class ChatService
         if (f?.AmountPaid != null) lines.Add($"💰 Paid: {f.AmountPaid} {cur}");
         lines.Add("\nIs the data correct? If something is wrong, let me know and I'll update it.");
 
-        var summary = string.Join("\n", lines);
-
-        // Save messages
-        _db.ChatMessages.Add(new ChatMessage { SessionId = sessionId, Role = "user", Content = "[User scanned an invoice/receipt]" });
-        _db.ChatMessages.Add(new ChatMessage
-        {
-            SessionId = sessionId,
-            Role = "assistant",
-            Content = summary,
-            Intent = "scan",
-            Metadata = JsonSerializer.Serialize(new { actions = Array.Empty<string>(), scanned_fields = result.Fields })
-        });
-        await _db.SaveChangesAsync();
-
-        // Convert Fields to dictionary for response
-        var dataDict = JsonSerializer.Deserialize<Dictionary<string, object?>>(
-            JsonSerializer.Serialize(result.Fields)) ?? new();
-
-        return new ChatResponse
-        {
-            Text = summary,
-            Data = dataDict,
-            SessionId = sessionId.ToString()
-        };
+        return string.Join("\n", lines);
     }
 
     private async Task<string> SearchKnowledgeBase(string queryText, string audience = "external")

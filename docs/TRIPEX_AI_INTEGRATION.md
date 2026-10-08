@@ -117,8 +117,10 @@ apikey: <supabase_anon_key>
 
 ```json
 {
-  "text": "string",           // User message (text) OR base64 image data
-  "type": "text" | "image",   // "text" for chat, "image" for invoice scan
+  "text": "string",           // User message
+  "images": ["base64", ...],  // Optional: files attached to this turn (max 5)
+  "attachmentIntent": "auto" | "scan" | "ask",  // Optional, default "auto" — see below
+  "type": "text" | "image",   // "image" is the legacy single-attachment shape (see below)
   "source": "web" | "mobile" | "widget",  // Client identifier
   "sessionToken": "uuid | null",  // Existing session ID (null = create new)
   "scope": "",                // Optional: context scope
@@ -251,9 +253,46 @@ const token = session?.access_token;
 }
 ```
 
-### Image Scan (via Chat)
+### Attachments (via Chat)
 
-**Request:**
+An attachment is **not** automatically OCR'd. `attachmentIntent` decides, and it defaults to
+`"auto"`:
+
+| intent  | what happens |
+|---------|--------------|
+| `scan`  | OCR it as an invoice/receipt and reply with the extracted fields. What the camera button sends. |
+| `ask`   | The model looks at it as context for the message it came with — a screenshot of a screen, an error, a form. Never scanned. |
+| `auto`  | The server classifies the file: only a purchase document is scanned, everything else is treated as `ask`. Default. |
+
+Before this existed, an attachment could only mean `scan`: it arrived as `type: "image"` with the
+base64 in `text`, so a screenshot sent with a question was OCR'd and the question itself had
+nowhere to go. That shape still works and still means `scan`, so no existing caller has to change.
+
+Server-side, `Milo:ImageAutoRoute=false` turns the classification off: `auto` then scans
+everything, as before.
+
+**Request — a question about a screenshot:**
+```json
+{
+  "text": "why does this screen show no trips?",
+  "images": ["/9j/4AAQ..."],
+  "source": "web",
+  "sessionToken": "a1b2c3d4-..."
+}
+```
+
+**Request — scan a receipt (explicit):**
+```json
+{
+  "text": "",
+  "images": ["/9j/4AAQ..."],
+  "attachmentIntent": "scan",
+  "source": "web",
+  "sessionToken": "a1b2c3d4-..."
+}
+```
+
+**Request — the legacy shape, still supported:**
 ```json
 {
   "text": "data:image/jpeg;base64,/9j/4AAQ...",
@@ -262,6 +301,8 @@ const token = session?.access_token;
   "sessionToken": "a1b2c3d4-..."
 }
 ```
+
+A scan response (either of the first two shapes above, when the route is `scan`):
 
 **Response:**
 ```json
@@ -570,12 +611,29 @@ async function sendMessage(text: string, sessionId: string | null) {
   return data;
 }
 
-// Image scan
+// Scan a receipt — the user pressed a "scan invoice" button, so say so explicitly
 async function scanInvoice(base64Image: string, sessionId: string | null) {
   const { data, error } = await supabase.functions.invoke('ai-router', {
     body: {
-      text: base64Image,
-      type: 'image',
+      text: '',
+      images: [base64Image],
+      attachmentIntent: 'scan',
+      source: 'mobile',
+      sessionToken: sessionId,
+    },
+  });
+
+  if (error) throw error;
+  return data;
+}
+
+// Ask about a file — a screenshot, an error, a form. Left on the default "auto" intent, so a
+// receipt sent this way is still scanned and anything else is read as context for the question.
+async function askAboutFile(text: string, base64Image: string, sessionId: string | null) {
+  const { data, error } = await supabase.functions.invoke('ai-router', {
+    body: {
+      text,
+      images: [base64Image],
       source: 'mobile',
       sessionToken: sessionId,
     },

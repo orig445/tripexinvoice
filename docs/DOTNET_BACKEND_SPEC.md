@@ -67,8 +67,10 @@ Main entry point for chat and image scanning.
 ```csharp
 public class ChatRequest
 {
-    public string Text { get; set; } = "";          // User message OR base64 image
-    public string Type { get; set; } = "text";      // "text" | "image"
+    public string Text { get; set; } = "";          // User message
+    public List<string>? Images { get; set; }        // Files attached to this turn (max 5, base64)
+    public string? AttachmentIntent { get; set; }    // "auto" (default) | "scan" | "ask"
+    public string Type { get; set; } = "text";      // "text"; "image" = legacy, payload in Text
     public string Source { get; set; } = "web";      // "web" | "mobile" | "widget"
     public string? SessionToken { get; set; }        // Existing session ID (null = new)
     public string? Scope { get; set; }
@@ -96,8 +98,12 @@ public class ChatResponse
 
 1. Validate JWT → extract `user_id`
 2. Create or retrieve session from `chat_sessions` table
-3. If `type == "image"` → call `POST /api/invoice/analyze` internally
-4. If `type == "text"`:
+3. If anything is attached (`images`, or the legacy `type == "image"`) → decide the route
+   (`AttachmentRouting`): `scan` calls `POST /api/invoice/analyze` internally, once per file;
+   `ask` falls through to step 4 with the images attached to the current user message. With
+   `attachmentIntent` absent or `"auto"`, a small vision call classifies the first file — only a
+   purchase document is scanned. `Milo:ImageAutoRoute=false` scans everything, as before.
+4. Otherwise (and for the `ask` route):
    a. Save user message to `chat_messages`
    b. Load last 30 messages from session
    c. Search knowledge base (RAG)

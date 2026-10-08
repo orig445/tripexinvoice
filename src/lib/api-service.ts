@@ -78,9 +78,25 @@ async function callSupabaseFunction<T = any>(
 
 // ─── Public API Methods ───
 
-/** Send a chat message (text) to AI Router */
+/**
+ * What an attachment is for.
+ *
+ * - "scan": OCR it as an invoice/receipt and reply with the extracted fields.
+ * - "ask":  the model looks at it as context for the message it came with.
+ * - "auto": the server decides per file — only a purchase document is scanned.
+ *
+ * Before this existed, an attachment could only ever be "scan": it was sent as
+ * type:"image" with the base64 in `text`, so a screenshot attached to a question was
+ * OCR'd and the question itself had nowhere to go.
+ */
+export type AttachmentIntent = "auto" | "scan" | "ask";
+
+/** Send a chat message — with any files the user attached to the same turn */
 export async function sendChatMessage(params: {
   text: string;
+  /** base64 payloads (no data: prefix needed), at most 5 per turn */
+  images?: string[];
+  attachmentIntent?: AttachmentIntent;
   source?: string;
   sessionToken?: string | null;
   userDate?: string;
@@ -88,9 +104,15 @@ export async function sendChatMessage(params: {
   userTimezone?: string;
   audience?: KnowledgeAudience;
 }) {
+  const images = params.images?.filter(Boolean) ?? [];
   const body = {
     text: params.text,
+    // Still "text" even with files attached: `type` only ever meant "the payload in
+    // `text` is an image", and the payload has its own field now.
     type: "text",
+    ...(images.length > 0
+      ? { images, attachmentIntent: params.attachmentIntent || "auto" }
+      : {}),
     source: params.source || "web",
     sessionToken: params.sessionToken || null,
     userDate: params.userDate || "",
@@ -105,25 +127,24 @@ export async function sendChatMessage(params: {
   return callSupabaseFunction("ai-router", body);
 }
 
-/** Send an image (base64) for scanning via AI Router */
+/**
+ * Send an image (base64) to be scanned as an invoice — the camera button's path, where
+ * the user said what they wanted by pressing it, so no classification is needed.
+ */
 export async function sendImageForScan(params: {
   base64: string;
   source?: string;
   sessionToken?: string | null;
   audience?: KnowledgeAudience;
 }) {
-  const body = {
-    text: params.base64,
-    type: "image",
-    source: params.source || "web",
-    sessionToken: params.sessionToken || null,
-    audience: params.audience || "external",
-  };
-
-  if (isExternalBackend) {
-    return callExternalAPI("/api/chat", body);
-  }
-  return callSupabaseFunction("ai-router", body);
+  return sendChatMessage({
+    text: "",
+    images: [params.base64],
+    attachmentIntent: "scan",
+    source: params.source,
+    sessionToken: params.sessionToken,
+    audience: params.audience,
+  });
 }
 
 /** Direct invoice analysis (standalone OCR) */
