@@ -107,7 +107,7 @@ const ChatInternal = () => {
       {/* Input */}
       <div className="border-t bg-background">
         <div className="container max-w-3xl">
-          <ChatInput onSend={sendMessage} onImageCapture={sendImage} isLoading={isLoading} />
+          <ChatInput onSend={sendMessage} onImageCapture={sendImage} isLoading={isLoading} attachOnly />
         </div>
       </div>
     </div>
